@@ -7,7 +7,7 @@ const { Configuration, OpenAIApi } = require('openai');
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME;
-const messages = []
+let messages = []
 let mode = 0; // 0 === jeeves, 1 === tokipona
 
 const configuration = new Configuration({
