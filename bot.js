@@ -38,6 +38,7 @@ client.on('messageCreate', async (message) => {
     messages = [];
     message.channel.send('I have switched to Jeeves mode, sir.')
     mode = 0
+    await client.setUsername('Jeeves')
     return
   }
 
@@ -45,6 +46,7 @@ client.on('messageCreate', async (message) => {
     messages = [];
     message.channel.send('mi ante e nasin tawa toki pona.')
     mode = 1
+    await client.setUsername('ilo Jepite')
     return
   }
   
