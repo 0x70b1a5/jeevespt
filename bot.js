@@ -36,17 +36,19 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === '!jeeves') {
     messages = [];
+    await client.user.setUsername('Jeeves')
+    await client.user.setAvatar('./jeeves.jpeg')
     message.channel.send('I have switched to Jeeves mode, sir.')
     mode = 0
-    await client.user.setUsername('Jeeves')
     return
   }
 
   if (message.content === '!tokipona') {
     messages = [];
+    await client.user.setUsername('ilo Jepite')
+    await client.user.setAvatar('./mumumu.png')
     message.channel.send('mi ante e nasin tawa toki pona.')
     mode = 1
-    await client.user.setUsername('ilo Jepite')
     return
   }
   
