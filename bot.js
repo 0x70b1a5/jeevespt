@@ -37,7 +37,7 @@ client.on('messageCreate', async (message) => {
   if (message.content === '!jeeves') {
     messages = [];
     await client.user.setUsername('Jeeves')
-    await client.user.setAvatar('./jeeves.jpeg')
+    await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
     message.channel.send('I have switched to Jeeves mode, sir.')
     mode = 0
     return
@@ -46,7 +46,7 @@ client.on('messageCreate', async (message) => {
   if (message.content === '!tokipona') {
     messages = [];
     await client.user.setUsername('ilo Jepite')
-    await client.user.setAvatar('./mumumu.png')
+    await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
     message.channel.send('mi ante e nasin tawa toki pona.')
     mode = 1
     return
