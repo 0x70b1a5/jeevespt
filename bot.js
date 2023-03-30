@@ -30,10 +30,7 @@ client.on('messageCreate', async (message) => {
   if (message.content === '!clear') {
     ourMessageLog = []
     message.channel.send('Cleared messages log.')
-    return
-  }
-
-  if (message.content === '!jeeves') {
+  } else if (message.content === '!jeeves') {
     ourMessageLog = []
     try {
       await client.user.setUsername('Jeeves')
@@ -41,10 +38,7 @@ client.on('messageCreate', async (message) => {
     } catch {}
     message.channel.send('I have switched to Jeeves mode, sir.')
     mode = 0
-    return
-  }
-
-  if (message.content === '!tokipona') {
+  } else if (message.content === '!tokipona') {
     ourMessageLog = []
     try {
       await client.user.setUsername('ilo Jepite')
@@ -52,10 +46,7 @@ client.on('messageCreate', async (message) => {
     } catch {}
     message.channel.send('mi ante e nasin tawa toki pona.')
     mode = 1
-    return
-  }
-
-  if (message.content === '!help' || message.content === '!commands') {
+  } else if (message.content === '!help' || message.content === '!commands') {
     message.channel.send(`JEEVESPT:
 - Remembers the last 20 messages (yours and his)
 - Doesn't see usernames, only message text
@@ -67,29 +58,24 @@ client.on('messageCreate', async (message) => {
 \`!log\`: Prints current memory.
 \`!help\`: Display this message.
 `)
-    return
-  }
-
-  if (message.content === '!log') {
-    message.channel.send('CURRENT CONVERSATION IN MEMORY:\n---')
+  } else if (message.content === '!log') {
+    message.channel.send('CURRENT MEMORY:\n---')
     ourMessageLog.forEach(m => message.channel.send(`[${m.role}]: ${m.content}`))
     message.channel.send('---')
-    return
-  }
-  
-  ourMessageLog.push({ role: 'user', content: message.content })
-  if (ourMessageLog.length > 20) ourMessageLog.shift()
-  console.log('MESSAGE: ', message.content)
+  } else {
+    ourMessageLog.push({ role: 'user', content: message.content })
+    if (ourMessageLog.length > 20) ourMessageLog.shift()
+    console.log('MESSAGE: ', message.content)
 
-  if (message.author.bot) return
-  
-  if (message.channel.name === TARGET_CHANNEL_NAME) {
-    const response = await generateResponse()
-
-    if (response) {
-        message.channel.send(response)
-    } else {
-        message.channel.send('[ERROR]')
+    if (message.author.bot) return
+    
+    if (message.channel.name === TARGET_CHANNEL_NAME) {
+      const response = await generateResponse()
+      if (response) {
+          message.channel.send(response)
+      } else {
+          message.channel.send('[ERROR]')
+      }
     }
   }
 })
@@ -124,7 +110,7 @@ async function generateResponse() {
       messages: latestMessages,
     })
     const botMsg = completion.data.choices[0].message    
-    ourMessageLog.push({ role: 'assistant', content: botMsg })
+    ourMessageLog.push({ role: 'assistant=', content: botMsg })
     return botMsg
   } catch (error) {
     console.error('Error generating response:', error, error.response.data)
