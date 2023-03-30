@@ -25,7 +25,7 @@ client.on('error', async (e) => {
 })
 
 function concatenateContents(array) {
-  const MAX_CHUNK_SIZE = 4000;
+  const MAX_CHUNK_SIZE = 1900;
   let chunks = [''];
   let chunkIndex = 0;
 
