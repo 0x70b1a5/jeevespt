@@ -77,7 +77,7 @@ client.on('messageCreate', async (message) => {
   } else if (message.content === '!log') {
     const chunx = concatenateContents(ourMessageLog)
     await message.channel.send('CURRENT MEMORY:\n---')
-    chunx.forEach(async m => await message.channel.send(m))
+    chunx.forEach(async m => m && await message.channel.send(m))
     await message.channel.send('---')
   } else if (message.author.bot) {
     // ignore our system messages
