@@ -24,19 +24,35 @@ client.on('error', async (e) => {
   console.error(e)
 })
 
+function concatenateContents(array) {
+  const MAX_CHUNK_SIZE = 4000;
+  let chunks = [''];
+  let chunkIndex = 0;
+
+  array.forEach(item => {
+    if (chunks[chunkIndex].length + item.content.length > MAX_CHUNK_SIZE) {
+      chunks.push('');
+      chunkIndex++;
+    }
+    chunks[chunkIndex] += `[${item.role}]: ` + item.content;
+  });
+
+  return chunks;
+}
+
 client.on('messageCreate', async (message) => {
   if (message.channel.name !== TARGET_CHANNEL_NAME) return
 
   if (message.content === '!clear') {
     ourMessageLog = []
-    message.channel.send('Cleared messages log.')
+    await message.channel.send('Cleared messages log.')
   } else if (message.content === '!jeeves') {
     ourMessageLog = []
     try {
       await client.user.setUsername('Jeeves')
       await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
     } catch {}
-    message.channel.send('I have switched to Jeeves mode, sir.')
+    await message.channel.send('I have switched to Jeeves mode, sir.')
     mode = 0
   } else if (message.content === '!tokipona') {
     ourMessageLog = []
@@ -44,10 +60,10 @@ client.on('messageCreate', async (message) => {
       await client.user.setUsername('ilo Jepite')
       await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
     } catch {}
-    message.channel.send('mi ante e nasin tawa toki pona.')
+    await message.channel.send('mi ante e nasin tawa toki pona.')
     mode = 1
   } else if (message.content === '!help' || message.content === '!commands') {
-    message.channel.send(`JEEVESPT:
+    await message.channel.send(`JEEVESPT:
 - Remembers the last 20 messages (yours and his)
 - Doesn't see usernames, only message text
 - Not actually Jeeves. :(
@@ -59,22 +75,28 @@ client.on('messageCreate', async (message) => {
 \`!help\`: Display this message.
 `)
   } else if (message.content === '!log') {
-    message.channel.send('CURRENT MEMORY:\n---')
-    ourMessageLog.forEach(m => message.channel.send(`[${m.role}]: ${m.content}`))
-    message.channel.send('---')
+    const chunx = concatenateContents(ourMessageLog)
+    await message.channel.send('CURRENT MEMORY:\n---')
+    chunx.forEach(async m => await message.channel.send(m))
+    await message.channel.send('---')
+  } else if (message.author.bot) {
+    // ignore our system messages
   } else {
-    ourMessageLog.push({ role: 'user', content: message.content })
-    if (ourMessageLog.length > 20) ourMessageLog.shift()
+    ourMessageLog.push({ 
+      role: 'user', 
+      content: message.content
+    })
+    
+    while (ourMessageLog.length > 20) ourMessageLog.shift()
+
     console.log('MESSAGE: ', message.content)
 
-    if (message.author.bot) return
-    
     if (message.channel.name === TARGET_CHANNEL_NAME) {
       const response = await generateResponse()
       if (response) {
-          message.channel.send(response)
+        await message.channel.send(response)
       } else {
-          message.channel.send('[ERROR]')
+        await message.channel.send('[ERROR]')
       }
     }
   }
@@ -110,7 +132,7 @@ async function generateResponse() {
       messages: latestMessages,
     })
     const botMsg = completion.data.choices[0].message    
-    ourMessageLog.push({ role: 'assistant=', content: botMsg })
+    ourMessageLog.push({ role: 'assistant', content: botMsg })
     return botMsg
   } catch (error) {
     console.error('Error generating response:', error, error.response.data)
