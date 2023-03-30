@@ -132,7 +132,7 @@ async function generateResponse() {
       messages: latestMessages,
     })
     const botMsg = completion.data.choices[0].message    
-    ourMessageLog.push({ role: 'assistant', content: botMsg })
+    ourMessageLog.push({ role: 'assistant', content: botMsg?.content || '' })
     return botMsg
   } catch (error) {
     console.error('Error generating response:', error, error.response.data)
