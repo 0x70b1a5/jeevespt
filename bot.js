@@ -34,7 +34,7 @@ function concatenateContents(array) {
       chunks.push('');
       chunkIndex++;
     }
-    chunks[chunkIndex] += `[${item.role}]: ` + item.content;
+    chunks[chunkIndex] += `[${item.role}]: ${item.content}\n`;
   });
 
   return chunks;
