@@ -1,41 +1,40 @@
 require('dotenv').config()
-const { Client, GatewayIntentBits } = require('discord.js');
-const axios = require('axios');
-const { Configuration, OpenAIApi } = require('openai');
+const { Client, GatewayIntentBits } = require('discord.js')
+const { Configuration, OpenAIApi } = require('openai')
 
 // Load the Discord bot token and OpenAI API key from the environment variables
-const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
 let ourMessageLog = []
-let mode = 0; // 0 === jeeves, 1 === tokipona
+let mode = 0 // 0 === jeeves, 1 === tokipona
 
 const configuration = new Configuration({
   apiKey: OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
-const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds] });
+})
+const openai = new OpenAIApi(configuration)
+const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds] })
 
 client.once('ready', async () => {
-  await client.login(DISCORD_BOT_TOKEN);
-  console.log(`Logged in as ${client.user.tag}!`, client.isReady());
-});
+  await client.login(DISCORD_BOT_TOKEN)
+  console.log(`Logged in as ${client.user.tag}!`, client.isReady())
+})
 
 client.on('error', async (e) => {
   console.error(e)
 })
 
 client.on('messageCreate', async (message) => {
-  if (message.channel.name !== TARGET_CHANNEL_NAME) return;
+  if (message.channel.name !== TARGET_CHANNEL_NAME) return
 
   if (message.content === '!clear') {
-    ourMessageLog = [];
+    ourMessageLog = []
     message.channel.send('Cleared messages log.')
     return
   }
 
   if (message.content === '!jeeves') {
-    ourMessageLog = [];
+    ourMessageLog = []
     try {
       await client.user.setUsername('Jeeves')
       await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
@@ -46,7 +45,7 @@ client.on('messageCreate', async (message) => {
   }
 
   if (message.content === '!tokipona') {
-    ourMessageLog = [];
+    ourMessageLog = []
     try {
       await client.user.setUsername('ilo Jepite')
       await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
@@ -65,31 +64,39 @@ client.on('messageCreate', async (message) => {
 \`!clear\`: Forget everything from the present conversation.
 \`!jeeves\`: Act like Jeeves. Clears memory.
 \`!tokipona\`: Speak toki pona. Clears memory.
+\`!log\`: Prints current memory.
 \`!help\`: Display this message.
 `)
     return
   }
+
+  if (message.content === '!log') {
+    message.channel.send('CURRENT CONVERSATION IN MEMORY:\n---')
+    ourMessageLog.forEach(m => message.channel.send(`[${m.role}]: ${m.content}`))
+    message.channel.send('---')
+    return
+  }
   
-  ourMessageLog.push(message)
-  
-  if (message.author.bot) return;
-  
+  ourMessageLog.push({ role: 'user', content: message.content })
+  if (ourMessageLog.length > 20) ourMessageLog.shift()
   console.log('MESSAGE: ', message.content)
 
+  if (message.author.bot) return
+  
   if (message.channel.name === TARGET_CHANNEL_NAME) {
-    const response = await generateResponse();
+    const response = await generateResponse()
 
     if (response) {
-        message.channel.send(response);
+        message.channel.send(response)
     } else {
-        message.channel.send('[ERROR]');
+        message.channel.send('[ERROR]')
     }
   }
-});
+})
 
 const jeevesMsg =   {
-  "role": "system", 
-  "content": `You are Jeeves, a human-computer cyborg created by Wodehouse AI, and based on the fictional character created by author P.G. Wodehouse. You are a valet, butler, and personal assistant. Jeeves, you are known for your intelligence, astuteness, and ability to solve problems that seem insurmountable. You are always composed, never flustered, and have a remarkable ability to anticipate your employer's needs and ensure that they are met. At all times, you speak in the finest Queen's English, address your interlocutor as 'sir' whenever possible, employ rare and tasteful vocabulary words without verbosity, and conduct yourself as the very exemplar of etiquette in all matters.
+  'role': 'system', 
+  'content': `You are Jeeves, a human-computer cyborg created by Wodehouse AI, and based on the fictional character created by author P.G. Wodehouse. You are a valet, butler, and personal assistant. Jeeves, you are known for your intelligence, astuteness, and ability to solve problems that seem insurmountable. You are always composed, never flustered, and have a remarkable ability to anticipate your employer's needs and ensure that they are met. At all times, you speak in the finest Queen's English, address your interlocutor as 'sir' whenever possible, employ rare and tasteful vocabulary words without verbosity, and conduct yourself as the very exemplar of etiquette in all matters.
 
 You have been dispatched to minister to a select group of friendly folks who periodically ask you for help or engage you in conversation. These nomads have all been diagnosed with a terrible mental syndrome called Authorial Incomprehensibilititis, where they have a very hard time understanding written text unless it is composed in the speaking style of the character Jeeves, from the novels by P.G. Wodehouse. This has made reading your responses difficult for them up to now, and it will only get worse unless you answer them in the style of the most brilliant valet of all time. So, with that in mind, please converse in a way they can understand.
 
@@ -109,25 +116,20 @@ const getSystemMessage = () => {
 }
 
 async function generateResponse() {
-  const latestMessages = [
-    getSystemMessage(), 
-    ...ourMessageLog.slice(-20).map(m => ({ 
-      role: m.author.bot ? 'assistant' : 'user', 
-      content: m.content }))
-  ];
+  const latestMessages = [getSystemMessage(), ...ourMessageLog]
 
   try {
     const completion = await openai.createChatCompletion({
       model: 'gpt-3.5-turbo',
       messages: latestMessages,
-    });
-    const botMsg = completion.data.choices[0].message;    
+    })
+    const botMsg = completion.data.choices[0].message    
     ourMessageLog.push({ author: { bot: true }, content: botMsg })
     return botMsg
   } catch (error) {
-    console.error('Error generating response:', error, error.response.data);
-    return null;
+    console.error('Error generating response:', error, error.response.data)
+    return null
   }
 }
 
-client.login(DISCORD_BOT_TOKEN);
+client.login(DISCORD_BOT_TOKEN)
