@@ -76,6 +76,7 @@ client.on('messageCreate', async (message) => {
     const requestedLimit = parsed && parsed[1]
     if (!isNaN(requestedLimit) && requestedLimit > 0) {
       messageLimit = requestedLimit
+      await message.channel.send(`Message memory is now ${limit} messages.`)
     } else {
       await message.channel.send(`Failed to parse requested limit. 
 Found: \`${parsed}\` 
