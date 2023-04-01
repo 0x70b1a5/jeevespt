@@ -8,7 +8,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
 let ourMessageLog = []
 let mode = 0 // 0 === jeeves, 1 === tokipona, 2 === jargon
-let limit = 20
+let messageLimit = 20
 
 const configuration = new Configuration({
   apiKey: OPENAI_API_KEY,
@@ -72,10 +72,10 @@ client.on('messageCreate', async (message) => {
     } catch {}
     await message.channel.send('`# Even in death, I serve the Omnissiah.`')
   } else if (message.content.match(/^!limit \d+$/)) {
-    const parsed = message.content.match(/^!limit \d+$/)
+    const parsed = message.content.match(/^!limit (\d+)$/)
     const requestedLimit = parsed && parsed[1]
     if (!isNaN(requestedLimit) && requestedLimit > 0) {
-      limit = requestedLimit
+      messageLimit = requestedLimit
     } else {
       await message.channel.send(`Failed to parse requested limit. 
 Found: \`${parsed}\` 
@@ -83,7 +83,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     }
   } else if (message.content === '!help' || message.content === '!commands') {
     await message.channel.send(`JEEVESPT:
-- Remembers the last 20 messages (yours and his)
+- Remembers the last ${messageLimit} messages (yours and his)
 - Doesn't see usernames, only message text
 - Not actually Jeeves. :(
 
@@ -92,6 +92,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!tokipona\`: Speak toki pona. Clears memory.
 \`!jargon\`: Speak Jargon. Clears memory.
 \`!log\`: Prints current memory.
+\`!limit X\`: Sets memory limit to X.
 \`!help\`: Display this message.
 `)
   } else if (message.content === '!log') {
@@ -107,7 +108,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       content: message.content
     })
     
-    while (limit > 0 && ourMessageLog.length > limit) ourMessageLog.shift()
+    while (messageLimit > 0 && ourMessageLog.length > messageLimit) ourMessageLog.shift()
 
     console.log('MESSAGE: ', message.content)
 
