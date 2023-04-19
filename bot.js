@@ -11,6 +11,8 @@ const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
 let ourMessageLog = []
 let mode = 0 // 0 === jeeves, 1 === tokipona, 2 === jargon
 let messageLimit = 20
+let temperature = 1.5
+const sysPrefix = '[SYSTEM] '
 
 const configuration = new Configuration({
   apiKey: OPENAI_API_KEY,
@@ -48,7 +50,7 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === '!clear') {
     ourMessageLog = []
-    await message.channel.send('Cleared messages log.')
+    await message.channel.send(sysPrefix + 'Cleared messages log.')
   } else if (message.content === '!jeeves') {
     ourMessageLog = []
     mode = 0
@@ -56,7 +58,7 @@ client.on('messageCreate', async (message) => {
       await client.user.setUsername('Jeeves')
       await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
     } catch {}
-    await message.channel.send('I have switched to Jeeves mode, sir.')
+    await message.channel.send(sysPrefix + 'I have switched to Jeeves mode, sir.')
   } else if (message.content === '!tokipona') {
     ourMessageLog = []
     mode = 1
@@ -64,7 +66,7 @@ client.on('messageCreate', async (message) => {
       await client.user.setUsername('ilo Jepite')
       await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
     } catch {}
-    await message.channel.send('mi ante e nasin tawa toki pona.')
+    await message.channel.send(sysPrefix + 'mi ante e nasin tawa toki pona.')
   } else if (message.content === '!jargon') {
     ourMessageLog = []
     mode = 2
@@ -72,20 +74,29 @@ client.on('messageCreate', async (message) => {
       await client.user.setUsername('JARGONATUS')
       await client.user.setAvatar('https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
     } catch {}
-    await message.channel.send('`# Even in death, I serve the Omnissiah.`')
+    await message.channel.send(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
+  } else if (message.content.match(/^!temperature [0-9.]+$/)) {
+    const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
+    const requestedTemp = parsed && parsed[1]
+    if (!isNaN(requestedTemp) && requestedTemp > 0) {
+      temperature = requestedTemp
+      await message.channel.send(sysPrefix + `Temperature set to \`${temperature}\`.`)
+    } else {
+      await message.channel.send(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal.`)
+    }
   } else if (message.content.match(/^!limit \d+$/)) {
     const parsed = message.content.match(/^!limit (\d+)$/)
     const requestedLimit = parsed && parsed[1]
     if (!isNaN(requestedLimit) && requestedLimit > 0) {
       messageLimit = requestedLimit
-      await message.channel.send(`Message memory is now ${limit} messages.`)
+      await message.channel.send(sysPrefix + `Message memory is now ${limit} messages.`)
     } else {
-      await message.channel.send(`Failed to parse requested limit. 
+      await message.channel.send(sysPrefix + `Failed to parse requested limit. 
 Found: \`${parsed}\` 
 Format: \`!limit X\` where X is a number greater than zero.`)
     }
   } else if (message.content === '!help' || message.content === '!commands') {
-    await message.channel.send(`JEEVESPT:
+    await message.channel.send(sysPrefix + `JEEVESPT:
 - Remembers the last ${messageLimit} messages (yours and his)
 - Doesn't see usernames, only message text
 - Not actually Jeeves. :(
@@ -100,9 +111,9 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 `)
   } else if (message.content === '!log') {
     const chunx = concatenateContents(ourMessageLog)
-    await message.channel.send('CURRENT MEMORY:\n---')
+    await message.channel.send(sysPrefix + 'CURRENT MEMORY:\n---')
     chunx.forEach(async m => m && await message.channel.send(m))
-    await message.channel.send('---')
+    await message.channel.send(sysPrefix + '---')
   } else if (message.author.bot) {
     // ignore our system messages
   } else {
@@ -120,7 +131,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       if (response) {
         await message.channel.send(response)
       } else {
-        await message.channel.send('[ERROR]')
+        await message.channel.send(sysPrefix + '[ERROR]')
       }
     }
   }
