@@ -78,11 +78,11 @@ client.on('messageCreate', async (message) => {
   } else if (message.content.match(/^!temperature [0-9.]+$/)) {
     const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
     const requestedTemp = parsed && parsed[1]
-    if (!isNaN(requestedTemp) && requestedTemp > 0) {
+    if (!isNaN(requestedTemp) && requestedTemp > 0 && requestedTemp <= 2) {
       temperature = requestedTemp
       await message.channel.send(sysPrefix + `Temperature set to \`${temperature}\`.`)
     } else {
-      await message.channel.send(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal.`)
+      await message.channel.send(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
     }
   } else if (message.content.match(/^!limit \d+$/)) {
     const parsed = message.content.match(/^!limit (\d+)$/)
