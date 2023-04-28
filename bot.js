@@ -12,6 +12,8 @@ let ourMessageLog = []
 let mode = 0 // 0 === jeeves, 1 === tokipona, 2 === jargon
 let messageLimit = 20
 let temperature = 1.5
+let model = 0
+const models = ['gpt-3.5-turbo', 'gpt-4']
 const sysPrefix = '[SYSTEM] '
 
 const configuration = new Configuration({
@@ -84,6 +86,15 @@ client.on('messageCreate', async (message) => {
     } else {
       await message.channel.send(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
     }
+  } else if (message.content.match(/^!model [\w.-]+$/)) {
+    const parsed = message.content.match(/^!model ([\w.-]+)$/)
+    const requestedModel = parsed && parsed[1]
+    if (models[requestedModel]) {
+      model = requestedModel
+      await message.channel.send(sysPrefix + `Model set to \`${model}\`.`)
+    } else {
+      await message.channel.send(sysPrefix + `Couldn't parse requested model: \`${model}\` is not one of ${models.join('`, `')}.`)
+    }
   } else if (message.content.match(/^!limit \d+$/)) {
     const parsed = message.content.match(/^!limit (\d+)$/)
     const requestedLimit = parsed && parsed[1]
@@ -107,6 +118,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!jargon\`: Speak Jargon. Clears memory.
 \`!log\`: Prints current memory.
 \`!limit X\`: Sets memory limit to X.
+\`!temperature X\`: Sets temperature (0-2) to X.
+\`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
 \`!help\`: Display this message.
 `)
   } else if (message.content === '!log') {
@@ -169,7 +182,7 @@ async function generateResponse() {
 
   try {
     const completion = await openai.createChatCompletion({
-      model: 'gpt-3.5-turbo',
+      model: models[model],
       messages: latestMessages,
     })
     const botMsg = completion.data.choices[0].message    
