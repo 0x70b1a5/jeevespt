@@ -89,11 +89,12 @@ client.on('messageCreate', async (message) => {
   } else if (message.content.match(/^!model [\w.-]+$/)) {
     const parsed = message.content.match(/^!model ([\w.-]+)$/)
     const requestedModel = parsed && parsed[1]
-    if (models[requestedModel]) {
-      model = requestedModel
-      await message.channel.send(sysPrefix + `Model set to \`${model}\`.`)
+    const idx = models.indexOf(requestedModel)
+    if (idx > -1) {
+      model = idx
+      await message.channel.send(sysPrefix + `Model set to \`${models[idx]}\`.`)
     } else {
-      await message.channel.send(sysPrefix + `Couldn't parse requested model: \`${model}\` is not one of ${models.join('`, `')}.`)
+      await message.channel.send(sysPrefix + `Couldn't parse requested model: \`${requestedModel}\` is not one of ${models.join('`, `')}.`)
     }
   } else if (message.content.match(/^!limit \d+$/)) {
     const parsed = message.content.match(/^!limit (\d+)$/)
