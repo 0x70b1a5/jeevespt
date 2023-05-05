@@ -32,7 +32,7 @@ client.on('error', async (e) => {
   console.error(e)
 })
 
-function concatenateContents(array) {
+function concatenateContents(array, showRoles) {
   const MAX_CHUNK_SIZE = 1900;
   let chunks = [''];
   let chunkIndex = 0;
@@ -42,7 +42,7 @@ function concatenateContents(array) {
       chunks.push('');
       chunkIndex++;
     }
-    chunks[chunkIndex] += `[${item.role}]: ${item.content}\n`;
+    chunks[chunkIndex] += showroles ? `[${item.role}]: ${item.content}\n` : item.content;
   });
 
   return chunks;
@@ -128,7 +128,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!help\`: Display this message.
 `)
   } else if (message.content === '!log') {
-    const chunx = concatenateContents(ourMessageLog)
+    const chunx = concatenateContents(ourMessageLog, true)
     await message.channel.send(sysPrefix + 'CURRENT MEMORY:\n---')
     chunx.forEach(async m => m && await message.channel.send(m))
     await message.channel.send(sysPrefix + '---')
@@ -145,9 +145,9 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     console.log('MESSAGE: ', message.content)
 
     if (message.channel.name === TARGET_CHANNEL_NAME) {
-      const response = await generateResponse()
-      if (response) {
-        await message.channel.send(response)
+      const chunx = await concatenateContents(await generateResponse())
+      if (chunx.length) {
+        chunx.forEach(async chunk => await message.channel.send(chunk))
       } else {
         await message.channel.send(sysPrefix + '[ERROR]')
       }
