@@ -145,7 +145,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     console.log('MESSAGE: ', message.content)
 
     if (message.channel.name === TARGET_CHANNEL_NAME) {
-      const chunx = await concatenateContents(await generateResponse())
+      const chunx = concatenateContents([await generateResponse()])
+      console.log(chunx)
       if (chunx.length) {
         chunx.forEach(async chunk => await message.channel.send(chunk))
       } else {
