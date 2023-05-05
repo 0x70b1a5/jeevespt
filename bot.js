@@ -42,7 +42,7 @@ function concatenateContents(array, showRoles) {
       chunks.push('');
       chunkIndex++;
     }
-    chunks[chunkIndex] += showroles ? `[${item.role}]: ${item.content}\n` : item.content;
+    chunks[chunkIndex] += showRoles ? `[${item.role}]: ${item.content}\n` : item.content;
   });
 
   return chunks;
