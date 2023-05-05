@@ -113,7 +113,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     await message.channel.send(sysPrefix + `JEEVESPT:
 - Remembers the last ${messageLimit} messages (yours and his)
 - Temperature: ${temperature}
-- Model: ${model} ${modelPrices[model]}
+- Model: ${models[model]} ${modelPrices[model]}
 - Doesn't see usernames, only message text
 - Not actually Jeeves. :(
 
