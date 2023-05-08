@@ -148,9 +148,15 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       const chunx = concatenateContents([await generateResponse()])
       console.log(chunx)
       if (chunx.length) {
-        chunx.forEach(async chunk => await message.channel.send(chunk))
+        chunx.forEach(async chunk => {
+          try {
+            await message.channel.send(chunk)
+          } catch (err) {
+            await message.channel.send(sysPrefix + '[ERROR] error sending a message.')
+          }
+        })
       } else {
-        await message.channel.send(sysPrefix + '[ERROR]')
+        await message.channel.send(sysPrefix + '[ERROR] no messages to send.')
       }
     }
   }
