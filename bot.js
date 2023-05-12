@@ -132,6 +132,14 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     await message.channel.send(sysPrefix + 'CURRENT MEMORY:\n---')
     chunx.forEach(async m => m && await message.channel.send(m))
     await message.channel.send(sysPrefix + '---')
+  } else if (message.attachments.length) {
+    for (const [messageID, attachment] of message.attachments) {
+      // Check if the attachment is an audio file by looking at the file extension
+      if (attachment.name.endsWith('.mp3') || attachment.name.endsWith('.wav')) {
+          // Respond to the message
+          await message.reply('You sent an audio file!');
+      }
+    }
   } else if (message.author.bot) {
     // ignore our system messages
   } else {
