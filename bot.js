@@ -204,6 +204,7 @@ async function generateResponse() {
     const completion = await openai.createChatCompletion({
       model: models[model],
       messages: latestMessages,
+      temperature,
     })
     const botMsg = completion.data.choices[0].message    
     ourMessageLog.push({ role: 'assistant', content: botMsg?.content || '' })
