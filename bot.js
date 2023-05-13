@@ -1,5 +1,11 @@
 require('dotenv').config()
-const fs = require('fs')
+const { promisify } = require("util");
+const { exec: execCb } = require("child_process");
+const https = require("https");
+const fs = require("fs");
+const pipeline = promisify(require("stream").pipeline);
+const exec = promisify(execCb);
+
 
 const { Client, GatewayIntentBits } = require('discord.js')
 const { Configuration, OpenAIApi } = require('openai')
@@ -132,20 +138,42 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     await message.channel.send(sysPrefix + 'CURRENT MEMORY:\n---')
     chunx.forEach(async m => m && await message.channel.send(m))
     await message.channel.send(sysPrefix + '---')
-  } else if (message.attachments.length) {
-    for (const [messageID, attachment] of message.attachments) {
-      // Check if the attachment is an audio file by looking at the file extension
-      if (attachment.name.endsWith('.mp3') || attachment.name.endsWith('.wav')) {
-          // Respond to the message
-          await message.reply('You sent an audio file!');
-      }
-    }
   } else if (message.author.bot) {
     // ignore our system messages
   } else {
+    // it's a message we should respond to!
+
+    let userMessage = message.content
+    const audio = message.attachments?.find(([id, { name }]) => name.endsWith('mp3') || name.endsWith('.wav'))
+    if (audio) {
+      // Download the audio file
+      const file = fs.createWriteStream('audio.mp3');
+      await pipeline(
+        https.get(attachment.url),
+        file
+      );
+
+      try {
+        // Run the python script
+        const { stdout, stderr } = await exec('python whisper.py');
+
+        if (stderr) {
+          await message.channel.send(sysPrefix + '[ERROR] Could not process audio.')
+          console.log(`whisper.py stderr: ${stderr}`);
+        } else {          
+          console.log(`whisper.py stdout: ${stdout}`);
+          userMessage = stdout
+          await message.channel.send(`${sysPrefix}[INFO]: Audio transcription: ${userMessage}`)
+        }
+      } catch (error) {
+        await message.channel.send(sysPrefix + '[ERROR] Could not process audio.')
+        console.log(`whisper.py error: ${error.message}`);
+      }
+    }
+
     ourMessageLog.push({ 
       role: 'user', 
-      content: message.content
+      content: userMessage
     })
     
     while (messageLimit > 0 && ourMessageLog.length > messageLimit) ourMessageLog.shift()
