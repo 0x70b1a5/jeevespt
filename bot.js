@@ -142,9 +142,15 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     // ignore our system messages
   } else {
     // it's a message we should respond to!
-
+    console.log(JSON.stringify(message))
     let userMessage = message.content
-    const audio = message.attachments?.find(([id, { name }]) => name.endsWith('mp3') || name.endsWith('.wav'))
+    let audio;
+    for (const [messageID, attachment] of message.attachments) {
+      if (attachment.name.endsWith('.mp3') || attachment.name.endsWith('.wav')) {
+        audio = attachment
+        break
+      }
+    }
     if (audio) {
       // Download the audio file
       const file = fs.createWriteStream('audio.mp3');
