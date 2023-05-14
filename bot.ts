@@ -5,7 +5,7 @@ import https from 'https';
 import fs from 'fs';
 const pipeline = promisify(require('stream').pipeline);
 const exec = promisify(execCb);
-import { Client, GatewayIntentBits, TextChannel } from 'discord.js';
+import { Attachment, Client, GatewayIntentBits, TextChannel } from 'discord.js';
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
@@ -143,7 +143,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     // it's a message we should respond to!
     console.log(JSON.stringify(message))
     let userMessage = message.content
-    let audio;
+    let audio : Attachment | undefined;
     for (const [messageID, attachment] of message.attachments) {
       console.log('found attachment', messageID, attachment)
       if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
@@ -151,12 +151,16 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         break
       }
     }
-    if (audio) {
+    if (audio !== undefined) {
       console.log('attachment was audio')
       // Download the audio file
       const file = fs.createWriteStream('audio.mp3');
+      const response = await new Promise((resolve, reject) => {
+        https.get(audio!.proxyURL, resolve).on('error', reject);
+      });
+
       await pipeline(
-        https.get(audio.url),
+        response,
         file
       );
 
