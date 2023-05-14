@@ -146,7 +146,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     let audio;
     for (const [messageID, attachment] of message.attachments) {
       console.log('found attachment', messageID, attachment)
-      if (attachment.name.endsWith('.mp3') || attachment.name.endsWith('.wav')) {
+      if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
         audio = attachment
         break
       }
