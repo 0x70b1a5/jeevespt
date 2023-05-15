@@ -197,7 +197,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       if (chunx.length) {
         chunx.forEach(async chunk => {
           try {
-            await message.channel.send(chunk)
+            if (chunk.length > 0)
+              await message.channel.send(chunk)
           } catch (err) {
             await message.channel.send(sysPrefix + '[ERROR] error sending a message.')
           }
