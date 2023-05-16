@@ -39,9 +39,9 @@ client.on('error', async (e) => {
 function concatenateContents(msgs: ChatCompletionRequestMessage[], showRoles?: boolean) {
   const MAX_CHUNK_SIZE = 1900;
   let chunks = [''];
-  let chunkIndex = 0;
-
+  
   msgs.forEach(msg => {
+    const chunkIndex = chunks.length - 1
     const excess = msg.content.length - MAX_CHUNK_SIZE
 
     // append short messages to latest chunk and move on
@@ -54,13 +54,12 @@ function concatenateContents(msgs: ChatCompletionRequestMessage[], showRoles?: b
       return
     }
 
-    // bite off biggest chunk you can and add it to latest chunk
+    // bite off as much as possible and add it to latest chunk
     const bite = msg.content.slice(0, excess)
     chunks[chunkIndex] += showRoles ? `[${msg.role}]: ${bite}\n` : bite;
 
-    // then init a new chunk
-    chunks.push('');
-    chunkIndex++;
+    // add the rest to a new chunk
+    chunks.push(msg.content.slice(excess));
   });
 
   return chunks;
