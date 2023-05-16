@@ -121,6 +121,7 @@ client.on('messageCreate', async (message) => {
     const parsed = message.content.slice(8)
     await message.reply(sysPrefix + 'Parroting previous message.')    
     const chunx = concatenateContents([{role: 'user', content: parsed}])
+    console.log(chunx)
     chunx.forEach(async chunk => {
       if (!chunk) return
       try {
