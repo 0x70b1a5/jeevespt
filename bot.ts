@@ -148,7 +148,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!limit X\`: Sets memory limit to X.
 \`!temperature X\`: Sets temperature (0-2) to X.
 \`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
-\`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing.
+\`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
 \`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
 \`!help\`: Display this message.
 `)
