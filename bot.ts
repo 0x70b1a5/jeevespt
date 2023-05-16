@@ -36,17 +36,31 @@ client.on('error', async (e) => {
   console.error(e)
 })
 
-function concatenateContents(array: ChatCompletionRequestMessage[], showRoles?: boolean) {
+function concatenateContents(msgs: ChatCompletionRequestMessage[], showRoles?: boolean) {
   const MAX_CHUNK_SIZE = 1900;
   let chunks = [''];
   let chunkIndex = 0;
 
-  array.forEach(item => {
-    if (chunks[chunkIndex].length + item.content.length > MAX_CHUNK_SIZE) {
-      chunks.push('');
-      chunkIndex++;
+  msgs.forEach(msg => {
+    const excess = msg.content.length - MAX_CHUNK_SIZE
+
+    // append short messages to latest chunk and move on
+    if (excess < 0) {
+      if (chunks[chunkIndex].length === 0) {
+        chunks[chunkIndex] += showRoles ? `[${msg.role}]: ${msg.content}\n` : msg.content
+      } else {
+        chunks[chunkIndex] += msg.content
+      }
+      return
     }
-    chunks[chunkIndex] += showRoles ? `[${item.role}]: ${item.content}\n` : item.content;
+
+    // bite off biggest chunk you can and add it to latest chunk
+    const bite = msg.content.slice(0, excess)
+    chunks[chunkIndex] += showRoles ? `[${msg.role}]: ${bite}\n` : bite;
+
+    // then init a new chunk
+    chunks.push('');
+    chunkIndex++;
   });
 
   return chunks;
@@ -58,7 +72,7 @@ client.on('messageCreate', async (message) => {
 
   if (message.content === '!clear') {
     ourMessageLog = []
-    await message.channel.send(sysPrefix + 'Cleared messages log.')
+    await message.reply(sysPrefix + 'Cleared messages log.')
   } else if (message.content === '!jeeves') {
     ourMessageLog = []
     mode = 0
@@ -66,7 +80,7 @@ client.on('messageCreate', async (message) => {
       await client.user.setUsername('Jeeves')
       await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
     } catch {}
-    await message.channel.send(sysPrefix + 'I have switched to Jeeves mode, sir.')
+    await message.reply(sysPrefix + 'I have switched to Jeeves mode, sir.')
   } else if (message.content === '!tokipona') {
     ourMessageLog = []
     mode = 1
@@ -74,7 +88,7 @@ client.on('messageCreate', async (message) => {
       await client.user.setUsername('ilo Jepite')
       await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
     } catch {}
-    await message.channel.send(sysPrefix + 'mi ante e nasin tawa toki pona.')
+    await message.reply(sysPrefix + 'mi ante e nasin tawa toki pona.')
   } else if (message.content === '!jargon') {
     ourMessageLog = []
     mode = 2
@@ -83,15 +97,15 @@ client.on('messageCreate', async (message) => {
         await client.user.setAvatar('')
       // await client.user.setAvatar('https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
     } catch {}
-    await message.channel.send(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
+    await message.reply(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
   } else if (message.content.match(/^!temperature [0-9.]+$/)) {
     const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
     const requestedTemp = Number(parsed && parsed[1])
     if (!isNaN(requestedTemp) && requestedTemp > 0 && requestedTemp <= 2) {
       temperature = requestedTemp
-      await message.channel.send(sysPrefix + `Temperature set to \`${temperature}\`.`)
+      await message.reply(sysPrefix + `Temperature set to \`${temperature}\`.`)
     } else {
-      await message.channel.send(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
+      await message.reply(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
     }
   } else if (message.content.match(/^!model [\w.-]+$/)) {
     const parsed = message.content.match(/^!model ([\w.-]+)$/)
@@ -99,23 +113,27 @@ client.on('messageCreate', async (message) => {
     const idx = models.indexOf(requestedModel)
     if (idx > -1) {
       model = idx
-      await message.channel.send(sysPrefix + `Model set to \`${models[idx]}\`.`)
+      await message.reply(sysPrefix + `Model set to \`${models[idx]}\`.`)
     } else {
-      await message.channel.send(sysPrefix + `Couldn't parse requested model: \`${requestedModel}\` is not one of ${models.join('`, `')}.`)
+      await message.reply(sysPrefix + `Couldn't parse requested model: \`${requestedModel}\` is not one of ${models.join('`, `')}.`)
     }
+  } else if (message.content.match(/^!parrot /)) {
+    const parsed = message.content.slice(8)
+    await message.reply(sysPrefix + 'Parroting previous message.')    
+    await message.reply(parsed)
   } else if (message.content.match(/^!limit \d+$/)) {
     const parsed = message.content.match(/^!limit (\d+)$/)
     const requestedLimit = Number(parsed && parsed[1])
     if (!isNaN(requestedLimit) && requestedLimit > 0) {
       messageLimit = requestedLimit
-      await message.channel.send(sysPrefix + `Message memory is now ${messageLimit} messages.`)
+      await message.reply(sysPrefix + `Message memory is now ${messageLimit} messages.`)
     } else {
-      await message.channel.send(sysPrefix + `Failed to parse requested limit. 
+      await message.reply(sysPrefix + `Failed to parse requested limit. 
 Found: \`${parsed}\` 
 Format: \`!limit X\` where X is a number greater than zero.`)
     }
   } else if (message.content === '!help' || message.content === '!commands') {
-    await message.channel.send(sysPrefix + `JEEVESPT:
+    await message.reply(sysPrefix + `JEEVESPT:
 - Remembers the last ${messageLimit} messages (yours and his)
 - Temperature: ${temperature}
 - Model: ${models[model]} ${modelPrices[model]}
@@ -130,54 +148,60 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!limit X\`: Sets memory limit to X.
 \`!temperature X\`: Sets temperature (0-2) to X.
 \`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
+\`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing.
+\`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
 \`!help\`: Display this message.
 `)
   } else if (message.content === '!log') {
     const chunx = concatenateContents(ourMessageLog, true)
-    await message.channel.send(sysPrefix + 'CURRENT MEMORY:\n---')
+    await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
     chunx.forEach(async m => m && await message.channel.send(m))
     await message.channel.send(sysPrefix + '---')
   } else if (message.author.bot) {
     // ignore our system messages
   } else {
     // it's a message we should respond to!
-    console.log(JSON.stringify(message))
     let userMessage = message.content
+    if (userMessage.match(/^!empty/)) {
+      userMessage = ''
+    }
     let audio : Attachment | undefined;
     for (const [messageID, attachment] of message.attachments) {
-      console.log('found attachment', messageID, attachment)
+      // console.log('found attachment', messageID, attachment)
       if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
         audio = attachment
         break
       }
     }
     if (audio !== undefined) {
-      console.log('attachment was audio')
+      await message.reply(sysPrefix + '[INFO] Audio attachment detected. Downloading file...')
       // Download the audio file
       const file = fs.createWriteStream('audio.mp3');
       const response = await new Promise((resolve, reject) => {
         https.get(audio!.proxyURL, resolve).on('error', reject);
       });
-
+      
       await pipeline(
         response,
         file
       );
-
+        
       try {
+        await message.channel.send(sysPrefix + '[INFO] Transcribing audio...')
         // Run the python script
         const { stdout, stderr } = await exec('python whisper.py');
 
         if (stderr) {
-          await message.channel.send(sysPrefix + '[ERROR] Could not process audio.')
+          await message.reply(sysPrefix + '[ERROR] Could not process audio.')
           console.log(`whisper.py stderr: ${stderr}`);
+          return
         } else {          
           console.log(`whisper.py stdout: ${stdout}`);
           userMessage = stdout
-          await message.channel.send(`${sysPrefix}[INFO]: Audio transcription: ${userMessage}`)
+          await message.channel.send(`${sysPrefix}[INFO] Audio transcription: ${userMessage}`)
         }
       } catch (error) {
-        await message.channel.send(sysPrefix + '[ERROR] Could not process audio.')
+        await message.reply(sysPrefix + '[ERROR] Could not process audio.')
         console.log(`whisper.py error: ${JSON.stringify(error)}`);
       }
     }
@@ -189,7 +213,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     
     while (messageLimit > 0 && ourMessageLog.length > messageLimit) ourMessageLog.shift()
 
-    console.log('MESSAGE: ', message.content)
+    console.log('MESSAGE: ', userMessage)
 
     if ((message.channel as TextChannel).name === TARGET_CHANNEL_NAME) {
       const chunx = concatenateContents([await generateResponse() as any])
@@ -198,9 +222,10 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         chunx.forEach(async chunk => {
           try {
             if (chunk.length > 0)
-              await message.channel.send(chunk)
+              await message.reply(chunk)
           } catch (err) {
             await message.channel.send(sysPrefix + '[ERROR] error sending a message.')
+            console.log(err)
           }
         })
       } else {
