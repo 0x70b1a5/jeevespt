@@ -121,11 +121,14 @@ client.on('messageCreate', async (message) => {
     const parsed = message.content.slice(8)
     await message.reply(sysPrefix + 'Parroting previous message.')    
     const chunx = concatenateContents([{role: 'user', content: parsed}])
-    try {
-      chunx.forEach(async chunk => await message.channel.send(chunk))
-    } catch (e) {
-      await message.channel.send(sysPrefix+'[ERROR] Failed to send a message.')
-    }
+    chunx.forEach(async chunk => {
+      if (!chunk) return
+      try {
+        await message.channel.send(chunk)
+      } catch (e) {
+        await message.channel.send(sysPrefix+'[ERROR] Failed to send a message.')
+      }
+    })
   } else if (message.content.match(/^!limit \d+$/)) {
     const parsed = message.content.match(/^!limit (\d+)$/)
     const requestedLimit = Number(parsed && parsed[1])
