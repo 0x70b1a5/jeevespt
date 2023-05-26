@@ -204,8 +204,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
           console.log(`whisper.py stderr: ${stderr}`);
           return
         } else {          
-          console.log(`whisper.py stdout: ${stdout}`);
-          userMessage = stdout
+          userMessage = stdout.replace(/\n/g, ' ')
+          console.log(`whisper.py stdout: ${userMessage}`);
           await message.channel.send(`${sysPrefix}[INFO] Audio transcription: ${userMessage}`)
         }
       } catch (error) {
