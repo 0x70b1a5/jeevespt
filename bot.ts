@@ -215,7 +215,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         } else {          
           userMessage = stdout.replace(/\n/g, ' ')
           console.log(`whisper.py stdout: ${userMessage}`);
-          await message.channel.send(`${sysPrefix}${mode !== 3 ? '[INFO] Audio transcription: ' : ''}${userMessage}`)
+          await message.channel.send(`${mode !== 3 ? sysPrefix+'[INFO] Audio transcription: ' : ''}${userMessage}`)
         }
       } catch (error) {
         await message.reply(sysPrefix + '[ERROR] Could not process audio.')
