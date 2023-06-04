@@ -5,7 +5,7 @@ import https from 'https';
 import fs from 'fs';
 const pipeline = promisify(require('stream').pipeline);
 const exec = promisify(execCb);
-import { Attachment, Client, GatewayIntentBits, TextChannel } from 'discord.js';
+import { Attachment, ChannelType, Client, GatewayIntentBits, TextChannel } from 'discord.js';
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
@@ -30,6 +30,15 @@ const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayI
 client.once('ready', async () => {
   await client.login(DISCORD_BOT_TOKEN)
   console.log(`Logged in as ${client!.user!.tag}!`, client.isReady())
+  const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+  await client.user?.setUsername('Jeeves')
+  await client.user?.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
+
+  if (channels.size > 0) {
+    channels.forEach(async channel => {
+      channel.type === ChannelType.GuildText && await channel.send('Your Jeeves is online, sir.');
+    });
+  }
 })
 
 client.on('error', async (e) => {
