@@ -223,7 +223,12 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       }
     }
 
-    if (mode === 3) return // transcription mode does nothing else
+    if (mode === 3) {
+      if (!message.attachments.size) {
+        await message.reply(sysPrefix+'Please send an audio message to receive a transcription, or switch modes (!help) to chat with a persona.')
+      }
+      return // transcription mode does nothing else
+    }
 
     ourMessageLog.push({ 
       role: 'user', 
