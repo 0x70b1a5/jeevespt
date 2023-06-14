@@ -151,8 +151,8 @@ client.on('messageCreate', async (message) => {
     ourMessageLog = []
     userMsg.content = parsed
     mode = 4
-    await client.user.setAvatar('')
-    try { await client.user.setUsername('?') } catch {}
+    try { await client.user.setAvatar('') } catch {}
+    try { await client.user.setUsername('Homuncules') } catch {}
     try { await message.reply(sysPrefix + 'Prompt set to:') } catch {}
     const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
     console.log(chunx)
@@ -324,6 +324,7 @@ const userMsg = {
 }
 
 const getSystemMessage = () => {
+  console.log({mode, userMsg})
   if (mode === 1) return tokiponaMsg
   if (mode === 2) return jargonMsg
   if (mode === 3) return null
