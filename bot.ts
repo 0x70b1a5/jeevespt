@@ -150,11 +150,10 @@ client.on('messageCreate', async (message) => {
     const parsed = message.content.slice(8)
     ourMessageLog = []
     userMsg.content = parsed
+    mode = 4
     await client.user.setAvatar('')
-    try {
-      await client.user.setUsername('?')
-      await message.reply(sysPrefix + 'Prompt set to:')
-    } catch {}
+    try { await client.user.setUsername('?') } catch {}
+    try { await message.reply(sysPrefix + 'Prompt set to:') } catch {}
     const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
     console.log(chunx)
     chunx.forEach(async chunk => {
