@@ -324,7 +324,6 @@ const userMsg = {
 }
 
 const getSystemMessage = () => {
-  console.log({mode, userMsg})
   if (mode === 1) return tokiponaMsg
   if (mode === 2) return jargonMsg
   if (mode === 3) return null
