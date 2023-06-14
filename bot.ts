@@ -45,7 +45,7 @@ client.on('error', async (e) => {
   console.error(e)
 })
 
-function concatenateContents(msgs: ChatCompletionRequestMessage[], showRoles?: boolean) {
+function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[], showRoles?: boolean) {
   const MAX_CHUNK_SIZE = 1900;
   let chunks = [''];
   
@@ -136,7 +136,7 @@ client.on('messageCreate', async (message) => {
   } else if (message.content.match(/^!parrot /)) {
     const parsed = message.content.slice(8)
     await message.reply(sysPrefix + 'Parroting previous message.')    
-    const chunx = concatenateContents([{role: 'user', content: parsed}])
+    const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
     console.log(chunx)
     chunx.forEach(async chunk => {
       if (!chunk) return
@@ -144,6 +144,23 @@ client.on('messageCreate', async (message) => {
         await message.channel.send(chunk)
       } catch (e) {
         await message.channel.send(sysPrefix+'[ERROR] Failed to send a message.')
+      }
+    })
+  } else if (message.content.match(/^!prompt /)) {
+    const parsed = message.content.slice(8)
+    ourMessageLog = []
+    userMsg.content = parsed
+    await client.user.setAvatar('')
+    await client.user.setUsername('💀')
+    await message.reply(sysPrefix + 'Prompt set to:')
+    const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
+    console.log(chunx)
+    chunx.forEach(async chunk => {
+      if (!chunk) return
+      try {
+        await message.channel.send(chunk)
+      } catch (e) {
+        await message.channel.send(sysPrefix + '[ERROR] Failed to send a message.')
       }
     })
   } else if (message.content.match(/^!limit \d+$/)) {
@@ -170,6 +187,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!tokipona\`: Speak toki pona. Clears memory.
 \`!jargon\`: Speak Jargon. Clears memory.
 \`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.)
+\`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
 \`!log\`: Prints current memory.
 \`!limit X\`: Sets memory limit to X.
 \`!temperature X\`: Sets temperature (0-2) to X.
@@ -179,7 +197,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!help\`: Display this message.
 `)
   } else if (message.content === '!log') {
-    const chunx = concatenateContents(ourMessageLog, true)
+    const chunx = splitMessageIntoChunks(ourMessageLog, true)
     await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
     chunx.forEach(async m => m && await message.channel.send(m))
     await message.channel.send(sysPrefix + '---')
@@ -251,7 +269,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
     if ((message.channel as TextChannel).name === TARGET_CHANNEL_NAME) {
       let chunx;
       try {
-        chunx = concatenateContents([await generateResponse() as any])
+        chunx = splitMessageIntoChunks([await generateResponse() as any])
       } catch (er) {
         await message.reply(sysPrefix + 'Error generating response.')
       }
@@ -299,9 +317,16 @@ const jargonMsg = {
   content: fs.readFileSync('./jargon.md').toString()
 }
 
+const userMsg = {
+  role: 'system',
+  content: ''
+}
+
 const getSystemMessage = () => {
   if (mode === 1) return tokiponaMsg
   if (mode === 2) return jargonMsg
+  if (mode === 3) return null
+  if (mode === 4) return userMsg
   return jeevesMsg
 }
 
