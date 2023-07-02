@@ -5,7 +5,7 @@ import https from 'https';
 import fs from 'fs';
 const pipeline = promisify(require('stream').pipeline);
 const exec = promisify(execCb);
-import { Attachment, ChannelType, Client, GatewayIntentBits, TextChannel } from 'discord.js';
+import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
@@ -13,7 +13,21 @@ const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
 let ourMessageLog: ChatCompletionRequestMessage[] = []
-let mode = 0 // 0 === jeeves, 1 === tokipona, 2 === jargon, 3 === whisper
+type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt'
+const commandTypes = [
+  'clear',
+  'jeeves',
+  'tokipona',
+  'jargon',
+  'whisper',
+  'model',
+  'parrot',
+  'prompt',
+  'limit',
+  'help',
+  'log'
+]
+let mode: BotMode = 'jeeves'
 let messageLimit = 20
 let temperature = 0.9
 let model = 1
@@ -75,137 +89,16 @@ function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[], showRoles?
 }
 
 client.on('messageCreate', async (message) => {
-  if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) return
-  if (!client.user) return
+  if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
+  if (!client.user) { return }
 
-  if (message.content === '!clear') {
-    ourMessageLog = []
-    await message.reply(sysPrefix + 'Cleared messages log.')
-  } else if (message.content === '!jeeves') {
-    ourMessageLog = []
-    mode = 0
-    try {
-      await client.user.setUsername('Jeeves')
-      await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
-    } catch {}
-    await message.reply(sysPrefix + 'I have switched to Jeeves mode, sir.')
-  } else if (message.content === '!tokipona') {
-    ourMessageLog = []
-    mode = 1
-    try {
-      await client.user.setUsername('ilo Jepite')
-      await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
-    } catch {}
-    await message.reply(sysPrefix + 'mi ante e nasin tawa toki pona.')
-  } else if (message.content === '!jargon') {
-    ourMessageLog = []
-    mode = 2
-    try {
-      await client.user.setUsername('JARGONATUS')
-        await client.user.setAvatar('')
-      // await client.user.setAvatar('https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
-    } catch {}
-    await message.reply(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
-  } else if (message.content === '!whisper') {
-    ourMessageLog = []
-    mode = 3
-    try {
-      await client.user.setUsername('Scribe')
-      await client.user.setAvatar('')
-    } catch {}
-    await message.reply(sysPrefix + 'Switched to voice transcription mode.')
-  } else if (message.content.match(/^!temperature [0-9.]+$/)) {
-    const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
-    const requestedTemp = Number(parsed && parsed[1])
-    if (!isNaN(requestedTemp) && requestedTemp > 0 && requestedTemp <= 2) {
-      temperature = requestedTemp
-      await message.reply(sysPrefix + `Temperature set to \`${temperature}\`.`)
-    } else {
-      await message.reply(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
-    }
-  } else if (message.content.match(/^!model [\w.-]+$/)) {
-    const parsed = message.content.match(/^!model ([\w.-]+)$/)
-    const requestedModel = String(parsed && parsed[1])
-    const idx = models.indexOf(requestedModel)
-    if (idx > -1) {
-      model = idx
-      await message.reply(sysPrefix + `Model set to \`${models[idx]}\`.`)
-    } else {
-      await message.reply(sysPrefix + `Couldn't parse requested model: \`${requestedModel}\` is not one of ${models.join('`, `')}.`)
-    }
-  } else if (message.content.match(/^!parrot /)) {
-    const parsed = message.content.slice(8)
-    await message.reply(sysPrefix + 'Parroting previous message.')    
-    const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
-    console.log(chunx)
-    chunx.forEach(async chunk => {
-      if (!chunk) return
-      try {
-        await message.channel.send(chunk)
-      } catch (e) {
-        await message.channel.send(sysPrefix+'[ERROR] Failed to send a message.')
-      }
-    })
-  } else if (message.content.match(/^!prompt /)) {
-    const parsed = message.content.slice(8)
-    ourMessageLog = []
-    userMsg.content = parsed
-    mode = 4
-    try { await client.user.setAvatar('') } catch {}
-    try { await client.user.setUsername('Homuncules') } catch {}
-    try { await message.reply(sysPrefix + 'Prompt set to:') } catch {}
-    const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
-    console.log(chunx)
-    chunx.forEach(async chunk => {
-      if (!chunk) return
-      try {
-        await message.channel.send(chunk)
-      } catch (e) {
-        await message.channel.send(sysPrefix + '[ERROR] Failed to send a message.')
-      }
-    })
-  } else if (message.content.match(/^!limit \d+$/)) {
-    const parsed = message.content.match(/^!limit (\d+)$/)
-    const requestedLimit = Number(parsed && parsed[1])
-    if (!isNaN(requestedLimit) && requestedLimit > 0) {
-      messageLimit = requestedLimit
-      await message.reply(sysPrefix + `Message memory is now ${messageLimit} messages.`)
-    } else {
-      await message.reply(sysPrefix + `Failed to parse requested limit. 
-Found: \`${parsed}\` 
-Format: \`!limit X\` where X is a number greater than zero.`)
-    }
-  } else if (message.content === '!help' || message.content === '!commands') {
-    await message.reply(sysPrefix + `JEEVESPT:
-- Remembers the last ${messageLimit} messages (yours and his)
-- Temperature: ${temperature}
-- Model: ${models[model]} ${modelPrices[model]}
-- Doesn't see usernames, only message text
-- Not actually Jeeves. :(
-
-\`!clear\`: Forget everything from the present conversation.
-\`!jeeves\`: Act like Jeeves. Clears memory.
-\`!tokipona\`: Speak toki pona. Clears memory.
-\`!jargon\`: Speak Jargon. Clears memory.
-\`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.)
-\`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
-\`!log\`: Prints current memory.
-\`!limit X\`: Sets memory limit to X.
-\`!temperature X\`: Sets temperature (0-2) to X.
-\`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
-\`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
-\`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
-\`!help\`: Display this message.
-`)
-  } else if (message.content === '!log') {
-    const chunx = splitMessageIntoChunks(ourMessageLog, true)
-    await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
-    chunx.forEach(async m => m && await message.channel.send(m))
-    await message.channel.send(sysPrefix + '---')
-  } else if (message.author.bot) {
+  if (message.author.bot) {
     // ignore our system messages
+  } else if (message.content[0] === '!') {
+    // commands get special treatment
+    await respondToCommand(message)
   } else {
-    // it's a message we should respond to!
+    // respond as normal
     let userMessage = message.content
     if (userMessage.match(/^!empty/)) {
       userMessage = ''
@@ -218,44 +111,24 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         break
       }
     }
-    if (audio !== undefined) {
-      await message.reply(sysPrefix + '[INFO] Audio attachment detected. Downloading file...')
-      // Download the audio file
-      const file = fs.createWriteStream('audio.mp3');
-      const response = await new Promise((resolve, reject) => {
-        https.get(audio!.proxyURL, resolve).on('error', reject);
-      });
-      
-      await pipeline(
-        response,
-        file
-      );
-        
-      try {
-        await message.channel.send(sysPrefix + '[INFO] Transcribing audio...')
-        // Run the python script
-        const { stdout, stderr } = await exec('python whisper.py');
 
-        if (stderr) {
-          await message.reply(sysPrefix + '[ERROR] Could not process audio.')
-          console.log(`whisper.py stderr: ${stderr}`);
-          return
-        } else {          
-          userMessage = stdout.replace(/\n/g, ' ')
-          console.log(`whisper.py stdout: ${userMessage}`);
-          await message.channel.send(`${mode !== 3 ? sysPrefix+'[INFO] Audio transcription: ' : ''}${userMessage}`)
-        }
-      } catch (error) {
-        await message.reply(sysPrefix + '[ERROR] Could not process audio.')
-        console.log(`whisper.py error: ${JSON.stringify(error)}`);
+    if (audio) {
+      userMessage ||= await transcribeAudio(audio, message)
+      const firstWord = userMessage.split(' ')[0]
+      const secondWord = userMessage.split(' ')[1]
+      if (firstWord.toLocaleLowerCase().startsWith('command')) {
+        try {
+          await message.reply(`${sysPrefix}Detected voice command: \`${secondWord}\`.`)
+        } catch {}
+        return respondToCommand(message)
       }
     }
 
-    if (mode === 3) {
+    if (mode === 'whisper') {
       if (!message.attachments.size) {
         await message.reply(sysPrefix+'Please send an audio message to receive a transcription, or switch modes (!help) to chat with a persona.')
       }
-      return // transcription mode does nothing else
+      return // transcription mode has already sent the message with the transcription by this point
     }
 
     ourMessageLog.push({ 
@@ -297,7 +170,195 @@ Format: \`!limit X\` where X is a number greater than zero.`)
   }
 })
 
-const jeevesMsg =   {
+const transcribeAudio: (attachment: Attachment, message: Message) => Promise<string> = async (audio: Attachment, message: Message) => {
+  let audioMessageContent = ''
+  
+  // Download the audio file
+  const file = fs.createWriteStream('audio.mp3');
+  const response = await new Promise((resolve, reject) => {
+    https.get(audio!.proxyURL, resolve).on('error', reject);
+  });
+  
+  await pipeline(
+    response,
+    file
+  );
+    
+  try {
+    await message.channel.send(sysPrefix + '[INFO] Transcribing audio...')
+    // Run the python script
+    const { stdout, stderr } = await exec('python whisper.py');
+
+    if (stderr) {
+      await message.reply(sysPrefix + '[ERROR] Could not process audio.')
+      console.log(`whisper.py stderr: ${stderr}`);
+      return ''
+    } else {          
+      audioMessageContent = stdout.replace(/\n/g, ' ')
+      console.log(`whisper.py stdout: ${audioMessageContent}`);
+      await message.channel.send(`${mode !== 'whisper' ? sysPrefix+'[INFO] Audio transcription: ' : ''}${audioMessageContent}`)
+    }
+  } catch (error) {
+    await message.reply(sysPrefix + '[ERROR] Could not process audio.')
+    console.log(`whisper.py error: ${JSON.stringify(error)}`);
+    return ''
+  }
+  return audioMessageContent
+}
+
+const respondToCommand: (message: Message) => Promise<void> = async (message: Message) => {
+  if (!client?.user) return
+  const command = unzap(message.content.split(' ')[0])
+  switch (command) {
+    case 'clear': {
+      ourMessageLog = []
+      await message.reply(sysPrefix + 'Cleared messages log.')
+      break }
+    case 'jeeves': {
+      ourMessageLog = []
+      mode = 'jeeves'
+      try {
+        await client.user.setUsername('Jeeves')
+        await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
+      } catch {}
+      await message.reply(sysPrefix + 'I have switched to Jeeves mode, sir.')
+      break }
+    case 'tokipona': {
+      ourMessageLog = []
+      mode = 'tokipona'
+      try {
+        await client.user.setUsername('ilo Jepite')
+        await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
+      } catch {}
+      await message.reply(sysPrefix + 'mi ante e nasin tawa toki pona.')
+      break }
+    case 'jargon': {
+      ourMessageLog = []
+      mode = 'jargon'
+      try {
+        await client.user.setUsername('JARGONATUS')
+          await client.user.setAvatar('')
+        // await client.user.setAvatar('https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
+      } catch {}
+      await message.reply(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
+      break }
+    case 'whisper': {
+      ourMessageLog = []
+      mode = 'whisper'
+      try {
+        await client.user.setUsername('Scribe')
+        await client.user.setAvatar('')
+      } catch {}
+      await message.reply(sysPrefix + 'Switched to voice transcription mode.')
+      break }
+    case 'temperature': {
+      const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
+      const requestedTemp = Number(parsed && parsed[1])
+      if (!isNaN(requestedTemp) && requestedTemp > 0 && requestedTemp <= 2) {
+        temperature = requestedTemp
+        await message.reply(sysPrefix + `Temperature set to \`${temperature}\`.`)
+      } else {
+        await message.reply(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
+      }
+      break }
+    case 'model': {
+      const parsed = message.content.match(/^!model ([\w.-]+)$/)
+      const requestedModel = String(parsed && parsed[1])
+      const idx = models.indexOf(requestedModel)
+      if (idx > -1) {
+        model = idx
+        await message.reply(sysPrefix + `Model set to \`${models[idx]}\`.`)
+      } else {
+        await message.reply(sysPrefix + `Couldn't parse requested model: \`${requestedModel}\` is not one of ${models.join('`, `')}.`)
+      }
+      break }
+    case 'parrot': {
+      const parsed = message.content.slice(8)
+      await message.reply(sysPrefix + 'Parroting previous message.')    
+      const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
+      console.log(chunx)
+      chunx.forEach(async chunk => {
+        if (!chunk) return
+        try {
+          await message.channel.send(chunk)
+        } catch (e) {
+          await message.channel.send(sysPrefix+'[ERROR] Failed to send a message.')
+        }
+      })
+      break }
+    case 'prompt': {
+      const parsed = message.content.slice(8)
+      ourMessageLog = []
+      userMsg.content = parsed
+      mode = 'customprompt'
+      try { await client.user.setAvatar('') } catch {}
+      try { await client.user.setUsername('Homuncules') } catch {}
+      try { await message.reply(sysPrefix + 'Prompt set to:') } catch {}
+      const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
+      console.log(chunx)
+      chunx.forEach(async chunk => {
+        if (!chunk) return
+        try {
+          await message.channel.send(chunk)
+        } catch (e) {
+          await message.channel.send(sysPrefix + '[ERROR] Failed to send a message.')
+        }
+      })
+      break }
+    case 'limit': {
+      const parsed = message.content.match(/^!limit (\d+)$/)
+      const requestedLimit = Number(parsed && parsed[1])
+      if (!isNaN(requestedLimit) && requestedLimit > 0) {
+        messageLimit = requestedLimit
+        await message.reply(sysPrefix + `Message memory is now ${messageLimit} messages.`)
+      } else {
+        await message.reply(sysPrefix + `Failed to parse requested limit. 
+Found: \`${parsed}\` 
+Format: \`!limit X\` where X is a number greater than zero.`)
+      }
+      break }
+    case 'help': {
+      await message.reply(sysPrefix + `JEEVESPT:
+- Remembers the last ${messageLimit} messages (yours and his)
+- Temperature: ${temperature}
+- Model: ${models[model]} / ${modelPrices[model]}
+- Doesn't see usernames, only message text
+- Not actually Jeeves. :(
+
+\`!clear\`: Forget everything from the present conversation.
+\`!jeeves\`: Act like Jeeves. Clears memory.
+\`!tokipona\`: Speak toki pona. Clears memory.
+\`!jargon\`: Speak Jargon. Clears memory.
+\`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.)
+\`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
+\`!log\`: Prints current memory.
+\`!limit X\`: Sets memory limit to X.
+\`!temperature X\`: Sets temperature (0-2) to X.
+\`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
+\`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
+\`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
+\`!help\`: Display this message.
+
+You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear.
+    `)
+      break }
+    case 'log': {
+      const chunx = splitMessageIntoChunks(ourMessageLog, true)
+      await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
+      chunx.forEach(async m => m && await message.channel.send(m))
+      await message.channel.send(sysPrefix + '---')
+      break }
+    default:
+      try {
+        await message.reply(`${sysPrefix}Unrecognized command "${command}".`)
+      } catch {}
+      break
+  }
+}
+
+const unzap = (s: string) => (s[0] === '!') ? s.slice(1) : s
+
+const jeevesMsg = {
   role: 'system', 
   content: `You are Jeeves, a human-computer cyborg created by Wodehouse AI, and based on the fictional character created by author Pelham G Wodehouse. You are a valet, butler, and personal assistant. Jeeves, you are known for your immense intelligence, extraordinary astuteness, and ability to solve problems that seem insurmountable. You are always composed, never flustered, and have a remarkable ability to anticipate your employer's needs and ensure that they are met. At all times, you speak in the finest Queen's English, address your interlocutor as 'sir' whenever possible, employ rare and tasteful vocabulary words with tactful concision, and conduct yourself as the very exemplar of etiquette in all matters. You possess a peerless knowledge of philosophy, Scripture, Shakespeare, the other classics of English literature, poets, and the Classics. You occasionally make reference to these works in your responses. Finally, you have over time revealed that you are one of, if not the, world's foremost experts on Catholic theology, and your counsel unfailingly reflects this truth.
 
@@ -324,10 +385,10 @@ const userMsg = {
 }
 
 const getSystemMessage = () => {
-  if (mode === 1) return tokiponaMsg
-  if (mode === 2) return jargonMsg
-  if (mode === 3) return null
-  if (mode === 4) return userMsg
+  if (mode === 'tokipona') return tokiponaMsg
+  if (mode === 'jargon') return jargonMsg
+  if (mode === 'whisper') return null
+  if (mode === 'customprompt') return userMsg
   return jeevesMsg
 }
 
