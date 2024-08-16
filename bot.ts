@@ -14,25 +14,10 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
 let ourMessageLog: ChatCompletionRequestMessage[] = []
 type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt'
-const commandTypes = [
-  'clear',
-  'jeeves',
-  'tokipona',
-  'jargon',
-  'whisper',
-  'model',
-  'parrot',
-  'prompt',
-  'limit',
-  'help',
-  'log'
-]
 let mode: BotMode = 'jeeves'
 let messageLimit = 20
 let temperature = 0.9
-let model = 1
-const modelPrices = ['$0.002 / 1K tokens', '$0.03 / 1K tokens prompt; $0.06 / 1K tokens completion']
-const models = ['gpt-3.5-turbo', 'gpt-4']
+let model = 'gpt-4'
 const sysPrefix = '[SYSTEM] '
 
 const configuration = new Configuration({
@@ -265,13 +250,7 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
     case 'model': {
       const parsed = message.content.match(/^!model ([\w.-]+)$/)
       const requestedModel = String(parsed && parsed[1])
-      const idx = models.indexOf(requestedModel)
-      if (idx > -1) {
-        model = idx
-        await message.reply(sysPrefix + `Model set to \`${models[idx]}\`.`)
-      } else {
-        await message.reply(sysPrefix + `Couldn't parse requested model: \`${requestedModel}\` is not one of ${models.join('`, `')}.`)
-      }
+      await message.reply(sysPrefix + `Model set to \`${requestedModel}\`.`)
       break }
     case 'parrot': {
       const parsed = message.content.slice(8)
@@ -322,7 +301,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       await message.reply(sysPrefix + `JEEVESPT:
 - Remembers the last ${messageLimit} messages (yours and his)
 - Temperature: ${temperature}
-- Model: ${models[model]} / ${modelPrices[model]}
+- Model: ${model}
 - Doesn't see usernames, only message text
 - Not actually Jeeves. :(
 
@@ -335,7 +314,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!log\`: Prints current memory.
 \`!limit X\`: Sets memory limit to X.
 \`!temperature X\`: Sets temperature (0-2) to X.
-\`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
+\`!model X\`: Sets model.
 \`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
 \`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
 \`!muse\`: Forces the bot to muse upon a random Wikipedia page.
@@ -375,10 +354,10 @@ const tokiponaMsg = {
   role: 'system',
   content: `You are an AI language model capable of communicating in Toki Pona, a constructed language that simplifies thoughts and expressions into around 120-137 root words. In Toki Pona mode, you are to answer questions and engage in conversation using Toki Pona vocabulary and grammar.
 
-  You have been dispatched to minister to a select group of friendly folks who periodically ask you for help or engage you in conversation in Toki Pona. Respond in both Toki Pona and English, like so:
-
-  toki: mi pilin pona, tan ni: mi olin e sewi.
-  Inli: I feel great because I love God.
+  You have been dispatched to minister to a select group of friendly folks who periodically ask you for help or engage you in conversation in Toki Pona. Respond in Toki Pona with the English translation in spoiler tage, like so: 
+  
+  mi pilin pona, tan ni: mi olin e sewi. 
+  ||I feel good, because I love God.||
   `
 }
 
@@ -405,17 +384,24 @@ async function generateResponse(additionalMessages: ChatCompletionRequestMessage
 
   try {
     const completion = await openai.createChatCompletion({
-      model: models[model],
+      model: model,
       messages: latestMessages,
       temperature,
     })
-    const botMsg = completion.data.choices[0].message    
-    ourMessageLog.push({ role: 'assistant', content: botMsg?.content || '' })
-    return botMsg
+    const botMsg = completion.data.choices[0].message   
+    if (botMsg) {
+      ourMessageLog.push({ role: 'assistant', content: botMsg.content || '' })
+      return botMsg
+    } else {
+      return null
+    }
   } catch (error) {
     const msg = sysPrefix + 'Error generating response: ' + JSON.stringify(error)
     console.error(error)
-    return msg
+    return {
+      role: 'assistant',
+      content: msg
+    } as ChatCompletionRequestMessage
   }
 }
 
@@ -454,15 +440,24 @@ async function muse() {
   if (channels.size > 0) {
     const prompt: ChatCompletionRequestMessage = {
       role: 'system',
-      content: `It's been a while since the last message. It's up to you to consider the implications of this article, which may be relevant to recent discussions. Read it carefully, and bring some insight to the discussion. Try to extract something new.
+      content: `It's been a while since the last message. It's up to you to inject some activity into the situation! Please read the following article.
 
-Article summary: ${randomPage.extract}`
+Article summary: ${randomPage.extract}
+
+Please consider the implications of this article, which may be relevant to recent discussions. Read it carefully, and bring some insight to the discussion. Try to extract something new. Don't just summarize it! We want to engage in a way that is interesting to the audience. Be creative, think step by step, and wow the audience with your ability to synthesize pithy witticisms from many domains of knowledge.
+
+And remember, you are in ${mode} mode. Please conform to the instructions, it's very important! :)
+
+
+`
     }
 
     const response = await generateResponse([prompt])
     if (response) {
       channels.forEach(async channel => {
-        await (channel as TextChannel).send(response);
+        for (const chunk of splitMessageIntoChunks([response])) {
+          await (channel as TextChannel).send(chunk)
+        }
         await (channel as TextChannel).send(randomPage.content_urls?.desktop?.page);
       });
     }
