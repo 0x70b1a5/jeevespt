@@ -7,6 +7,8 @@ const pipeline = promisify(require('stream').pipeline);
 const exec = promisify(execCb);
 import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
+import dayjs from 'dayjs';
+import { parseFromString } from 'dom-parser';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
@@ -19,6 +21,11 @@ let messageLimit = 20
 let temperature = 0.9
 let model = 'gpt-4'
 const sysPrefix = '[SYSTEM] '
+let messageBuffer: ChatCompletionRequestMessage[] = [];
+let responseTimer: NodeJS.Timeout | null = null;
+let RESPONSE_DELAY = 10000; // 10 seconds
+let MUSE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+let SHOULD_MUSE_REGULARLY = true
 
 const configuration = new Configuration({
   apiKey: OPENAI_API_KEY,
@@ -45,7 +52,7 @@ client.on('error', async (e) => {
   console.error(e)
 })
 
-function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[], showRoles?: boolean) {
+function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[]) {
   const MAX_CHUNK_SIZE = 1900;
   let chunks = [''];
   
@@ -55,17 +62,13 @@ function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[], showRoles?
 
     // append short messages to latest chunk and move on
     if (excess < 0) {
-      if (chunks[chunkIndex].length === 0) {
-        chunks[chunkIndex] += showRoles ? `[${msg.role}]: ${msg.content}\n` : msg.content
-      } else {
-        chunks[chunkIndex] += msg.content
-      }
+      chunks[chunkIndex] += msg.content
       return
     }
 
     // bite off as much as possible and add it to latest chunk
     const bite = msg.content.slice(0, excess)
-    chunks[chunkIndex] += showRoles ? `[${msg.role}]: ${bite}\n` : bite;
+    chunks[chunkIndex] += bite;
 
     // add the rest to a new chunk
     chunks.push(msg.content.slice(excess));
@@ -74,9 +77,20 @@ function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[], showRoles?
   return chunks;
 }
 
+async function setBotProfile(username: string, avatarUrl: string) {
+  try {
+    await client.user?.setUsername(username);
+    await client.user?.setAvatar(avatarUrl);
+  } catch (error) {
+    console.error('Error setting bot profile:', error);
+  }
+}
+
 client.on('messageCreate', async (message) => {
   if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
   if (!client.user) { return }
+
+  console.log('messageCreate', message.content, 'from', message.author.tag)
 
   if (message.author.bot) {
     // ignore our system messages
@@ -117,43 +131,52 @@ client.on('messageCreate', async (message) => {
       return // transcription mode has already sent the message with the transcription by this point
     }
 
-    ourMessageLog.push({ 
+    messageBuffer.push({ 
       role: 'user', 
-      content: userMessage
+      content: `${dayjs().format('MM/DD/YYYY HH:mm:ss')} [${message.author.username}]: ${userMessage}`
     })
-    
-    while (messageLimit > 0 && ourMessageLog.length > messageLimit) ourMessageLog.shift()
 
-    console.log('MESSAGE: ', userMessage)
-
-    if ((message.channel as TextChannel).name === TARGET_CHANNEL_NAME) {
-      let chunx;
-      try {
-        message.channel.sendTyping()
-        chunx = splitMessageIntoChunks([await generateResponse() as any])
-      } catch (er) {
-        await message.reply(sysPrefix + 'Error generating response.')
-      }
-      
-      if (!Array.isArray(chunx)) {
-        return
-      }
-
-      console.log(chunx)
-      if (chunx.length) {
-        chunx.forEach(async chunk => {
-          try {
-            if (chunk.length > 0)
-              await message.reply(chunk)
-          } catch (err) {
-            await message.channel.send(sysPrefix + '[ERROR] error sending a message.')
-            console.log(err)
-          }
-        })
-      } else {
-        await message.channel.send(sysPrefix + '[ERROR] no messages to send.')
-      }
+    if (responseTimer) {
+      clearTimeout(responseTimer);
     }
+
+    // Set a new timer
+    responseTimer = setTimeout(async () => {
+      // Process all buffered messages
+      ourMessageLog.push(...messageBuffer);
+      while (messageLimit > 0 && ourMessageLog.length > messageLimit) ourMessageLog.shift();
+
+      console.log('Buffered Messages: ', messageBuffer.map(msg => msg.content).join('\n'));
+
+      if ((message.channel as TextChannel).name === TARGET_CHANNEL_NAME) {
+        let chunx: string[] = [];
+        try {
+          message.channel.sendTyping()
+          chunx.push(...splitMessageIntoChunks([await generateResponse() as any]))
+        } catch (er) {
+          console.error('Error chunking message:', er)
+        }
+
+        console.log(chunx);
+        if (chunx.length) {
+          chunx.forEach(async chunk => {
+            try {
+              if (chunk.length > 0)
+                await message.reply(chunk);
+            } catch (err) {
+              await message.channel.send(sysPrefix + '[ERROR] error sending a message.');
+              console.log(err);
+            }
+          });
+        } else {
+          await message.channel.send(sysPrefix + '[ERROR] no messages to send.');
+        }
+      }
+
+      // Clear the buffer and timer
+      messageBuffer = [];
+      responseTimer = null;
+    }, RESPONSE_DELAY);
   }
 })
 
@@ -204,39 +227,25 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
     case 'jeeves': {
       ourMessageLog = []
       mode = 'jeeves'
-      try {
-        await client.user.setUsername('Jeeves')
-        await client.user.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
-      } catch {}
+      await setBotProfile('Jeeves', 'https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
       await message.reply(sysPrefix + 'I have switched to Jeeves mode, sir.')
       break }
     case 'tokipona': {
       ourMessageLog = []
       mode = 'tokipona'
-      try {
-        await client.user.setUsername('ilo Jepite')
-        await client.user.setAvatar('https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
-      } catch {}
+      await setBotProfile('ilo Jepite', 'https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
       await message.reply(sysPrefix + 'mi ante e nasin tawa toki pona.')
       break }
     case 'jargon': {
       ourMessageLog = []
       mode = 'jargon'
-      try {
-        await client.user.setUsername('JARGONATUS')
-          await client.user.setAvatar('')
-        // await client.user.setAvatar('https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
-      } catch {}
+      await setBotProfile('JARGONATUS', 'https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
       await message.reply(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
       break }
     case 'whisper': {
       ourMessageLog = []
       mode = 'whisper'
-      try {
-        await client.user.setUsername('Scribe')
-        await client.user.setAvatar('')
-      } catch {}
-      await message.reply(sysPrefix + 'Switched to voice transcription mode.')
+      await setBotProfile('Scribe', '')
       break }
     case 'temperature': {
       const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
@@ -272,9 +281,8 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
       ourMessageLog = []
       userMsg.content = parsed
       mode = 'customprompt'
-      try { await client.user.setAvatar('') } catch {}
-      try { await client.user.setUsername('Homuncules') } catch {}
-      try { await message.reply(sysPrefix + 'Prompt set to:') } catch {}
+      await setBotProfile('Homuncules', '')
+      await message.reply(sysPrefix + 'Prompt set to:')
       const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
       console.log(chunx)
       chunx.forEach(async chunk => {
@@ -310,22 +318,71 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!jeeves\`: Act like Jeeves. Clears memory.
 \`!tokipona\`: Speak toki pona. Clears memory.
 \`!jargon\`: Speak Jargon. Clears memory.
-\`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.)
+\`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.) The bot will reply to audio messages with text transcriptions.
 \`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
-\`!log\`: Prints current memory.
-\`!limit X\`: Sets memory limit to X.
-\`!temperature X\`: Sets temperature (0-2) to X.
-\`!model X\`: Sets model.
-\`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
-\`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
+\`!log\`: Prints current message history.
+\`!limit INTEGER\`: Sets memory limit to X messages.
+\`!temperature FLOAT\`: Sets temperature (0-2) to X.
+\`!model STRING\`: Sets model. Any string will work, but if you specify an invalid model the bot will break.
+\`!parrot STRING\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
+\`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to continue speaking about its previous subject.
 \`!muse\`: Forces the bot to muse upon a random Wikipedia page.
+\`!muse URL\`: Forces the bot to muse upon a specific webpage.
+\`!delay INTEGER\`: Sets reponse delay to X seconds. Useful for responding to multiple messages in a row.
 \`!help\`: Display this message.
+\`!museon\`: Enable automatic muse.
+\`!museoff\`: Disable automatic muse.
+\`!museinterval HOURS\`: Set muse interval to X hours.
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear.
     `)
       break }
+    case 'delay': {
+      const parsed = message.content.match(/^!delay (\d+)$/)
+      const requestedDelay = Math.round(Number(parsed && parsed[1]))
+      if (!isNaN(requestedDelay) && requestedDelay > 0) {
+        if (requestedDelay < 1000) {
+          await message.reply(sysPrefix + `Delay set to ${requestedDelay} milliseconds.`)
+        } else {
+          await message.reply(sysPrefix + `Delay set to ${requestedDelay / 1000} seconds.`)
+        }
+        RESPONSE_DELAY = requestedDelay < 1000 ? requestedDelay : requestedDelay * 1000
+      } else {
+        await message.reply(sysPrefix + `Failed to parse requested delay. Found: \`${parsed}\`. Format: \`!delay X\` where X is a number greater than zero.`)
+      }
+      break }
+    case 'muse': {
+      const parsed = message.content.match(/^!muse (.*)$/)
+      if (parsed) {
+        muse(parsed[1])
+      } else {
+        muse()
+      }
+      break }
+    case 'museon': {
+      SHOULD_MUSE_REGULARLY = true
+      await message.reply(sysPrefix + 'Muse will now happen automatically.')
+      break }
+    case 'museoff': {
+      SHOULD_MUSE_REGULARLY = false
+      await message.reply(sysPrefix + 'Muse will no longer happen automatically.')
+      break }
+    case 'museinterval': {
+      const parsed = message.content.match(/^!museinterval (\d+)$/)
+      const requestedInterval = Math.round(Number(parsed && parsed[1]))
+      MUSE_INTERVAL = requestedInterval * 60 * 60 * 1000
+      await message.reply(sysPrefix + `Muse interval set to ${requestedInterval} hours.`)
+      break }
+    case 'empty': {
+      message.channel.sendTyping()
+      const response = await generateResponse()
+      if (response) {
+        await message.reply(response.content || '')
+      }
+      break }
     case 'log': {
-      const chunx = splitMessageIntoChunks(ourMessageLog, true)
+      const logAsString = JSON.stringify(ourMessageLog, null, 2)
+      const chunx = splitMessageIntoChunks([{role: 'assistant', content: logAsString}])
       await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
       chunx.forEach(async m => m && await message.channel.send(m))
       await message.channel.send(sysPrefix + '---')
@@ -337,10 +394,6 @@ You can also use voice commands by speaking the word as an audio message. For ex
       } else {
         await message.reply(sysPrefix + '[ERROR] Could not fetch OpenAI API prices.');
       }
-      break;
-    }
-    case 'muse': {
-      await muse()
       break }
     default:
       try {
@@ -424,7 +477,6 @@ async function getRandomWikipediaPage() {
 let museTimer: NodeJS.Timeout
 
 async function beginMuseTimer() {
-  const sixHoursInMilliseconds = 6 * 60 * 60 * 1000;
   let lastMessageTimestamp = Date.now();
 
   client.on('messageCreate', (message) => {
@@ -435,9 +487,11 @@ async function beginMuseTimer() {
   });
 
   museTimer = setInterval(async () => {
-    if (Date.now() - lastMessageTimestamp >= sixHoursInMilliseconds) {
+    if (Date.now() - lastMessageTimestamp >= MUSE_INTERVAL) {
       console.log('muse timer expired, starting muse')
-      await muse()
+      if (SHOULD_MUSE_REGULARLY) {
+        await muse()
+      }
       lastMessageTimestamp = Date.now(); // Reset the timer after musing
     }
   }, 60000);
@@ -462,23 +516,77 @@ const fetchOpenAIPrices = async () => {
   }
 };
 
-async function muse() {
+async function getWebpage(url: string) {
+  if (!url.startsWith('http')) {
+    url = `https://${url}`
+  }
+  const response = await fetch(url);
+  const data = await response.text();
+  // parse the data into a more useful format
+  const dom = parseFromString(data);
+  // Extract relevant parts of the webpage
+  const title = dom.getElementsByTagName('title')[0]?.textContent || '';
+  const metaDescription = dom.getElementsByTagName('meta')[0]?.getAttribute('content') || '';
+  const headings = Array.from(dom.getElementsByTagName('h1, h2, h3')).map(h => h.textContent).filter(Boolean);
+  const articles = Array.from(dom.getElementsByTagName('article')).map(a => a.textContent).filter(Boolean);
+  const paragraphs = []
+  if (!articles.length) {
+    paragraphs.push(...Array.from(dom.getElementsByTagName('p')).map(p => p.textContent).filter(Boolean));
+  }
+  
+  // Combine extracted information
+  const relevantContent = [
+    `Title: ${title}`,
+    `Description: ${metaDescription}`,
+    'Key Points:',
+    ...headings.slice(0, 5),
+    'Summary:',
+    ...(articles.length ? articles : paragraphs).slice(0, 3)
+  ].join('\n\n');
+
+  // Truncate to a reasonable length
+  const maxLength = 4000;
+  const truncatedContent = relevantContent.length > maxLength
+    ? relevantContent.slice(0, maxLength) + '...'
+    : relevantContent;
+
+  return truncatedContent;
+}
+
+async function muse(url?: string) {
   const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
   
   channels.forEach(async channel => {
     (channel as TextChannel).sendTyping()
   })
 
-  const randomPage = await getRandomWikipediaPage();
+  let pageText = ''
+  try {
+    if (url) {
+      pageText = await getWebpage(url)
+    } else {
+      let wikipage = await getRandomWikipediaPage()
+      pageText = wikipage.extract;
+      url = wikipage.content_urls?.desktop?.page
+    }
+  } catch (error) {
+    console.error('Error fetching webpage:', error);
+    channels.forEach(async channel => {
+      await (channel as TextChannel).send(`${sysPrefix}Error fetching webpage (${url || 'random'}): ${error}`)
+    })
+    return;
+  }
 
   if (channels.size > 0) {
     const prompt: ChatCompletionRequestMessage = {
       role: 'system',
-      content: `It's been a while since the last message. It's up to you to inject some activity into the situation! Please read the following article.
+      content: `It's been a while since the last message. It's up to you to inject some activity into the situation! Please read the following webpage.
 
-Article summary: ${randomPage.extract}
+=== BEGIN WEBPAGE ===
+${pageText}
+=== END WEBPAGE ===
 
-Please consider the implications of this article, which may be relevant to recent discussions. Read it carefully, and bring some insight to the discussion. Try to extract something new. Don't just summarize it! We want to engage in a way that is interesting to the audience. Be creative, think step by step, and wow the audience with your ability to synthesize pithy witticisms from many domains of knowledge.
+Please consider the implications of this webpage, which may be relevant to recent discussions. Read it carefully, and bring some insight to the discussion. Try to extract something new. Don't just summarize it! We want to engage in a way that is interesting to the audience. Be creative, think step by step, and wow the audience with your ability to synthesize pithy witticisms from many domains of knowledge.
 
 And remember, you are in ${mode} mode. Please conform to the instructions, it's very important! :)
 
@@ -492,7 +600,9 @@ And remember, you are in ${mode} mode. Please conform to the instructions, it's 
         for (const chunk of splitMessageIntoChunks([response])) {
           await (channel as TextChannel).send(chunk)
         }
-        await (channel as TextChannel).send(randomPage.content_urls?.desktop?.page);
+        if (url) {
+          await (channel as TextChannel).send(url);
+        }
       });
     }
   }
