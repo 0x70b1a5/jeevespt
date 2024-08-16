@@ -129,6 +129,7 @@ client.on('messageCreate', async (message) => {
     if ((message.channel as TextChannel).name === TARGET_CHANNEL_NAME) {
       let chunx;
       try {
+        message.channel.sendTyping()
         chunx = splitMessageIntoChunks([await generateResponse() as any])
       } catch (er) {
         await message.reply(sysPrefix + 'Error generating response.')
@@ -329,6 +330,15 @@ You can also use voice commands by speaking the word as an audio message. For ex
       chunx.forEach(async m => m && await message.channel.send(m))
       await message.channel.send(sysPrefix + '---')
       break }
+    case 'prices': {
+      const prices = await fetchOpenAIPrices();
+      if (prices) {
+        await message.reply(sysPrefix + 'Current OpenAI API prices:\n' + JSON.stringify(prices, null, 2));
+      } else {
+        await message.reply(sysPrefix + '[ERROR] Could not fetch OpenAI API prices.');
+      }
+      break;
+    }
     case 'muse': {
       await muse()
       break }
@@ -433,9 +443,33 @@ async function beginMuseTimer() {
   }, 60000);
 }
 
+
+const fetchOpenAIPrices = async () => {
+  try {
+    const response = await fetch('https://api.openai.com/v1/prices', {
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      }
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch prices');
+    }
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching OpenAI prices:', error);
+    return null;
+  }
+};
+
 async function muse() {
-  const randomPage = await getRandomWikipediaPage();
   const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+  
+  channels.forEach(async channel => {
+    (channel as TextChannel).sendTyping()
+  })
+
+  const randomPage = await getRandomWikipediaPage();
 
   if (channels.size > 0) {
     const prompt: ChatCompletionRequestMessage = {
@@ -465,3 +499,23 @@ And remember, you are in ${mode} mode. Please conform to the instructions, it's 
 }
 
 client.login(DISCORD_BOT_TOKEN)
+
+// alert when going offline
+process.on('SIGINT', async () => {
+  console.log('Received SIGINT. Shutting down gracefully...');
+  
+  const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+  
+  if (channels.size > 0) {
+    for (const channel of channels.values()) {
+      try {
+        await (channel as TextChannel).send('Your Jeeves is going offline, sir.');
+      } catch (error) {
+        console.error('Error sending offline message:', error);
+      }
+    }
+  }
+
+  client.destroy();
+  process.exit(0);
+});
