@@ -44,6 +44,7 @@ const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayI
 client.once('ready', async () => {
   await client.login(DISCORD_BOT_TOKEN)
   console.log(`Logged in as ${client!.user!.tag}!`, client.isReady())
+  beginMuseTimer()
   const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
   await client.user?.setUsername('Jeeves')
   await client.user?.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
@@ -337,6 +338,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 \`!model X\`: Sets model (one of \`${models.join('`, `')}\`).
 \`!parrot X\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
 \`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to keep going.
+\`!muse\`: Forces the bot to muse upon a random Wikipedia page.
 \`!help\`: Display this message.
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear.
@@ -347,6 +349,9 @@ You can also use voice commands by speaking the word as an audio message. For ex
       await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
       chunx.forEach(async m => m && await message.channel.send(m))
       await message.channel.send(sysPrefix + '---')
+      break }
+    case 'muse': {
+      await muse()
       break }
     default:
       try {
@@ -392,8 +397,8 @@ const getSystemMessage = () => {
   return jeevesMsg
 }
 
-async function generateResponse() {
-  const latestMessages = [getSystemMessage(), ...ourMessageLog] as ChatCompletionRequestMessage[]
+async function generateResponse(additionalMessages: ChatCompletionRequestMessage[] = []) {
+  const latestMessages = [getSystemMessage(), ...ourMessageLog, ...additionalMessages] as ChatCompletionRequestMessage[]
 
   try {
     const completion = await openai.createChatCompletion({
@@ -408,6 +413,56 @@ async function generateResponse() {
     const msg = sysPrefix + 'Error generating response: ' + JSON.stringify(error)
     console.error(error)
     return msg
+  }
+}
+
+async function getRandomWikipediaPage() {
+  const response = await fetch('https://en.wikipedia.org/api/rest_v1/page/random/summary');
+  const data = await response.json();
+  return data;
+}
+
+let museTimer: NodeJS.Timeout
+
+async function beginMuseTimer() {
+  const sixHoursInMilliseconds = 6 * 60 * 60 * 1000;
+  let lastMessageTimestamp = Date.now();
+
+  client.on('messageCreate', (message) => {
+    if ((message.channel as TextChannel)?.name === TARGET_CHANNEL_NAME && !message.author.bot) {
+      console.log('message received, resetting muse timer')
+      lastMessageTimestamp = Date.now();
+    }
+  });
+
+  museTimer = setInterval(async () => {
+    if (Date.now() - lastMessageTimestamp >= sixHoursInMilliseconds) {
+      console.log('muse timer expired, starting muse')
+      await muse()
+      lastMessageTimestamp = Date.now(); // Reset the timer after musing
+    }
+  }, 60000);
+}
+
+async function muse() {
+  const randomPage = await getRandomWikipediaPage();
+  const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+
+  if (channels.size > 0) {
+    const prompt: ChatCompletionRequestMessage = {
+      role: 'system',
+      content: `It's been a while since the last message. It's up to you to consider the implications of this article, which may be relevant to recent discussions. Read it carefully, and bring some insight to the discussion. Try to extract something new.
+
+Article summary: ${randomPage.extract}`
+    }
+
+    const response = await generateResponse([prompt])
+    if (response) {
+      channels.forEach(async channel => {
+        await (channel as TextChannel).send(response);
+        await (channel as TextChannel).send(randomPage.content_urls?.desktop?.page);
+      });
+    }
   }
 }
 
