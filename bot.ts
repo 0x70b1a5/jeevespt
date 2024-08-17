@@ -23,7 +23,7 @@ let model = 'gpt-4'
 const sysPrefix = '[SYSTEM] '
 let messageBuffer: ChatCompletionRequestMessage[] = [];
 let responseTimer: NodeJS.Timeout | null = null;
-let RESPONSE_DELAY = 10000; // 10 seconds
+let RESPONSE_DELAY_MS = 10000; // 10 seconds
 let MUSE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 let SHOULD_MUSE_REGULARLY = true
 
@@ -176,7 +176,7 @@ client.on('messageCreate', async (message) => {
       // Clear the buffer and timer
       messageBuffer = [];
       responseTimer = null;
-    }, RESPONSE_DELAY);
+    }, RESPONSE_DELAY_MS);
   }
 })
 
@@ -307,48 +307,68 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       }
       break }
     case 'help': {
-      await message.reply(sysPrefix + `JEEVESPT:
+      await message.reply(sysPrefix + `# JEEVESPT
 - Remembers the last ${messageLimit} messages (yours and his)
 - Temperature: ${temperature}
 - Model: ${model}
-- Doesn't see usernames, only message text
+- Response delay: ${RESPONSE_DELAY_MS / 1000} seconds
+- Muse interval: ${MUSE_INTERVAL / 60 / 60} hours
+- Automatic muse: ${SHOULD_MUSE_REGULARLY ? 'enabled' : 'disabled'}
+- Current mode: \`${mode}\`
 - Not actually Jeeves. :(
 
-\`!clear\`: Forget everything from the present conversation.
+## Commands
+
+\`!help\`: Display this message.
+
+### Modes
+
 \`!jeeves\`: Act like Jeeves. Clears memory.
 \`!tokipona\`: Speak toki pona. Clears memory.
 \`!jargon\`: Speak Jargon. Clears memory.
 \`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.) The bot will reply to audio messages with text transcriptions.
 \`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
+
+### Chat History
+
+\`!clear\`: Forget everything from the present conversation.
 \`!log\`: Prints current message history.
 \`!limit INTEGER\`: Sets memory limit to X messages.
+
+### Configuration
+
 \`!temperature FLOAT\`: Sets temperature (0-2) to X.
 \`!model STRING\`: Sets model. Any string will work, but if you specify an invalid model the bot will break.
+\`!delay SECONDS\`: Sets reponse delay to SECONDS seconds. This can be useful if you want the bot to wait for someone to send a few different messages before responding.
+
+### Testing
+
 \`!parrot STRING\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
 \`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to continue speaking about its previous subject.
+
+### Musing
+
+The bot can be configured to automatically muse upon a random Wikipedia page every few hours, or you can send it a specific webpage to comment on.
+
 \`!muse\`: Forces the bot to muse upon a random Wikipedia page.
 \`!muse URL\`: Forces the bot to muse upon a specific webpage.
-\`!delay INTEGER\`: Sets reponse delay to X seconds. Useful for responding to multiple messages in a row.
-\`!help\`: Display this message.
 \`!museon\`: Enable automatic muse.
 \`!museoff\`: Disable automatic muse.
 \`!museinterval HOURS\`: Set muse interval to X hours.
 
-You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear.
+## Voice Commands
+
+You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear. To use this feature, you must have Python 3.10+ and \`faster-whisper\` installed on the bot server.
     `)
       break }
     case 'delay': {
       const parsed = message.content.match(/^!delay (\d+)$/)
       const requestedDelay = Math.round(Number(parsed && parsed[1]))
       if (!isNaN(requestedDelay) && requestedDelay > 0) {
-        if (requestedDelay < 1000) {
-          await message.reply(sysPrefix + `Delay set to ${requestedDelay} milliseconds.`)
-        } else {
-          await message.reply(sysPrefix + `Delay set to ${requestedDelay / 1000} seconds.`)
-        }
-        RESPONSE_DELAY = requestedDelay < 1000 ? requestedDelay : requestedDelay * 1000
+        await message.reply(sysPrefix + `Response delay set to ${requestedDelay} seconds.`)
+        RESPONSE_DELAY_MS = requestedDelay * 1000
       } else {
-        await message.reply(sysPrefix + `Failed to parse requested delay. Found: \`${parsed}\`. Format: \`!delay X\` where X is a number greater than zero.`)
+        await message.reply(sysPrefix + `Failed to parse requested delay. Found: \`${parsed}\`. Format: \`!delay SECONDS\` wherex SECONDS is a number greater than zero.`)
       }
       break }
     case 'muse': {
