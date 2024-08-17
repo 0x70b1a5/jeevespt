@@ -3,6 +3,12 @@ import { Builder, By } from 'selenium-webdriver';
 import * as cheerio from 'cheerio';
 
 export async function getWebpage(url: string): Promise<string> {
+    if (!url) {
+        throw new Error('URL is required');
+    }
+    if (!url.startsWith('http')) {
+        url = `https://${url}`;
+    }
     // Initialize the WebDriver
     console.log('Initializing the WebDriver...');
     let driver = await new Builder().forBrowser('chrome').build();
@@ -44,7 +50,7 @@ export async function getWebpage(url: string): Promise<string> {
             ? relevantContent.slice(0, maxLength) + '...'
             : relevantContent;
     
-        console.log('Content retrieved. Huzzah!');
+        console.log('Content retrieved. Huzzah!', truncatedContent);
 
         return truncatedContent;
     } catch (error) {
