@@ -47,6 +47,6 @@ The bot can be configured to automatically muse upon a random Wikipedia page eve
 
 ## Voice Commands
 
-You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear. To use this feature, you must have Python 3.10+ and \`faster-whisper\` installed on the bot server.
+You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear, and !parrot bla bla bla will reply with bla bla bla.
     `
 ]

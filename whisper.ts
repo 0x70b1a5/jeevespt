@@ -1,15 +1,12 @@
-// import fs from "fs";
-// import OpenAI from "openai";
+require('dotenv').config()
+import fs from "fs";
+import OpenAI from "openai";
 
-// const openai = new OpenAI();
+export default async function whisper(openai: OpenAI, path: string) {
+  const transcription = await openai.audio.transcriptions.create({
+    file: fs.createReadStream(path),
+    model: "whisper-1",
+  });
 
-// async function main() {
-//   const transcription = await openai.audio.transcriptions.create({
-//     file: fs.createReadStream("/path/to/file/speech.mp3"),
-//     model: "whisper-1",
-//     response_format: "text",
-//   });
-
-//   console.log(transcription.text);
-// }
-// main();
+  return transcription
+}

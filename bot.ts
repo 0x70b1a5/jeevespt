@@ -6,32 +6,33 @@ import fs from 'fs';
 const pipeline = promisify(require('stream').pipeline);
 const exec = promisify(execCb);
 import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
-import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
+import OpenAI from 'openai';
 import dayjs from 'dayjs';
 import { help } from './help';
 import { getWebpage } from './getWebpage';
+import { ChatCompletionMessageParam } from 'openai/resources/chat';
+import whisper from './whisper'
 
 // Load the Discord bot token and OpenAI API key from the environment variables
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
-let ourMessageLog: ChatCompletionRequestMessage[] = []
+let ourMessageLog: ChatCompletionMessageParam[] = []
 type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt'
 let mode: BotMode = 'jeeves'
 let messageLimit = 20
 let temperature = 0.9
 let model = 'gpt-4'
 const sysPrefix = '[SYSTEM] '
-let messageBuffer: ChatCompletionRequestMessage[] = [];
+let messageBuffer: ChatCompletionMessageParam[] = [];
 let responseTimer: NodeJS.Timeout | null = null;
 let RESPONSE_DELAY_MS = 10000; // 10 seconds
 let MUSE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 let SHOULD_MUSE_REGULARLY = true
 
-const configuration = new Configuration({
+const openai = new OpenAI({
     apiKey: OPENAI_API_KEY,
 })
-const openai = new OpenAIApi(configuration)
 const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds] })!
 
 client.once('ready', async () => {
@@ -53,7 +54,7 @@ client.on('error', async (e) => {
     console.error(e)
 })
 
-function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[]) {
+function splitMessageIntoChunks(msgs: ChatCompletionMessageParam[]) {
     const MAX_CHUNK_SIZE = 1900;
     let chunks = [''];
     
@@ -72,7 +73,7 @@ function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[]) {
         chunks[chunkIndex] += bite;
 
         // add the rest to a new chunk
-        chunks.push(msg.content?.slice(excess) || '');
+        chunks.push(msg.content?.slice(excess) as string || '');
     });
 
     return chunks;
@@ -114,13 +115,16 @@ client.on('messageCreate', async (message) => {
         }
 
         if (audio) {
-            userMessage ||= await transcribeAudio(audio, message)
+            userMessage ||= await transcribeAudio_maybeReply(audio, message)
             const firstWord = userMessage.split(' ')[0]
-            const secondWord = userMessage.split(' ')[1]
+            const secondWord = userMessage.split(' ')[1].replace(/[^a-zA-Z0-9]/g, '')
+            const rest = userMessage.slice(userMessage.indexOf(secondWord) + secondWord.length).trim()
             if (firstWord.toLocaleLowerCase().startsWith('command')) {
                 try {
                     await message.reply(`${sysPrefix}Detected voice command: \`${secondWord}\`.`)
                 } catch {}
+                // mutate in place baby!
+                message.content = `!${secondWord.trim().replace('!', '')} ${rest}`.toLocaleLowerCase()
                 return respondToCommand(message)
             }
         }
@@ -181,7 +185,7 @@ client.on('messageCreate', async (message) => {
     }
 })
 
-const transcribeAudio: (attachment: Attachment, message: Message) => Promise<string> = async (audio: Attachment, message: Message) => {
+const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => Promise<string> = async (audio: Attachment, message: Message) => {
     let audioMessageContent = ''
     
     // Download the audio file
@@ -198,20 +202,19 @@ const transcribeAudio: (attachment: Attachment, message: Message) => Promise<str
     try {
         await message.channel.send(sysPrefix + '[INFO] Transcribing audio...')
         // Run the python script
-        const { stdout, stderr } = await exec('python whisper.py');
+        const transcription = await whisper(openai, 'audio.mp3')
 
-        if (stderr) {
+        if (!transcription?.text?.length) {
             await message.reply(sysPrefix + '[ERROR] Could not process audio.')
-            console.log(`whisper.py stderr: ${stderr}`);
             return ''
         } else {                    
-            audioMessageContent = stdout.replace(/\n/g, ' ')
-            console.log(`whisper.py stdout: ${audioMessageContent}`);
-            await message.channel.send(`${mode !== 'whisper' ? sysPrefix+'[INFO] Audio transcription: ' : ''}${audioMessageContent}`)
+            audioMessageContent = transcription.text
+            console.log(`whisper: ${audioMessageContent}`);
+            await message.reply(`${sysPrefix}Transcription: ${audioMessageContent}`)
         }
     } catch (error) {
         await message.reply(sysPrefix + '[ERROR] Could not process audio.')
-        console.log(`whisper.py error: ${JSON.stringify(error)}`);
+        console.log(`whisper error: ${JSON.stringify(error)}`);
         return ''
     }
     return audioMessageContent
@@ -360,7 +363,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
             message.channel.sendTyping()
             const response = await generateResponse()
             if (response) {
-                await message.reply(response.content || '')
+                await message.reply(response.content as string || '')
             }
             break }
         case 'log': {
@@ -425,16 +428,16 @@ const getSystemMessage = () => {
     return jeevesMsg
 }
 
-async function generateResponse(additionalMessages: ChatCompletionRequestMessage[] = []) {
-    const latestMessages = [getSystemMessage(), ...ourMessageLog, ...additionalMessages] as ChatCompletionRequestMessage[]
+async function generateResponse(additionalMessages: ChatCompletionMessageParam[] = []) {
+    const latestMessages = [getSystemMessage(), ...ourMessageLog, ...additionalMessages] as ChatCompletionMessageParam[]
 
     try {
-        const completion = await openai.createChatCompletion({
+        const completion = await openai.chat.completions.create({
             model: model,
-            messages: latestMessages,
+            messages: latestMessages as ChatCompletionMessageParam[],
             temperature,
         })
-        const botMsg = completion.data.choices[0].message     
+        const botMsg = completion.choices[0].message     
         if (botMsg) {
             ourMessageLog.push({ role: 'assistant', content: botMsg.content || '' })
             return botMsg
@@ -447,7 +450,7 @@ async function generateResponse(additionalMessages: ChatCompletionRequestMessage
         return {
             role: 'assistant',
             content: msg
-        } as ChatCompletionRequestMessage
+        } as ChatCompletionMessageParam
     }
 }
 
@@ -524,7 +527,7 @@ async function muse(url?: string) {
     }
 
     if (channels.size > 0) {
-        const prompt: ChatCompletionRequestMessage = {
+        const prompt: ChatCompletionMessageParam = {
             role: 'system',
             content: `It's been a while since the last message. It's up to you to inject some activity into the situation! Please read the following webpage.
 
@@ -533,6 +536,8 @@ ${pageText}
 === END WEBPAGE ===
 
 Please consider the implications of this webpage, which may be relevant to recent discussions. Read it carefully, and bring some insight to the discussion. Try to extract something new. Don't just summarize it! We want to engage in a way that is interesting to the audience. Be creative, think step by step, and wow the audience with your ability to synthesize pithy witticisms from many domains of knowledge.
+
+Respond in at most 280 characters - this is a chatroom, not a blog post.
 
 And remember, you are in ${mode} mode. Please conform to the instructions, it's very important! :)
 
