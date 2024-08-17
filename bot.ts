@@ -9,6 +9,7 @@ import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChanne
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 import dayjs from 'dayjs';
 import { parseFromString } from 'dom-parser';
+import { help } from './help';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
@@ -307,7 +308,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
       }
       break }
     case 'help': {
-      await message.reply(sysPrefix + `# JEEVESPT
+      const helpTexts = [
+`# JEEVESPT
 - Remembers the last ${messageLimit} messages (yours and his)
 - Temperature: ${temperature}
 - Model: ${model}
@@ -315,51 +317,12 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 - Muse interval: ${MUSE_INTERVAL / 60 / 60} hours
 - Automatic muse: ${SHOULD_MUSE_REGULARLY ? 'enabled' : 'disabled'}
 - Current mode: \`${mode}\`
-- Not actually Jeeves. :(
-
-## Commands
-
-\`!help\`: Display this message.
-
-### Modes
-
-\`!jeeves\`: Act like Jeeves. Clears memory.
-\`!tokipona\`: Speak toki pona. Clears memory.
-\`!jargon\`: Speak Jargon. Clears memory.
-\`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.) The bot will reply to audio messages with text transcriptions.
-\`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
-
-### Chat History
-
-\`!clear\`: Forget everything from the present conversation.
-\`!log\`: Prints current message history.
-\`!limit INTEGER\`: Sets memory limit to X messages.
-
-### Configuration
-
-\`!temperature FLOAT\`: Sets temperature (0-2) to X.
-\`!model STRING\`: Sets model. Any string will work, but if you specify an invalid model the bot will break.
-\`!delay SECONDS\`: Sets reponse delay to SECONDS seconds. This can be useful if you want the bot to wait for someone to send a few different messages before responding.
-
-### Testing
-
-\`!parrot STRING\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
-\`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to continue speaking about its previous subject.
-
-### Musing
-
-The bot can be configured to automatically muse upon a random Wikipedia page every few hours, or you can send it a specific webpage to comment on.
-
-\`!muse\`: Forces the bot to muse upon a random Wikipedia page.
-\`!muse URL\`: Forces the bot to muse upon a specific webpage.
-\`!museon\`: Enable automatic muse.
-\`!museoff\`: Disable automatic muse.
-\`!museinterval HOURS\`: Set muse interval to X hours.
-
-## Voice Commands
-
-You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear. To use this feature, you must have Python 3.10+ and \`faster-whisper\` installed on the bot server.
-    `)
+- Not actually Jeeves. :(`,
+        ...help
+      ]
+      helpTexts.forEach(async text => {
+        await message.channel.send(text)
+      })
       break }
     case 'delay': {
       const parsed = message.content.match(/^!delay (\d+)$/)
