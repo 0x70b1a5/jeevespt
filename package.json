@@ -16,6 +16,10 @@
     "discord.js": "^14.11.0",
     "dotenv": "^16.0.3",
     "node-fetch": "^3.3.2",
-    "openai": "^3.3.0"
+    "openai": "^3.3.0",
+    "selenium-webdriver": "^4.23.0"
+  },
+  "devDependencies": {
+    "@types/selenium-webdriver": "^4.1.25"
   }
 }
