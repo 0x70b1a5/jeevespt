@@ -1,5 +1,6 @@
 import trim from './trim';
-import { Builder, By } from 'selenium-webdriver';
+import { Builder } from 'selenium-webdriver';
+import chrome from 'selenium-webdriver/chrome';
 import * as cheerio from 'cheerio';
 
 export async function getWebpage(url: string): Promise<string> {
@@ -11,7 +12,19 @@ export async function getWebpage(url: string): Promise<string> {
     }
     // Initialize the WebDriver
     console.log('Initializing the WebDriver...');
-    let driver = await new Builder().forBrowser('chrome').build();
+    // Set up Chrome options for headless mode
+    const options = new chrome.Options();
+    options.addArguments(
+        '--headless', 
+        '--disable-gpu', 
+        '--no-sandbox', 
+        '--disable-dev-shm-usage',
+        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    );
+
+    // Initialize the WebDriver with headless options
+    let driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+  
     console.log('WebDriver initialized');
     try {
         // Navigate to the URL
