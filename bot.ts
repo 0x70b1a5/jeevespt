@@ -10,6 +10,7 @@ import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 import dayjs from 'dayjs';
 import * as cheerio from 'cheerio'
 import { help } from './help';
+import getWebpage from './getWebpage';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
@@ -499,43 +500,6 @@ const fetchOpenAIPrices = async () => {
   }
 };
 
-async function getWebpage(url: string) {
-  if (!url.startsWith('http')) {
-    url = `https://${url}`
-  }
-  const response = await fetch(url);
-  const data = await response.text();
-  // parse the data into a more useful format
-  const $ = cheerio.load(data);
-  // Extract relevant parts of the webpage
-  const title = $('title').text() || '';
-  const metaDescription = $('meta[name="description"]').attr('content') || '';
-  const headings = $('h1, h2, h3').map((i, el) => $(el).text()).get();
-  const articles = $('article').map((i, el) => $(el).text()).get();
-  const paragraphs = []
-  if (!articles.length) {
-    paragraphs.push(...$('p').map((i, el) => $(el).text()).get());
-  }
-  
-  // Combine extracted information
-  const relevantContent = [
-    `Title: ${title}`,
-    `Description: ${metaDescription}`,
-    'Key Points:',
-    ...headings.slice(0, 5),
-    'Summary:',
-    ...(articles.length ? articles : paragraphs).slice(0, 3)
-  ].join('\n\n');
-
-  // Truncate to a reasonable length
-  const maxLength = 4000;
-  const truncatedContent = relevantContent.length > maxLength
-    ? relevantContent.slice(0, maxLength) + '...'
-    : relevantContent;
-
-  return truncatedContent;
-}
-
 async function muse(url?: string) {
   const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
   
@@ -573,9 +537,11 @@ Please consider the implications of this webpage, which may be relevant to recen
 
 And remember, you are in ${mode} mode. Please conform to the instructions, it's very important! :)
 
-
+If there was an error fetching the webpage, please mention this, as the developer will want to fix his code.
 `
     }
+
+    console.log(prompt)
 
     const response = await generateResponse([prompt])
     if (response) {
