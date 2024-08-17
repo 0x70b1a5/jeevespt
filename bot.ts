@@ -8,7 +8,7 @@ const exec = promisify(execCb);
 import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 import dayjs from 'dayjs';
-import { parseFromString } from 'dom-parser';
+import * as cheerio from 'cheerio'
 import { help } from './help';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
@@ -314,7 +314,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 - Temperature: ${temperature}
 - Model: ${model}
 - Response delay: ${RESPONSE_DELAY_MS / 1000} seconds
-- Muse interval: ${MUSE_INTERVAL / 60 / 60} hours
+- Muse interval: ${MUSE_INTERVAL / 60 / 60 / 1000} hours
 - Automatic muse: ${SHOULD_MUSE_REGULARLY ? 'enabled' : 'disabled'}
 - Current mode: \`${mode}\`
 - Not actually Jeeves. :(`,
@@ -506,15 +506,15 @@ async function getWebpage(url: string) {
   const response = await fetch(url);
   const data = await response.text();
   // parse the data into a more useful format
-  const dom = parseFromString(data);
+  const $ = cheerio.load(data);
   // Extract relevant parts of the webpage
-  const title = dom.getElementsByTagName('title')[0]?.textContent || '';
-  const metaDescription = dom.getElementsByTagName('meta')[0]?.getAttribute('content') || '';
-  const headings = Array.from(dom.getElementsByTagName('h1, h2, h3')).map(h => h.textContent).filter(Boolean);
-  const articles = Array.from(dom.getElementsByTagName('article')).map(a => a.textContent).filter(Boolean);
+  const title = $('title').text() || '';
+  const metaDescription = $('meta[name="description"]').attr('content') || '';
+  const headings = $('h1, h2, h3').map((i, el) => $(el).text()).get();
+  const articles = $('article').map((i, el) => $(el).text()).get();
   const paragraphs = []
   if (!articles.length) {
-    paragraphs.push(...Array.from(dom.getElementsByTagName('p')).map(p => p.textContent).filter(Boolean));
+    paragraphs.push(...$('p').map((i, el) => $(el).text()).get());
   }
   
   // Combine extracted information
