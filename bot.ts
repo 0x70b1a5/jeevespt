@@ -8,7 +8,6 @@ const exec = promisify(execCb);
 import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
 import { Configuration, OpenAIApi, ChatCompletionRequestMessage } from 'openai';
 import dayjs from 'dayjs';
-import * as cheerio from 'cheerio'
 import { help } from './help';
 import getWebpage from './getWebpage';
 
@@ -60,7 +59,7 @@ function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[]) {
   
   msgs.forEach(msg => {
     const chunkIndex = chunks.length - 1
-    const excess = msg?.content?.length - MAX_CHUNK_SIZE
+    const excess = (msg?.content?.length || 0) - MAX_CHUNK_SIZE
 
     // append short messages to latest chunk and move on
     if (excess < 0) {
@@ -69,11 +68,11 @@ function splitMessageIntoChunks(msgs: ChatCompletionRequestMessage[]) {
     }
 
     // bite off as much as possible and add it to latest chunk
-    const bite = msg.content.slice(0, excess)
+    const bite = msg.content?.slice(0, excess) || ''
     chunks[chunkIndex] += bite;
 
     // add the rest to a new chunk
-    chunks.push(msg.content.slice(excess));
+    chunks.push(msg.content?.slice(excess) || '');
   });
 
   return chunks;
