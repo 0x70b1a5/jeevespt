@@ -186,6 +186,7 @@ client.on('messageCreate', async (message) => {
 })
 
 const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => Promise<string> = async (audio: Attachment, message: Message) => {
+    await message.channel.sendTyping()
     let audioMessageContent = ''
     
     // Download the audio file
@@ -200,8 +201,7 @@ const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => 
     );
         
     try {
-        await message.channel.send(sysPrefix + '[INFO] Transcribing audio...')
-        // Run the python script
+        await message.channel.sendTyping()
         const transcription = await whisper(openai, 'audio.mp3')
 
         if (!transcription?.text?.length) {
