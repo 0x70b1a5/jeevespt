@@ -12,6 +12,7 @@ import { help } from './help';
 import { getWebpage } from './getWebpage';
 import { ChatCompletionMessageParam } from 'openai/resources/chat';
 import whisper from './whisper'
+import { persist, load } from './persist';
 
 // Load the Discord bot token and OpenAI API key from the environment variables
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
@@ -22,6 +23,9 @@ type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt'
 let mode: BotMode = 'jeeves'
 let messageLimit = 20
 let temperature = 0.9
+let guildId: string | null = null
+let MAX_RESPONSE_LENGTH_TOKENS = 1000
+let SHOULD_SAVE_DATA = true
 let model = 'gpt-4'
 const sysPrefix = '[SYSTEM] '
 let messageBuffer: ChatCompletionMessageParam[] = [];
@@ -38,10 +42,25 @@ const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayI
 client.once('ready', async () => {
     await client.login(DISCORD_BOT_TOKEN)
     console.log(`Logged in as ${client!.user!.tag}!`, client.isReady())
+    guildId = client.guilds.cache.first()?.id || null
+    if (guildId) {
+        const data = await load(guildId)
+        if (data) {
+            ourMessageLog = data.ourMessageLog
+            mode = data.mode
+            MAX_RESPONSE_LENGTH_TOKENS = data.MAX_RESPONSE_LENGTH_TOKENS
+            RESPONSE_DELAY_MS = data.RESPONSE_DELAY_MS
+            SHOULD_MUSE_REGULARLY = data.SHOULD_MUSE_REGULARLY
+            MUSE_INTERVAL = data.MUSE_INTERVAL
+            temperature = data.temperature
+            model = data.model
+            SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
+            messageLimit = data.messageLimit    
+        }
+    }
     beginMuseTimer()
     const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
-    await client.user?.setUsername('Jeeves')
-    await client.user?.setAvatar('https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
+    await syncProfileWithMode()
 
     if (channels.size > 0) {
         channels.forEach(async channel => {
@@ -79,6 +98,27 @@ function splitMessageIntoChunks(msgs: ChatCompletionMessageParam[]) {
     return chunks;
 }
 
+async function syncProfileWithMode() {
+    switch (mode) {
+        case 'tokipona':
+            await setBotProfile('ilo Jepite', 'https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
+            break
+        case 'jargon':
+            await setBotProfile('JARGONATUS', 'https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
+            break
+        case 'whisper':
+            await setBotProfile('Scribe', '')
+            break
+        case 'customprompt':
+            await setBotProfile('Homuncules', '')
+            break
+        case 'jeeves':
+        default:
+            await setBotProfile('Jeeves', 'https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
+            break
+    }
+}
+
 async function setBotProfile(username: string, avatarUrl: string) {
     try {
         await client.user?.setUsername(username);
@@ -91,6 +131,7 @@ async function setBotProfile(username: string, avatarUrl: string) {
 client.on('messageCreate', async (message) => {
     if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
     if (!client.user) { return }
+    guildId = message.guildId
 
     console.log('messageCreate', message.content, 'from', message.author.tag)
 
@@ -231,25 +272,25 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
         case 'jeeves': {
             ourMessageLog = []
             mode = 'jeeves'
-            await setBotProfile('Jeeves', 'https://blog-assets.mugglenet.com/wp-content/uploads/2013/01/my-man-jeeves-768x1220.jpg')
+            await syncProfileWithMode()
             await message.reply(sysPrefix + 'I have switched to Jeeves mode, sir.')
             break }
         case 'tokipona': {
             ourMessageLog = []
             mode = 'tokipona'
-            await setBotProfile('ilo Jepite', 'https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
+            await syncProfileWithMode()
             await message.reply(sysPrefix + 'mi ante e nasin tawa toki pona.')
             break }
         case 'jargon': {
             ourMessageLog = []
             mode = 'jargon'
-            await setBotProfile('JARGONATUS', 'https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
+            await syncProfileWithMode()
             await message.reply(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
             break }
         case 'whisper': {
             ourMessageLog = []
             mode = 'whisper'
-            await setBotProfile('Scribe', '')
+            await syncProfileWithMode()
             break }
         case 'temperature': {
             const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
@@ -285,7 +326,7 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
             ourMessageLog = []
             userMsg.content = parsed
             mode = 'customprompt'
-            await setBotProfile('Homuncules', '')
+            await syncProfileWithMode()
             await message.reply(sysPrefix + 'Prompt set to:')
             const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
             console.log(chunx)
@@ -320,6 +361,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 - Muse interval: ${MUSE_INTERVAL / 60 / 60 / 1000} hours
 - Automatic muse: ${SHOULD_MUSE_REGULARLY ? 'enabled' : 'disabled'}
 - Current mode: \`${mode}\`
+- Max response length (tokens): ${MAX_RESPONSE_LENGTH_TOKENS}
 - Not actually Jeeves. :(`,
                 ...help
             ]
@@ -381,6 +423,20 @@ Format: \`!limit X\` where X is a number greater than zero.`)
                 await message.reply(sysPrefix + '[ERROR] Could not fetch OpenAI API prices.');
             }
             break }
+        case 'tokens': {
+            const parsed = message.content.match(/^!tokens (\d+)$/)
+            const requestedTokens = Number(parsed && parsed[1])
+            if (!isNaN(requestedTokens) && requestedTokens > 0) {
+                MAX_RESPONSE_LENGTH_TOKENS = requestedTokens
+                await message.reply(sysPrefix + `Max response length set to ${requestedTokens} tokens.`)
+            } else {
+                await message.reply(sysPrefix + `Failed to parse requested tokens. Found: \`${parsed}\`. Format: \`!tokens TOKENS\` where TOKENS is a number greater than zero.`)
+            }
+            break }
+        case 'persist': {
+            SHOULD_SAVE_DATA = !SHOULD_SAVE_DATA
+            await message.reply(sysPrefix + `Bot will now ${SHOULD_SAVE_DATA ? 'SAVE' : 'NOT SAVE'} data to disk.`)
+            break }
         default:
             try {
                 await message.reply(`${sysPrefix}Unrecognized command "${command}".`)
@@ -420,7 +476,7 @@ const userMsg = {
     content: ''
 }
 
-const getSystemMessage = () => {
+const getSystemPrompt = () => {
     if (mode === 'tokipona') return tokiponaMsg
     if (mode === 'jargon') return jargonMsg
     if (mode === 'whisper') return null
@@ -429,13 +485,14 @@ const getSystemMessage = () => {
 }
 
 async function generateResponse(additionalMessages: ChatCompletionMessageParam[] = []) {
-    const latestMessages = [getSystemMessage(), ...ourMessageLog, ...additionalMessages] as ChatCompletionMessageParam[]
+    const latestMessages = [getSystemPrompt(), ...ourMessageLog, ...additionalMessages] as ChatCompletionMessageParam[]
 
     try {
         const completion = await openai.chat.completions.create({
             model: model,
             messages: latestMessages as ChatCompletionMessageParam[],
             temperature,
+            max_tokens: MAX_RESPONSE_LENGTH_TOKENS
         })
         const botMsg = completion.choices[0].message     
         if (botMsg) {
@@ -566,6 +623,22 @@ client.login(DISCORD_BOT_TOKEN)
 // alert when going offline
 process.on('SIGINT', async () => {
     console.log('Received SIGINT. Shutting down gracefully...');
+
+    if (guildId && SHOULD_SAVE_DATA) {
+        persist(guildId, {
+            ourMessageLog,
+            mode,
+            MAX_RESPONSE_LENGTH_TOKENS,
+            RESPONSE_DELAY_MS,
+            SHOULD_MUSE_REGULARLY,
+            MUSE_INTERVAL,
+            temperature,
+            model,
+            SHOULD_SAVE_DATA,
+            messageLimit,
+            
+        })
+    }
     
     const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
     
