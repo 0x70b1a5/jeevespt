@@ -369,6 +369,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 - Automatic muse: ${SHOULD_MUSE_REGULARLY ? 'enabled' : 'disabled'}
 - Current mode: \`${mode}\`
 - Max response length (tokens): ${MAX_RESPONSE_LENGTH_TOKENS}
+- Persist data: ${SHOULD_SAVE_DATA ? 'enabled' : 'disabled'}
 - Not actually Jeeves. :(`,
                 ...help
             ]
