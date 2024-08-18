@@ -44,18 +44,22 @@ client.once('ready', async () => {
     console.log(`Logged in as ${client!.user!.tag}!`, client.isReady())
     guildId = client.guilds.cache.first()?.id || null
     if (guildId) {
-        const data = await load(guildId)
-        if (data) {
-            ourMessageLog = data.ourMessageLog
-            mode = data.mode
-            MAX_RESPONSE_LENGTH_TOKENS = data.MAX_RESPONSE_LENGTH_TOKENS
-            RESPONSE_DELAY_MS = data.RESPONSE_DELAY_MS
-            SHOULD_MUSE_REGULARLY = data.SHOULD_MUSE_REGULARLY
-            MUSE_INTERVAL = data.MUSE_INTERVAL
-            temperature = data.temperature
-            model = data.model
-            SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
-            messageLimit = data.messageLimit    
+        try {
+            const data = await load(guildId)
+            if (data) {
+                ourMessageLog = data.ourMessageLog
+                mode = data.mode
+                MAX_RESPONSE_LENGTH_TOKENS = data.MAX_RESPONSE_LENGTH_TOKENS
+                RESPONSE_DELAY_MS = data.RESPONSE_DELAY_MS
+                SHOULD_MUSE_REGULARLY = data.SHOULD_MUSE_REGULARLY
+                MUSE_INTERVAL = data.MUSE_INTERVAL
+                temperature = data.temperature
+                model = data.model
+                SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
+                messageLimit = data.messageLimit    
+            }
+        } catch (e) {
+            console.error('Error loading data:', e)
         }
     }
     beginMuseTimer()
