@@ -40,9 +40,11 @@ const openai = new OpenAI({
 const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds] })!
 
 client.once('ready', async () => {
+    console.log('Client ready. Logging in...')
     await client.login(DISCORD_BOT_TOKEN)
     console.log(`Logged in as ${client!.user!.tag}!`, client.isReady())
     guildId = client.guilds.cache.first()?.id || null
+    console.log('Loading data...')
     if (guildId) {
         try {
             const data = await load(guildId)
@@ -58,6 +60,7 @@ client.once('ready', async () => {
                 SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
                 messageLimit = data.messageLimit    
             }
+            console.log('Loaded data.')
         } catch (e) {
             console.error('Error loading data:', e)
         }
