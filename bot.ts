@@ -35,9 +35,12 @@ let RESPONSE_DELAY_MS = 10000; // 10 seconds
 let MUSE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 let SHOULD_MUSE_REGULARLY = true
 
+console.log('initializing openai...')
 const openai = new OpenAI({
     apiKey: OPENAI_API_KEY,
 })
+
+console.log('initializing discord...')
 const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds] })!
 
 client.once('ready', async () => {
