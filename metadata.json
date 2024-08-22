@@ -1,0 +1,18 @@
+{
+    "name": "hq",
+    "description": "ingest data from social feeds",
+    "image": "",
+    "properties": {
+        "package_name": "hq",
+        "current_version": "0.1.0",
+        "publisher": "uncentered.os",
+        "mirrors": [],
+        "code_hashes": {
+            "0.1.0": "84dfa45537a4d49f79478c0ac20a7c5dde8eb9a13dda97fbb95e245e22ea9b8a"
+        },
+        "wit_version": 0,
+        "dependencies": []
+    },
+    "external_url": "",
+    "animation_url": ""
+}
