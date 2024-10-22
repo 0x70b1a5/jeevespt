@@ -327,7 +327,12 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
         case 'model': {
             const parsed = message.content.match(/^!model ([\w.-]+)$/)
             const requestedModel = String(parsed && parsed[1])
-            await message.reply(sysPrefix + `Model set to \`${requestedModel}\`.`)
+            if (requestedModel) {
+                model = requestedModel
+                await message.reply(sysPrefix + `Model set to \`${requestedModel}\`.`)
+            } else {
+                await message.reply(sysPrefix + `Couldn't parse requested model: \`${parsed}\`.`)
+            }
             break }
         case 'parrot': {
             const parsed = message.content.slice(8)
