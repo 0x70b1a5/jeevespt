@@ -516,6 +516,7 @@ async function generateResponse(additionalMessages: { role: string, content: str
             temperature,
             max_tokens: MAX_RESPONSE_LENGTH_TOKENS
         })
+        console.log({completion})
         const botMsg = completion.content[0]
         if (botMsg && 'text' in botMsg) {
             ourMessageLog.push({ role: 'assistant', content: botMsg.text || '' })
