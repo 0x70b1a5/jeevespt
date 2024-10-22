@@ -21,7 +21,7 @@ const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
-let ourMessageLog: ChatCompletionMessageParam[] = []
+let ourMessageLog: { role: string, content: string }[] = []
 type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt'
 let mode: BotMode = 'jeeves'
 let messageLimit = 20
@@ -29,9 +29,9 @@ let temperature = 0.9
 let guildId: string | null = null
 let MAX_RESPONSE_LENGTH_TOKENS = 1000
 let SHOULD_SAVE_DATA = true
-let model = 'gpt-4'
+let model = 'claude-3-5-sonnet-latest'
 const sysPrefix = '[SYSTEM] '
-let messageBuffer: ChatCompletionMessageParam[] = [];
+let messageBuffer: { role: string, content: string }[] = [];
 let responseTimer: NodeJS.Timeout | null = null;
 let RESPONSE_DELAY_MS = 10000; // 10 seconds
 let MUSE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
@@ -432,8 +432,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         case 'empty': {
             message.channel.sendTyping()
             const response = await generateResponse()
-            if (response && 'text' in response) {
-                await message.reply(response.text || '')
+            if (response && typeof response === 'string') {
+                await message.reply(response)
             }
             break }
         case 'log': {
@@ -518,9 +518,10 @@ async function generateResponse(additionalMessages: { role: string, content: str
         })
         console.log(JSON.stringify({completion}, null, 2))
         const botMsg = completion.content[0]
-        if (botMsg && 'text' in botMsg) {
-            ourMessageLog.push({ role: 'assistant', content: botMsg.text || '' })
-            return botMsg
+        if (botMsg?.type === 'text') {
+            const response = { role: 'assistant', content: botMsg.text }
+            ourMessageLog.push(response)
+            return response
         } else {
             return null
         }
@@ -530,7 +531,7 @@ async function generateResponse(additionalMessages: { role: string, content: str
         return {
             role: 'assistant',
             content: msg
-        } as ChatCompletionMessageParam
+        }
     }
 }
 
@@ -630,7 +631,7 @@ If there was an error fetching the webpage, please mention this, as the develope
         const response = await generateResponse([prompt])
         if (response && 'text' in response) {
             channels.forEach(async channel => {
-                for (const chunk of splitMessageIntoChunks([{ role: 'assistant', content: response.text }])) {
+                for (const chunk of splitMessageIntoChunks([{ role: 'assistant', content: response.text as string }])) {
                     await (channel as TextChannel).send(chunk)
                 }
                 if (url) {
