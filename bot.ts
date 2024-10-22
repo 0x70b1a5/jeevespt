@@ -5,8 +5,9 @@ import https from 'https';
 import fs from 'fs';
 const pipeline = promisify(require('stream').pipeline);
 const exec = promisify(execCb);
-import { Attachment, ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
+import { Attachment, ChannelType, Client as DiscordClient, GatewayIntentBits, Message, TextChannel } from 'discord.js';
 import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import dayjs from 'dayjs';
 import { help } from './help';
 import { getWebpage } from './getWebpage';
@@ -18,6 +19,7 @@ import { JEEVES_PROMPT, TOKIPONA_PROMPT, JARGONATUS_PROMPT } from './prompts';
 // Load the Discord bot token and OpenAI API key from the environment variables
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
 const TARGET_CHANNEL_NAME = process.env.TARGET_CHANNEL_NAME
 let ourMessageLog: ChatCompletionMessageParam[] = []
 type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt'
@@ -39,15 +41,24 @@ console.log('initializing openai...')
 const openai = new OpenAI({
     apiKey: OPENAI_API_KEY,
 })
+const anthropic = new Anthropic({
+    apiKey: ANTHROPIC_API_KEY,
+})
 
 console.log('initializing discord...')
-const client = new Client({ intents: [GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMessages, GatewayIntentBits.Guilds] })!
+const discord = new DiscordClient({
+    intents: [
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.Guilds
+    ]
+})!
 
-client.once('ready', async () => {
+discord.once('ready', async () => {
     console.log('Client ready. Logging in...')
-    await client.login(DISCORD_BOT_TOKEN)
-    console.log(`Logged in as ${client!.user!.tag}!`, client.isReady())
-    guildId = client.guilds.cache.first()?.id || null
+    await discord.login(DISCORD_BOT_TOKEN)
+    console.log(`Logged in as ${discord!.user!.tag}!`, discord.isReady())
+    guildId = discord.guilds.cache.first()?.id || null
     console.log('Loading data...')
     if (guildId) {
         try {
@@ -62,7 +73,7 @@ client.once('ready', async () => {
                 temperature = data.temperature
                 model = data.model
                 SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
-                messageLimit = data.messageLimit    
+                messageLimit = data.messageLimit
             }
             console.log('Loaded data.')
         } catch (e) {
@@ -70,7 +81,7 @@ client.once('ready', async () => {
         }
     }
     beginMuseTimer()
-    const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+    const channels = discord.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
     await syncProfileWithMode()
 
     if (channels.size > 0) {
@@ -80,14 +91,14 @@ client.once('ready', async () => {
     }
 })
 
-client.on('error', async (e) => {
+discord.on('error', async (e) => {
     console.error(e)
 })
 
-function splitMessageIntoChunks(msgs: ChatCompletionMessageParam[]) {
+function splitMessageIntoChunks(msgs: { role: string, content: string }[]) {
     const MAX_CHUNK_SIZE = 1900;
     let chunks = [''];
-    
+
     msgs.forEach(msg => {
         const chunkIndex = chunks.length - 1
         const excess = (msg?.content?.length || 0) - MAX_CHUNK_SIZE
@@ -132,16 +143,16 @@ async function syncProfileWithMode() {
 
 async function setBotProfile(username: string, avatarUrl: string) {
     try {
-        await client.user?.setUsername(username);
-        await client.user?.setAvatar(avatarUrl);
+        await discord.user?.setUsername(username);
+        await discord.user?.setAvatar(avatarUrl);
     } catch (error) {
         console.error('Error setting bot profile:', error);
     }
 }
 
-client.on('messageCreate', async (message) => {
+discord.on('messageCreate', async (message) => {
     if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
-    if (!client.user) { return }
+    if (!discord.user) { return }
     guildId = message.guildId
 
     console.log('messageCreate', message.content, 'from', message.author.tag)
@@ -188,8 +199,8 @@ client.on('messageCreate', async (message) => {
             return // transcription mode has already sent the message with the transcription by this point
         }
 
-        messageBuffer.push({ 
-            role: 'user', 
+        messageBuffer.push({
+            role: 'user',
             content: `${dayjs().format('MM/DD/YYYY HH:mm:ss')} [${message.author.username}]: ${userMessage}`
         })
 
@@ -240,18 +251,18 @@ client.on('messageCreate', async (message) => {
 const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => Promise<string> = async (audio: Attachment, message: Message) => {
     await message.channel.sendTyping()
     let audioMessageContent = ''
-    
+
     // Download the audio file
     const file = fs.createWriteStream('audio.mp3');
     const response = await new Promise((resolve, reject) => {
         https.get(audio!.proxyURL, resolve).on('error', reject);
     });
-    
+
     await pipeline(
         response,
         file
     );
-        
+
     try {
         await message.channel.sendTyping()
         const transcription = await whisper(openai, 'audio.mp3')
@@ -259,7 +270,7 @@ const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => 
         if (!transcription?.text?.length) {
             await message.reply(sysPrefix + '[ERROR] Could not process audio.')
             return ''
-        } else {                    
+        } else {
             audioMessageContent = transcription.text
             console.log(`whisper: ${audioMessageContent}`);
             await message.reply(`${sysPrefix}Transcription: ${audioMessageContent}`)
@@ -273,7 +284,7 @@ const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => 
 }
 
 const respondToCommand: (message: Message) => Promise<void> = async (message: Message) => {
-    if (!client?.user) return
+    if (!discord?.user) return
     const command = unzap(message.content.split(' ')[0])
     switch (command) {
         case 'clear': {
@@ -320,7 +331,7 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
             break }
         case 'parrot': {
             const parsed = message.content.slice(8)
-            await message.reply(sysPrefix + 'Parroting previous message.')        
+            await message.reply(sysPrefix + 'Parroting previous message.')
             const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
             console.log(chunx)
             chunx.forEach(async chunk => {
@@ -357,8 +368,8 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
                 messageLimit = requestedLimit
                 await message.reply(sysPrefix + `Message memory is now ${messageLimit} messages.`)
             } else {
-                await message.reply(sysPrefix + `Failed to parse requested limit. 
-Found: \`${parsed}\` 
+                await message.reply(sysPrefix + `Failed to parse requested limit.
+Found: \`${parsed}\`
 Format: \`!limit X\` where X is a number greater than zero.`)
             }
             break }
@@ -416,8 +427,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         case 'empty': {
             message.channel.sendTyping()
             const response = await generateResponse()
-            if (response) {
-                await message.reply(response.content as string || '')
+            if (response && 'text' in response) {
+                await message.reply(response.text || '')
             }
             break }
         case 'log': {
@@ -460,7 +471,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 const unzap = (s: string) => (s[0] === '!') ? s.slice(1) : s
 
 const jeevesMsg = {
-    role: 'system', 
+    role: 'system',
     content: JEEVES_PROMPT
 }
 
@@ -487,19 +498,22 @@ const getSystemPrompt = () => {
     return jeevesMsg
 }
 
-async function generateResponse(additionalMessages: ChatCompletionMessageParam[] = []) {
-    const latestMessages = [getSystemPrompt(), ...ourMessageLog, ...additionalMessages] as ChatCompletionMessageParam[]
+async function generateResponse(additionalMessages: { role: string, content: string }[] = []) {
+    const latestMessages = [getSystemPrompt(), ...ourMessageLog, ...additionalMessages] as { role: string, content: string }[]
 
     try {
-        const completion = await openai.chat.completions.create({
+        const completion = await anthropic.messages.create({
             model: model,
-            messages: latestMessages as ChatCompletionMessageParam[],
+            messages: latestMessages.map(msg => ({
+                role: msg.role === 'assistant' ? 'assistant' : 'user',
+                content: msg.content as string
+            })),
             temperature,
             max_tokens: MAX_RESPONSE_LENGTH_TOKENS
         })
-        const botMsg = completion.choices[0].message     
-        if (botMsg) {
-            ourMessageLog.push({ role: 'assistant', content: botMsg.content || '' })
+        const botMsg = completion.content[0]
+        if (botMsg && 'text' in botMsg) {
+            ourMessageLog.push({ role: 'assistant', content: botMsg.text || '' })
             return botMsg
         } else {
             return null
@@ -525,7 +539,7 @@ let museTimer: NodeJS.Timeout
 async function beginMuseTimer() {
     let lastMessageTimestamp = Date.now();
 
-    client.on('messageCreate', (message) => {
+    discord.on('messageCreate', (message) => {
         if ((message.channel as TextChannel)?.name === TARGET_CHANNEL_NAME && !message.author.bot) {
             console.log('message received, resetting muse timer')
             lastMessageTimestamp = Date.now();
@@ -563,8 +577,8 @@ const fetchOpenAIPrices = async () => {
 };
 
 async function muse(url?: string) {
-    const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
-    
+    const channels = discord.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+
     channels.forEach(async channel => {
         (channel as TextChannel).sendTyping()
     })
@@ -587,7 +601,7 @@ async function muse(url?: string) {
     }
 
     if (channels.size > 0) {
-        const prompt: ChatCompletionMessageParam = {
+        const prompt: { role: string, content: string } = {
             role: 'system',
             content: `It's been a while since the last message. It's up to you to inject some activity into the situation! Please read the following webpage.
 
@@ -608,9 +622,9 @@ If there was an error fetching the webpage, please mention this, as the develope
         console.log(prompt)
 
         const response = await generateResponse([prompt])
-        if (response) {
+        if (response && 'text' in response) {
             channels.forEach(async channel => {
-                for (const chunk of splitMessageIntoChunks([response])) {
+                for (const chunk of splitMessageIntoChunks([{ role: 'assistant', content: response.text }])) {
                     await (channel as TextChannel).send(chunk)
                 }
                 if (url) {
@@ -621,7 +635,7 @@ If there was an error fetching the webpage, please mention this, as the develope
     }
 }
 
-client.login(DISCORD_BOT_TOKEN)
+discord.login(DISCORD_BOT_TOKEN)
 
 // alert when going offline
 process.on('SIGINT', async () => {
@@ -639,12 +653,12 @@ process.on('SIGINT', async () => {
             model,
             SHOULD_SAVE_DATA,
             messageLimit,
-            
+
         })
     }
-    
-    const channels = client.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
-    
+
+    const channels = discord.channels.cache.filter(channel => channel.type === ChannelType.GuildText && channel.name === TARGET_CHANNEL_NAME);
+
     if (channels.size > 0) {
         for (const channel of channels.values()) {
             try {
@@ -655,6 +669,6 @@ process.on('SIGINT', async () => {
         }
     }
 
-    client.destroy();
+    discord.destroy();
     process.exit(0);
 });
