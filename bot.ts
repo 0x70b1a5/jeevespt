@@ -36,6 +36,8 @@ let responseTimer: NodeJS.Timeout | null = null;
 let RESPONSE_DELAY_MS = 10000; // 10 seconds
 let MUSE_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 let SHOULD_MUSE_REGULARLY = true
+// let RIEC_RESPOND_IN_EVERY_CHANNEL = false
+// let riecMessageBuffer: ChatCompletionMessageParam[] = [];
 
 console.log('initializing openai...')
 const openai = new OpenAI({
@@ -55,11 +57,11 @@ const discord = new DiscordClient({
 })!
 
 discord.once('ready', async () => {
-    console.log('Client ready. Logging in...')
+    console.log('Discord client ready. Logging in...')
     await discord.login(DISCORD_BOT_TOKEN)
     console.log(`Logged in as ${discord!.user!.tag}!`, discord.isReady())
     guildId = discord.guilds.cache.first()?.id || null
-    console.log('Loading data...')
+    console.log('Loading persisted data...')
     if (guildId) {
         try {
             const data = await load(guildId)
@@ -74,10 +76,11 @@ discord.once('ready', async () => {
                 model = data.model
                 SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
                 messageLimit = data.messageLimit
+                // RIEC_RESPOND_IN_EVERY_CHANNEL = data.RESPOND_IN_EVERY_CHANNEL
             }
-            console.log('Loaded data.')
+            console.log('Loaded persisted data.')
         } catch (e) {
-            console.error('Error loading data:', e)
+            console.error('Error loading persisted data:', e)
         }
     }
     beginMuseTimer()
@@ -97,24 +100,15 @@ discord.on('error', async (e) => {
 
 function splitMessageIntoChunks(msgs: { role: string, content: string }[]) {
     const MAX_CHUNK_SIZE = 1900;
-    let chunks = [''];
+    let chunks: string[] = [];
 
     msgs.forEach(msg => {
-        const chunkIndex = chunks.length - 1
-        const excess = (msg?.content?.length || 0) - MAX_CHUNK_SIZE
-
-        // append short messages to latest chunk and move on
-        if (excess < 0) {
-            chunks[chunkIndex] += msg.content
-            return
+        let content = msg.content;
+        while (content.length > 0) {
+            const chunk = content.slice(0, MAX_CHUNK_SIZE);
+            chunks.push(chunk);
+            content = content.slice(MAX_CHUNK_SIZE);
         }
-
-        // bite off as much as possible and add it to latest chunk
-        const bite = msg.content?.slice(0, excess) || ''
-        chunks[chunkIndex] += bite;
-
-        // add the rest to a new chunk
-        chunks.push(msg.content?.slice(excess) as string || '');
     });
 
     return chunks;
@@ -123,7 +117,7 @@ function splitMessageIntoChunks(msgs: { role: string, content: string }[]) {
 async function syncProfileWithMode() {
     switch (mode) {
         case 'tokipona':
-            await setBotProfile('ilo Jepite', 'https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
+            await setBotProfile('ilo sona', 'https://www.jonathangabel.com/images/t47_tokipona/jan_ante/inkepa.mumumu.jpg')
             break
         case 'jargon':
             await setBotProfile('JARGONATUS', 'https://user-images.githubusercontent.com/10970247/229021007-1b4fd5e5-3c66-4290-a20f-3c47af0de760.png')
@@ -152,6 +146,7 @@ async function setBotProfile(username: string, avatarUrl: string) {
 
 discord.on('messageCreate', async (message) => {
     if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
+    // if (!RIEC_RESPOND_IN_EVERY_CHANNEL && (message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
     if (!discord.user) { return }
     guildId = message.guildId
 
@@ -168,7 +163,7 @@ discord.on('messageCreate', async (message) => {
         if (userMessage.match(/^!empty/)) {
             userMessage = ''
         }
-        let audio : Attachment | undefined;
+        let audio: Attachment | undefined;
         for (const [messageID, attachment] of message.attachments) {
             // console.log('found attachment', messageID, attachment)
             if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
@@ -185,7 +180,7 @@ discord.on('messageCreate', async (message) => {
             if (firstWord.toLocaleLowerCase().startsWith('command')) {
                 try {
                     await message.reply(`${sysPrefix}Detected voice command: \`${secondWord}\`.`)
-                } catch {}
+                } catch { }
                 // mutate in place baby!
                 message.content = `!${secondWord.trim().replace('!', '')} ${rest}`.toLocaleLowerCase()
                 return respondToCommand(message)
@@ -194,7 +189,7 @@ discord.on('messageCreate', async (message) => {
 
         if (mode === 'whisper') {
             if (!message.attachments.size) {
-                await message.reply(sysPrefix+'Please send an audio message to receive a transcription, or switch modes (!help) to chat with a persona.')
+                await message.reply(sysPrefix + 'Please send an audio message to receive a transcription, or switch modes (!help) to chat with a persona.')
             }
             return // transcription mode has already sent the message with the transcription by this point
         }
@@ -290,30 +285,35 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
         case 'clear': {
             ourMessageLog = []
             await message.reply(sysPrefix + 'Cleared messages log.')
-            break }
+            break
+        }
         case 'jeeves': {
             ourMessageLog = []
             mode = 'jeeves'
             await syncProfileWithMode()
             await message.reply(sysPrefix + 'I have switched to Jeeves mode, sir.')
-            break }
+            break
+        }
         case 'tokipona': {
             ourMessageLog = []
             mode = 'tokipona'
             await syncProfileWithMode()
             await message.reply(sysPrefix + 'mi ante e nasin tawa toki pona.')
-            break }
+            break
+        }
         case 'jargon': {
             ourMessageLog = []
             mode = 'jargon'
             await syncProfileWithMode()
             await message.reply(sysPrefix + '`# Even in death, I serve the Omnissiah.`')
-            break }
+            break
+        }
         case 'whisper': {
             ourMessageLog = []
             mode = 'whisper'
             await syncProfileWithMode()
-            break }
+            break
+        }
         case 'temperature': {
             const parsed = message.content.match(/^!temperature ([0-9.]+)$/)
             const requestedTemp = Number(parsed && parsed[1])
@@ -323,34 +323,18 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
             } else {
                 await message.reply(sysPrefix + `Couldn't parse requested temperature: \`${requestedTemp}\`. Must be a decimal between 0 and 2.`)
             }
-            break }
+            break
+        }
         case 'model': {
             const parsed = message.content.match(/^!model ([\w.-]+)$/)
             const requestedModel = String(parsed && parsed[1])
             await message.reply(sysPrefix + `Model set to \`${requestedModel}\`.`)
-            break }
+            break
+        }
         case 'parrot': {
             const parsed = message.content.slice(8)
             await message.reply(sysPrefix + 'Parroting previous message.')
-            const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
-            console.log(chunx)
-            chunx.forEach(async chunk => {
-                if (!chunk) return
-                try {
-                    await message.channel.send(chunk)
-                } catch (e) {
-                    await message.channel.send(sysPrefix+'[ERROR] Failed to send a message.')
-                }
-            })
-            break }
-        case 'prompt': {
-            const parsed = message.content.slice(8)
-            ourMessageLog = []
-            userMsg.content = parsed
-            mode = 'customprompt'
-            await syncProfileWithMode()
-            await message.reply(sysPrefix + 'Prompt set to:')
-            const chunx = splitMessageIntoChunks([{role: 'user', content: parsed}])
+            const chunx = splitMessageIntoChunks([{ role: 'user', content: parsed }])
             console.log(chunx)
             chunx.forEach(async chunk => {
                 if (!chunk) return
@@ -360,7 +344,27 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
                     await message.channel.send(sysPrefix + '[ERROR] Failed to send a message.')
                 }
             })
-            break }
+            break
+        }
+        case 'prompt': {
+            const parsed = message.content.slice(8)
+            ourMessageLog = []
+            userMsg.content = parsed
+            mode = 'customprompt'
+            await syncProfileWithMode()
+            await message.reply(sysPrefix + 'Prompt set to:')
+            const chunx = splitMessageIntoChunks([{ role: 'user', content: parsed }])
+            console.log(chunx)
+            chunx.forEach(async chunk => {
+                if (!chunk) return
+                try {
+                    await message.channel.send(chunk)
+                } catch (e) {
+                    await message.channel.send(sysPrefix + '[ERROR] Failed to send a message.')
+                }
+            })
+            break
+        }
         case 'limit': {
             const parsed = message.content.match(/^!limit (\d+)$/)
             const requestedLimit = Number(parsed && parsed[1])
@@ -372,10 +376,11 @@ const respondToCommand: (message: Message) => Promise<void> = async (message: Me
 Found: \`${parsed}\`
 Format: \`!limit X\` where X is a number greater than zero.`)
             }
-            break }
+            break
+        }
         case 'help': {
             const helpTexts = [
-`# JEEVESPT
+                `# JEEVESPT
 - Remembers the last ${messageLimit} messages (yours and his)
 - Temperature: ${temperature}
 - Model: ${model}
@@ -391,7 +396,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
             helpTexts.forEach(async text => {
                 await message.channel.send(text)
             })
-            break }
+            break
+        }
         case 'delay': {
             const parsed = message.content.match(/^!delay (\d+)$/)
             const requestedDelay = Math.round(Number(parsed && parsed[1]))
@@ -401,7 +407,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
             } else {
                 await message.reply(sysPrefix + `Failed to parse requested delay. Found: \`${parsed}\`. Format: \`!delay SECONDS\` wherex SECONDS is a number greater than zero.`)
             }
-            break }
+            break
+        }
         case 'muse': {
             const parsed = message.content.match(/^!muse (.*)$/)
             if (parsed) {
@@ -409,35 +416,41 @@ Format: \`!limit X\` where X is a number greater than zero.`)
             } else {
                 muse()
             }
-            break }
+            break
+        }
         case 'museon': {
             SHOULD_MUSE_REGULARLY = true
             await message.reply(sysPrefix + 'Muse will now happen automatically.')
-            break }
+            break
+        }
         case 'museoff': {
             SHOULD_MUSE_REGULARLY = false
             await message.reply(sysPrefix + 'Muse will no longer happen automatically.')
-            break }
+            break
+        }
         case 'museinterval': {
             const parsed = message.content.match(/^!museinterval (\d+)$/)
             const requestedInterval = Math.round(Number(parsed && parsed[1]))
             MUSE_INTERVAL = requestedInterval * 60 * 60 * 1000
             await message.reply(sysPrefix + `Muse interval set to ${requestedInterval} hours.`)
-            break }
+            break
+        }
         case 'empty': {
             message.channel.sendTyping()
             const response = await generateResponse()
             if (response && 'text' in response) {
                 await message.reply(response.text || '')
             }
-            break }
+            break
+        }
         case 'log': {
             const logAsString = JSON.stringify(ourMessageLog, null, 2)
-            const chunx = splitMessageIntoChunks([{role: 'assistant', content: logAsString}])
+            const chunx = splitMessageIntoChunks([{ role: 'assistant', content: logAsString }])
             await message.reply(sysPrefix + 'CURRENT MEMORY:\n---')
             chunx.forEach(async m => m && await message.channel.send(m))
             await message.channel.send(sysPrefix + '---')
-            break }
+            break
+        }
         case 'prices': {
             const prices = await fetchOpenAIPrices();
             if (prices) {
@@ -445,7 +458,8 @@ Format: \`!limit X\` where X is a number greater than zero.`)
             } else {
                 await message.reply(sysPrefix + '[ERROR] Could not fetch OpenAI API prices.');
             }
-            break }
+            break
+        }
         case 'tokens': {
             const parsed = message.content.match(/^!tokens (\d+)$/)
             const requestedTokens = Number(parsed && parsed[1])
@@ -455,15 +469,17 @@ Format: \`!limit X\` where X is a number greater than zero.`)
             } else {
                 await message.reply(sysPrefix + `Failed to parse requested tokens. Found: \`${parsed}\`. Format: \`!tokens TOKENS\` where TOKENS is a number greater than zero.`)
             }
-            break }
+            break
+        }
         case 'persist': {
             SHOULD_SAVE_DATA = !SHOULD_SAVE_DATA
             await message.reply(sysPrefix + `Bot will now ${SHOULD_SAVE_DATA ? 'SAVE' : 'NOT SAVE'} data to disk.`)
-            break }
+            break
+        }
         default:
             try {
                 await message.reply(`${sysPrefix}Unrecognized command "${command}".`)
-            } catch {}
+            } catch { }
             break
     }
 }
