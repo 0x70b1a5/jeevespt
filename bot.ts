@@ -57,7 +57,8 @@ const discord = new DiscordClient({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.Guilds,
         GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.DirectMessageTyping
+        GatewayIntentBits.DirectMessageTyping,
+        GatewayIntentBits.DirectMessageReactions
     ]
 })!
 
