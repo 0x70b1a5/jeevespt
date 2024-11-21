@@ -62,10 +62,6 @@ const discord = new DiscordClient({
     ]
 })!
 
-discord.on('raw', async (event) => {
-    console.log('Raw event received:', event.t);
-});
-
 discord.once('ready', async () => {
     console.log('Discord client ready. Logging in...')
     console.log('Intents configured:', discord.options.intents)
@@ -156,7 +152,7 @@ async function setBotProfile(username: string, avatarUrl: string) {
     }
 }
 
-discord.on('messageCreate', async (message) => {
+const onMessageCreate = async (message: Message) => {
     console.log('messageCreate', {
         content: message.content,
         author: message.author.tag,
@@ -278,7 +274,19 @@ discord.on('messageCreate', async (message) => {
             responseTimer = null;
         }, RESPONSE_DELAY_MS);
     }
+}
+
+discord.on('messageCreate', async (message) => {
+    onMessageCreate(message)
 })
+
+discord.on('raw', async (event) => {
+    console.log('Raw event received:', event.t);
+    if (event.t === 'MESSAGE_CREATE') {
+        console.log('MESSAGE_CREATE event received:', event.d)
+        onMessageCreate(event.d as Message)
+    }
+});
 
 const transcribeAudio_maybeReply: (attachment: Attachment, message: Message) => Promise<string> = async (audio: Attachment, message: Message) => {
     await message.channel.sendTyping()
