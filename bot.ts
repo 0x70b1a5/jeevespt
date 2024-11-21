@@ -62,6 +62,10 @@ const discord = new DiscordClient({
     ]
 })!
 
+discord.on('raw', async (event) => {
+    console.log('Raw event received:', event.t);
+});
+
 discord.once('ready', async () => {
     console.log('Discord client ready. Logging in...')
     console.log('Intents configured:', discord.options.intents)
