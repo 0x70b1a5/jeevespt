@@ -165,14 +165,25 @@ discord.on('messageCreate', async (message) => {
         guildId: message.guildId
     })
 
-    if (!discord.user) { return }
+    if (!discord.user) {
+        console.log('No discord user found - returning early')
+        return
+    }
 
     // Check if message is from a DM or allowed channel
     const isValidChannel =
         (message.channel.type === ChannelType.DM && ALLOW_DMS) ||
         ((message.channel as TextChannel)?.name === TARGET_CHANNEL_NAME)
 
-    if (!isValidChannel) { return }
+    if (!isValidChannel) {
+        console.log('Invalid channel - returning early', {
+            isDM: message.channel.type === ChannelType.DM,
+            allowDMs: ALLOW_DMS,
+            channelName: (message.channel as TextChannel)?.name,
+            targetChannel: TARGET_CHANNEL_NAME
+        })
+        return
+    }
 
     guildId = message.guildId
 
