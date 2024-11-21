@@ -1,5 +1,5 @@
 export const help: string[] = [
-`
+    `
 
 ## Commands
 
@@ -14,7 +14,7 @@ export const help: string[] = [
 \`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
 
 `,
-`
+    `
 ### Chat History
 
 \`!clear\`: Forget everything from the present conversation.
@@ -28,14 +28,15 @@ export const help: string[] = [
 \`!delay SECONDS\`: Sets reponse delay to SECONDS seconds. This can be useful if you want the bot to wait for someone to send a few different messages before responding.
 \`!tokens INTEGER\`: Sets the maximum number of tokens to generate.
 \`!persist\`: Toggle whether data is saved between sessions.
+\`!dms\`: Toggle whether the bot will respond to direct messages.
 `,
-`
+    `
 ### Testing
 
 \`!parrot STRING\`: Makes the bot repeat the entire message back to you. Useful for testing. Does not append message to log.
 \`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to continue speaking about its previous subject.
 `,
-`
+    `
 
 ### Musing
 
