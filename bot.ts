@@ -151,7 +151,6 @@ async function setBotProfile(username: string, avatarUrl: string) {
 }
 
 discord.on('messageCreate', async (message) => {
-    console.log('messageCreate', message.content, 'from', message.author.tag)
 
     if (!discord.user) { return }
 
