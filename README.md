@@ -2,11 +2,14 @@
 
 ## Setup
 
-1. Install dependencies
+1. Setup a Discord bot and get the token
+    - https://discord.com/developers/applications
+    - Create an application
+    - Create a bot
+    - Copy the token
+    - add token to .env file
+2. Install dependencies
     - `npm install`
 1. Run the bot
     - `ts-node bot.ts | tee -a log.txt`
-
-## TODOs
-
-- N/A
+1. Approve the bot in the server
