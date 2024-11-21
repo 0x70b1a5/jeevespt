@@ -39,6 +39,9 @@ let SHOULD_MUSE_REGULARLY = true
 // let RIEC_RESPOND_IN_EVERY_CHANNEL = false
 // let riecMessageBuffer: ChatCompletionMessageParam[] = [];
 
+// Replace the constant with a variable
+let ALLOW_DMS = process.env.ALLOW_DMS === 'true'
+
 console.log('initializing openai...')
 const openai = new OpenAI({
     apiKey: OPENAI_API_KEY,
@@ -77,6 +80,7 @@ discord.once('ready', async () => {
                 SHOULD_SAVE_DATA = data.SHOULD_SAVE_DATA
                 messageLimit = data.messageLimit
                 // RIEC_RESPOND_IN_EVERY_CHANNEL = data.RESPOND_IN_EVERY_CHANNEL
+                ALLOW_DMS = data.ALLOW_DMS
             }
             console.log('Loaded persisted data.')
         } catch (e) {
@@ -145,9 +149,15 @@ async function setBotProfile(username: string, avatarUrl: string) {
 }
 
 discord.on('messageCreate', async (message) => {
-    if ((message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
-    // if (!RIEC_RESPOND_IN_EVERY_CHANNEL && (message.channel as TextChannel)?.name !== TARGET_CHANNEL_NAME) { return }
     if (!discord.user) { return }
+
+    // Check if message is from a DM or allowed channel
+    const isValidChannel =
+        (message.channel.type === ChannelType.DM && ALLOW_DMS) ||
+        ((message.channel as TextChannel)?.name === TARGET_CHANNEL_NAME)
+
+    if (!isValidChannel) { return }
+
     guildId = message.guildId
 
     console.log('messageCreate', message.content, 'from', message.author.tag)
@@ -395,6 +405,7 @@ Format: \`!limit X\` where X is a number greater than zero.`)
 - Current mode: \`${mode}\`
 - Max response length (tokens): ${MAX_RESPONSE_LENGTH_TOKENS}
 - Persist data: ${SHOULD_SAVE_DATA ? 'enabled' : 'disabled'}
+- Direct messages: ${ALLOW_DMS ? 'enabled' : 'disabled'}
 - Not actually Jeeves. :(`,
                 ...help
             ]
@@ -479,6 +490,11 @@ Format: \`!limit X\` where X is a number greater than zero.`)
         case 'persist': {
             SHOULD_SAVE_DATA = !SHOULD_SAVE_DATA
             await message.reply(sysPrefix + `Bot will now ${SHOULD_SAVE_DATA ? 'SAVE' : 'NOT SAVE'} data to disk.`)
+            break
+        }
+        case 'dms': {
+            ALLOW_DMS = !ALLOW_DMS
+            await message.reply(sysPrefix + `Direct messages are now ${ALLOW_DMS ? 'ENABLED' : 'DISABLED'}.`)
             break
         }
         default:
@@ -676,7 +692,7 @@ process.on('SIGINT', async () => {
             model,
             SHOULD_SAVE_DATA,
             messageLimit,
-
+            ALLOW_DMS,
         })
     }
 
