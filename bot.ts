@@ -63,6 +63,7 @@ const discord = new DiscordClient({
 
 discord.once('ready', async () => {
     console.log('Discord client ready. Logging in...')
+    console.log('Intents configured:', discord.options.intents)
     await discord.login(DISCORD_BOT_TOKEN)
     console.log(`Logged in as ${discord!.user!.tag}!`, discord.isReady())
     guildId = discord.guilds.cache.first()?.id || null
@@ -151,6 +152,13 @@ async function setBotProfile(username: string, avatarUrl: string) {
 }
 
 discord.on('messageCreate', async (message) => {
+    console.log('messageCreate', {
+        content: message.content,
+        author: message.author.tag,
+        channelType: message.channel.type,
+        isDM: message.channel.type === ChannelType.DM,
+        guildId: message.guildId
+    })
 
     if (!discord.user) { return }
 
