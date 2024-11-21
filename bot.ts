@@ -153,13 +153,7 @@ async function setBotProfile(username: string, avatarUrl: string) {
 }
 
 const onMessageCreate = async (message: Message) => {
-    console.log('messageCreate', {
-        content: message.content,
-        author: message.author.tag,
-        channelType: message.channel.type,
-        isDM: message.channel.type === ChannelType.DM,
-        guildId: message.guildId
-    })
+    console.log('messageCreate', { message })
 
     if (!discord.user) {
         console.log('No discord user found - returning early')
@@ -283,8 +277,8 @@ discord.on('messageCreate', async (message) => {
 discord.on('raw', async (event) => {
     console.log('Raw event received:', event.t);
     if (event.t === 'MESSAGE_CREATE') {
-        console.log('MESSAGE_CREATE event received:', event.d)
-        onMessageCreate(event.d as Message)
+        console.log('MESSAGE_CREATE event received:', event)
+        // onMessageCreate(event.d as Message)
     }
 });
 
