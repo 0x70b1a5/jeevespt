@@ -278,6 +278,10 @@ discord.on('raw', async (event) => {
     console.log('Raw event received:', event.t);
     if (event.t === 'MESSAGE_CREATE') {
         console.log('MESSAGE_CREATE event received:', event)
+        if (event.d.guildId) {
+            return
+        }
+        // process as a DM
         const message = event.d
         message.channel = { type: ChannelType.DM } as any
         onMessageCreate(message)
