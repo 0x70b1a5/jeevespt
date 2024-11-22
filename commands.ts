@@ -396,12 +396,24 @@ export class CommandHandler {
         const config = this.state.getConfig(id, isDM);
 
         const systemPrompt = this.getSystemPrompt(id, isDM);
+
+        // Get the most recent messages from the log, excluding the current buffer
+        const recentLogMessages = log.messages
+            .slice(-config.messageLimit)
+            .filter(logMsg =>
+                !buffer.messages.some(bufMsg =>
+                    bufMsg.content === logMsg.content
+                )
+            );
+
         const latestMessages = [
             systemPrompt,
-            ...log.messages.slice(-config.messageLimit), // Use log for context
-            ...buffer.messages, // Add current burst of messages
-            ...additionalMessages
+            ...recentLogMessages,  // Recent history from log
+            ...buffer.messages,    // Current burst of messages
+            ...additionalMessages  // Any additional context
         ].filter(Boolean);
+
+        console.log(`📚 Context size: ${latestMessages.length} messages (${recentLogMessages.length} from log, ${buffer.messages.length} from buffer)`);
 
         try {
             const completion = await this.anthropic.messages.create({
@@ -417,8 +429,7 @@ export class CommandHandler {
             const botMsg = completion.content[0];
             if (botMsg?.type === 'text') {
                 const response = { role: 'assistant', content: botMsg.text };
-                buffer.messages.push(response);
-                console.log(`✅ Successfully generated response (${response.content.length} chars)`);
+                console.log(`✅ Generated response (${response.content.length} chars)`);
                 return response;
             }
             return null;
