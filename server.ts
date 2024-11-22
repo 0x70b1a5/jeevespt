@@ -95,7 +95,6 @@ export class BotServer {
     }
 
     private async performMuse(id: string, isDM: boolean) {
-        console.log(`🎭 Performing muse for ${isDM ? 'user' : 'guild'}: ${id}`);
         const channel = isDM
             ? await this.client.users.fetch(id).then(user => user.dmChannel)
             : this.client.channels.cache
@@ -106,7 +105,10 @@ export class BotServer {
                 )
                 .first() as TextChannel;
 
-        if (!channel) return;
+        if (!channel) {
+            console.log(`🚫 Could not find valid channel for muse (${isDM ? 'DM' : 'guild'}: ${id})`);
+            return;
+        }
 
         try {
             await channel.sendTyping();
@@ -186,19 +188,19 @@ export class BotServer {
             }
         }
 
-        // // Send to active DM channels
-        // for (const [userId, config] of this.state.getAllDMConfigs()) {
-        //     if (config.allowDMs) {
-        //         try {
-        //             const user = await this.client.users.fetch(userId);
-        //             const dm = await user.createDM();
-        //             await dm.send('Your Jeeves is online, sir.');
-        //             console.log(`✅ Welcome message sent to user: ${user.tag} (${user.id})`);
-        //         } catch (error) {
-        //             console.error(`❌ Error sending welcome message to user ${userId}:`, error);
-        //         }
-        //     }
-        // }
+        // Send to active DM channels
+        for (const [userId, config] of this.state.getAllDMConfigs()) {
+            if (config.allowDMs) {
+                try {
+                    const user = await this.client.users.fetch(userId);
+                    const dm = await user.createDM();
+                    await dm.send('Your Jeeves is online, sir.');
+                    console.log(`✅ Welcome message sent to user: ${user.tag} (${user.id})`);
+                } catch (error) {
+                    console.error(`❌ Error sending welcome message to user ${userId}:`, error);
+                }
+            }
+        }
     }
 
     private initializeEventListeners() {
@@ -208,24 +210,31 @@ export class BotServer {
         });
 
         this.client.on('messageCreate', async (message: Message) => {
-            console.log(`📨 Processing message from ${message.author.tag} in ${message.guild?.name || 'DM'}`);
             if (message.author.bot) return;
 
-            const isDM = !message.guild;
-            const id = isDM ? message.author.id : message.guild!.id;
-            const config = this.state.getConfig(id, isDM);
+            // Check if message is from a DM or allowed channel
+            const isValidChannel =
+                (message.channel.type === ChannelType.DM && this.state.getConfig(message.author.id, true).allowDMs) ||
+                ((message.channel as TextChannel)?.name === process.env.TARGET_CHANNEL_NAME);
 
-            const timer = this.getMuseTimer(id, isDM);
-            timer.lastMessageTimestamp = Date.now();
-
-            if (isDM && !config.allowDMs) return;
-
-            if (message.content.startsWith('!')) {
-                await this.commands.handleCommand(message, isDM);
+            if (!isValidChannel) {
+                console.log('📝 Ignoring message from invalid channel', {
+                    isDM: message.channel.type === ChannelType.DM,
+                    channelName: (message.channel as TextChannel)?.name,
+                    targetChannel: process.env.TARGET_CHANNEL_NAME
+                });
                 return;
             }
 
-            await this.commands.handleMessage(message, isDM);
+            const isDM = message.channel.type === ChannelType.DM;
+            console.log(`📨 Processing message from ${message.author.tag} in ${isDM ? 'DM' : message.guild?.name}`);
+
+            // Handle commands or regular messages
+            if (message.content.startsWith('!')) {
+                await this.commands.handleCommand(message, isDM);
+            } else {
+                await this.commands.handleMessage(message, isDM);
+            }
         });
 
         process.on('SIGINT', () => this.handleShutdown());
