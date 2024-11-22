@@ -20,6 +20,10 @@ export interface MessageBuffer {
     responseTimer: NodeJS.Timeout | null;
 }
 
+export interface MessageLog {
+    messages: { role: string; content: string }[];
+}
+
 export type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt';
 
 export class BotState {
@@ -27,6 +31,8 @@ export class BotState {
     private userConfigs: Map<string, BotConfig> = new Map();
     private guildBuffers: Map<string, MessageBuffer> = new Map();
     private userBuffers: Map<string, MessageBuffer> = new Map();
+    private guildLogs: Map<string, MessageLog> = new Map();
+    private userLogs: Map<string, MessageLog> = new Map();
     private customPrompts: Map<string, string> = new Map();
 
     private defaultConfig: BotConfig = {
@@ -56,6 +62,7 @@ export class BotState {
         let config = map.get(id);
 
         if (!config) {
+            console.log(`🎩 No config found for ${isDM ? 'DM' : 'guild'} (${id}). Creating new config.`);
             config = { ...this.defaultConfig };
             map.set(id, config);
         }
@@ -68,6 +75,7 @@ export class BotState {
         let buffer = map.get(id);
 
         if (!buffer) {
+            console.log(`💬 No buffer found for ${isDM ? 'DM' : 'guild'} (${id}). Creating new buffer.`);
             buffer = {
                 messages: [],
                 lastMessageTimestamp: Date.now(),
@@ -128,11 +136,9 @@ export class BotState {
                 }
 
                 if (data.messages) {
-                    const map = isDM ? this.userBuffers : this.guildBuffers;
+                    const map = isDM ? this.userLogs : this.guildLogs;
                     map.set(id, {
                         messages: data.messages,
-                        lastMessageTimestamp: Date.now(),
-                        responseTimer: null
                     });
                 }
 
@@ -149,12 +155,12 @@ export class BotState {
         try {
             const key = this.getStorageKey(id, isDM);
             const config = this.getConfig(id, isDM);
-            const buffer = this.getBuffer(id, isDM);
+            const log = this.getLog(id, isDM);
             const customPrompt = this.customPrompts.get(key);
 
             const data = {
                 config,
-                messages: buffer.messages,
+                messages: log.messages,
                 customPrompt,
                 lastUpdate: Date.now()
             };
@@ -167,5 +173,22 @@ export class BotState {
         } catch (error) {
             console.error(`Error persisting data for ${isDM ? 'user' : 'guild'} ${id}:`, error);
         }
+    }
+
+    getAllDMConfigs(): [string, BotConfig][] {
+        return Array.from(this.userConfigs.entries());
+    }
+
+    getLog(id: string, isDM: boolean): MessageLog {
+        const map = isDM ? this.userLogs : this.guildLogs;
+        let log = map.get(id);
+
+        if (!log) {
+            console.log(`💬 No log found for ${isDM ? 'DM' : 'guild'} (${id}). Creating new log.`);
+            log = { messages: [] };
+            map.set(id, log);
+        }
+
+        return log;
     }
 } 

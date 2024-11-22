@@ -1,9 +1,10 @@
-import { ChannelType, Client, GatewayIntentBits, Message, TextChannel } from 'discord.js';
+import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState } from './new-bot';
 import { CommandHandler } from './commands';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
+dotenv.config();
 
 export class BotServer {
     private client: Client;
@@ -17,7 +18,6 @@ export class BotServer {
     }> = new Map();
 
     constructor() {
-        dotenv.config();
 
         this.client = new Client({
             intents: [
@@ -25,6 +25,9 @@ export class BotServer {
                 GatewayIntentBits.GuildMessages,
                 GatewayIntentBits.MessageContent,
                 GatewayIntentBits.DirectMessages,
+            ],
+            partials: [
+                Partials.Channel,
             ]
         });
 
@@ -162,9 +165,46 @@ export class BotServer {
         process.exit(0);
     }
 
+    private async sendWelcomeMessage() {
+        console.log('👋 Sending welcome messages...');
+
+        // Send to guild channels
+        for (const guild of this.client.guilds.cache.values()) {
+            const channel = guild.channels.cache
+                .find(ch =>
+                    ch.type === ChannelType.GuildText &&
+                    ch.name === process.env.TARGET_CHANNEL_NAME
+                ) as TextChannel;
+
+            if (channel) {
+                try {
+                    await channel.send('Your Jeeves is online, sir.');
+                    console.log(`✅ Welcome message sent to guild: ${guild.name} (${guild.id})`);
+                } catch (error) {
+                    console.error(`❌ Error sending welcome message to guild ${guild.name}:`, error);
+                }
+            }
+        }
+
+        // // Send to active DM channels
+        // for (const [userId, config] of this.state.getAllDMConfigs()) {
+        //     if (config.allowDMs) {
+        //         try {
+        //             const user = await this.client.users.fetch(userId);
+        //             const dm = await user.createDM();
+        //             await dm.send('Your Jeeves is online, sir.');
+        //             console.log(`✅ Welcome message sent to user: ${user.tag} (${user.id})`);
+        //         } catch (error) {
+        //             console.error(`❌ Error sending welcome message to user ${userId}:`, error);
+        //         }
+        //     }
+        // }
+    }
+
     private initializeEventListeners() {
-        this.client.on('ready', () => {
-            console.log(`Logged in as ${this.client.user?.tag}`);
+        this.client.on('ready', async () => {
+            console.log(`🎩 Logged in as ${this.client.user?.tag}`);
+            await this.sendWelcomeMessage();
         });
 
         this.client.on('messageCreate', async (message: Message) => {
@@ -192,7 +232,13 @@ export class BotServer {
     }
 
     public async start() {
-        await this.client.login(process.env.DISCORD_TOKEN);
+        console.log('🚀 Starting bot...');
+        try {
+            await this.client.login(process.env.DISCORD_BOT_TOKEN);
+        } catch (error) {
+            console.error('Error starting bot:', error);
+            process.exit(1);
+        }
     }
 }
 

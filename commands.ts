@@ -1,4 +1,4 @@
-import { Message } from 'discord.js';
+import { Attachment, Message } from 'discord.js';
 import { BotState } from './new-bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
@@ -104,23 +104,36 @@ export class CommandHandler {
     async handleMessage(message: Message, isDM: boolean) {
         console.log(`📨 Processing message from ${isDM ? 'DM' : 'guild'} (${message.author.tag})`);
         const id = isDM ? message.author.id : message.guild!.id;
-        const config = this.state.getConfig(id, isDM);
         const buffer = this.state.getBuffer(id, isDM);
+        const log = this.state.getLog(id, isDM);
+        const config = this.state.getConfig(id, isDM);
 
-        // Handle audio attachments
         let userMessage = message.content;
-        const audio = message.attachments.find(att => att.name?.match(/\.(mp3|ogg|wav)$/));
+
+        // Handle audio attachments if present
+        let audio: Attachment | undefined;
+        for (const [messageID, attachment] of message.attachments) {
+            if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
+                audio = attachment;
+                break;
+            }
+        }
 
         if (audio) {
-            userMessage = await this.transcribeAudio(audio, message);
-            // Check for voice commands
+            userMessage = await this.transcribeAudio(audio, message) || userMessage;
             const firstWord = userMessage.split(' ')[0];
-            const secondWord = userMessage.split(' ')[1]?.replace(/[^a-zA-Z0-9]/g, '');
-            if (firstWord.toLowerCase().startsWith('command') && secondWord) {
-                const rest = userMessage.slice(userMessage.indexOf(secondWord) + secondWord.length).trim();
-                await message.reply(`${this.sysPrefix}Detected voice command: \`${secondWord}\`.`);
-                message.content = `!${secondWord.trim().replace('!', '')} ${rest}`.toLowerCase();
-                return this.handleCommand(message, isDM);
+            const secondWord = userMessage.split(' ')[1]?.replace(/[^a-zA-Z0-9]/g, '') || '';
+            const rest = userMessage.slice(userMessage.indexOf(secondWord) + secondWord.length).trim();
+
+            if (firstWord.toLowerCase().startsWith('command')) {
+                try {
+                    await message.reply(`${this.sysPrefix}Detected voice command: \`${secondWord}\`.`);
+                    // Handle voice command
+                    message.content = `!${secondWord.trim().replace('!', '')} ${rest}`.toLowerCase();
+                    return this.handleCommand(message, isDM);
+                } catch (error) {
+                    console.error('Error processing voice command:', error);
+                }
             }
         }
 
@@ -129,14 +142,22 @@ export class CommandHandler {
             if (!message.attachments.size) {
                 await message.reply(this.sysPrefix + 'Please send an audio message to receive a transcription, or switch modes (!help) to chat with a persona.');
             }
-            return;
+            return; // transcription mode has already sent the message
         }
 
-        // Add message to buffer
-        buffer.messages.push({
+        // Add message to both buffer and log
+        const formattedMessage = {
             role: 'user',
             content: `${dayjs().format('MM/DD/YYYY HH:mm:ss')} [${message.author.username}]: ${userMessage}`
-        });
+        };
+
+        buffer.messages.push(formattedMessage);
+        log.messages.push(formattedMessage);
+
+        // Trim log if needed
+        if (log.messages.length > config.messageLimit) {
+            log.messages = log.messages.slice(-config.messageLimit);
+        }
 
         // Clear existing timer if any
         if (buffer.responseTimer) {
@@ -151,35 +172,50 @@ export class CommandHandler {
     }
 
     private async transcribeAudio(attachment: any, message: Message): Promise<string> {
+        const timestamp = Date.now();
+        const userId = message.author.id;
+        const filename = `audio_${userId}_${timestamp}.mp3`;
+
+        console.log(`🎙️ Processing audio from ${message.author.tag} (${filename})`);
         await message.channel.sendTyping();
 
-        // Download the audio file
-        const file = fs.createWriteStream('audio.mp3');
+        // Download the audio file with unique name
+        const file = fs.createWriteStream(filename);
         const response = await new Promise((resolve, reject) => {
             https.get(attachment.proxyURL, resolve).on('error', reject);
         });
 
-        await pipeline(response, file);
-
         try {
-            const transcription = await whisper(this.openai, 'audio.mp3');
+            await pipeline(response, file);
+            console.log(`📥 Downloaded audio file: ${filename}`);
+
+            const transcription = await whisper(this.openai, filename);
             if (!transcription?.text?.length) {
                 await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
                 return '';
             }
 
+            console.log(`✍️ Transcribed audio for ${message.author.tag}`);
             await message.reply(`${this.sysPrefix}Transcription: ${transcription.text}`);
             return transcription.text;
         } catch (error) {
+            console.error(`❌ Whisper error for ${filename}:`, error);
             await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
-            console.error(`Whisper error:`, error);
             return '';
+        } finally {
+            // Cleanup
+            try {
+                fs.unlinkSync(filename);
+                console.log(`🧹 Cleaned up audio file: ${filename}`);
+            } catch (error) {
+                console.error(`Error cleaning up audio file ${filename}:`, error);
+            }
         }
     }
 
     // Individual command implementations...
     private async setMode(message: Message, id: string, isDM: boolean, mode: string) {
-        this.state.getBuffer(id, isDM).messages = [];
+        this.state.getLog(id, isDM).messages = [];
         this.state.updateConfig(id, isDM, { mode: mode as any });
 
         const responses = {
@@ -215,8 +251,8 @@ export class CommandHandler {
     }
 
     private async setCustomPrompt(message: Message, id: string, isDM: boolean, prompt: string) {
-        const buffer = this.state.getBuffer(id, isDM);
-        buffer.messages = [];
+        const log = this.state.getLog(id, isDM);
+        log.messages = [];
         this.state.updateConfig(id, isDM, { mode: 'customprompt' });
         this.state.setCustomPrompt(id, isDM, prompt);
 
@@ -228,14 +264,14 @@ export class CommandHandler {
     }
 
     private async clearHistory(message: Message, id: string, isDM: boolean) {
-        const buffer = this.state.getBuffer(id, isDM);
-        buffer.messages = [];
+        const log = this.state.getLog(id, isDM);
+        log.messages = [];
         await message.reply(`${this.sysPrefix}Cleared messages log.`);
     }
 
     private async showLog(message: Message, id: string, isDM: boolean) {
-        const buffer = this.state.getBuffer(id, isDM);
-        const logAsString = JSON.stringify(buffer.messages, null, 2);
+        const log = this.state.getLog(id, isDM);
+        const logAsString = JSON.stringify(log.messages, null, 2);
         const chunks = this.splitMessageIntoChunks([{ role: 'assistant', content: logAsString }]);
 
         await message.reply(`${this.sysPrefix}CURRENT MEMORY:\n---`);
@@ -327,6 +363,7 @@ export class CommandHandler {
     private async sendDelayedResponse(message: Message, isDM: boolean) {
         const id = isDM ? message.author.id : message.guild!.id;
         const buffer = this.state.getBuffer(id, isDM);
+        const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
 
         try {
@@ -338,6 +375,9 @@ export class CommandHandler {
                 for (const chunk of chunks) {
                     if (chunk) await message.reply(chunk);
                 }
+
+                // Add response to log
+                log.messages.push(response);
             }
         } catch (error) {
             console.error('Error sending delayed response:', error);
@@ -352,12 +392,14 @@ export class CommandHandler {
     private async generateResponse(id: string, isDM: boolean, additionalMessages: { role: string, content: string }[] = []) {
         console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}`);
         const buffer = this.state.getBuffer(id, isDM);
+        const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
 
         const systemPrompt = this.getSystemPrompt(id, isDM);
         const latestMessages = [
             systemPrompt,
-            ...buffer.messages,
+            ...log.messages.slice(-config.messageLimit), // Use log for context
+            ...buffer.messages, // Add current burst of messages
             ...additionalMessages
         ].filter(Boolean);
 
