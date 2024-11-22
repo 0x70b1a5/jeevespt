@@ -389,8 +389,16 @@ export class CommandHandler {
         buffer.responseTimer = null;
     }
 
-    private async generateResponse(id: string, isDM: boolean, additionalMessages: { role: string, content: string }[] = []) {
-        console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}`);
+    private async generateResponse(
+        id: string,
+        isDM: boolean,
+        additionalMessages: { role: string, content: string }[] = [],
+        retryCount = 0
+    ): Promise<{ role: string, content: string } | null> {
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = 1000; // Start with 1 second delay
+
+        console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}${retryCount > 0 ? ` (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})` : ''}`);
         const buffer = this.state.getBuffer(id, isDM);
         const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
@@ -433,7 +441,20 @@ export class CommandHandler {
                 return response;
             }
             return null;
-        } catch (error) {
+        } catch (error: any) {
+            // Check if we should retry
+            if (
+                error.headers?.['x-should-retry'] === 'true' &&
+                retryCount < MAX_RETRIES
+            ) {
+                const delay = RETRY_DELAY_MS * Math.pow(2, retryCount); // Exponential backoff
+                console.log(`⏳ Request failed, retrying in ${delay}ms... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
+
+                await new Promise(resolve => setTimeout(resolve, delay));
+                return this.generateResponse(id, isDM, additionalMessages, retryCount + 1);
+            }
+
+            // If we've exhausted retries or shouldn't retry, throw the error
             console.error('❌ Error generating response:', error);
             throw error;
         }

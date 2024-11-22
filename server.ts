@@ -187,20 +187,6 @@ export class BotServer {
                 }
             }
         }
-
-        // Send to active DM channels
-        for (const [userId, config] of this.state.getAllDMConfigs()) {
-            if (config.allowDMs) {
-                try {
-                    const user = await this.client.users.fetch(userId);
-                    const dm = await user.createDM();
-                    await dm.send('Your Jeeves is online, sir.');
-                    console.log(`✅ Welcome message sent to user: ${user.tag} (${user.id})`);
-                } catch (error) {
-                    console.error(`❌ Error sending welcome message to user ${userId}:`, error);
-                }
-            }
-        }
     }
 
     private initializeEventListeners() {
