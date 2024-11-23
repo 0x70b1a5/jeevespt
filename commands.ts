@@ -1,5 +1,5 @@
 import { Attachment, Message } from 'discord.js';
-import { BotState } from './new-bot';
+import { BotState } from './bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import whisper from './whisper';
@@ -11,6 +11,7 @@ import https from 'https';
 import fs from 'fs';
 import { promisify } from 'util';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
+import { ElevenLabs } from './elevenlabs';
 const pipeline = promisify(require('stream').pipeline);
 
 export class CommandHandler {
@@ -19,7 +20,8 @@ export class CommandHandler {
     constructor(
         private state: BotState,
         private openai: OpenAI,
-        private anthropic: Anthropic
+        private anthropic: Anthropic,
+        private elevenLabs: ElevenLabs
     ) { }
 
     async handleCommand(message: Message, isDM: boolean) {
@@ -96,6 +98,10 @@ export class CommandHandler {
                 await this.setMuseInterval(message, id, isDM, Number(args[0]));
                 break;
 
+            case 'voice':
+                await this.toggleVoiceResponse(message, id, isDM);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -108,7 +114,7 @@ export class CommandHandler {
         const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
 
-        let userMessage = message.content;
+        let userMessage = message.cleanContent;
 
         // Handle audio attachments if present
         let audio: Attachment | undefined;
@@ -344,16 +350,25 @@ export class CommandHandler {
         await message.reply(`${this.sysPrefix}Direct messages are now ${newValue ? 'ENABLED' : 'DISABLED'}.`);
     }
 
-    private splitMessageIntoChunks(msgs: { role: string, content: string }[]): string[] {
-        const MAX_CHUNK_SIZE = 1900;
+    private chunkOpts = {
+        maxChunkSize: 1800,
+        spoiler: false
+    }
+    private splitMessageIntoChunks(
+        msgs: { role: string, content: string }[],
+        opts: { maxChunkSize?: number, spoiler?: boolean } = this.chunkOpts
+    ): string[] {
         const chunks: string[] = [];
 
         msgs.forEach(msg => {
             let content = msg.content;
             while (content.length > 0) {
-                const chunk = content.slice(0, MAX_CHUNK_SIZE);
+                let chunk = content.slice(0, opts.maxChunkSize);
+                if (opts.spoiler) {
+                    chunk = `||${chunk}||`;
+                }
                 chunks.push(chunk);
-                content = content.slice(MAX_CHUNK_SIZE);
+                content = content.slice(opts.maxChunkSize);
             }
         });
 
@@ -371,9 +386,44 @@ export class CommandHandler {
             const response = await this.generateResponse(id, isDM);
 
             if (response) {
-                const chunks = this.splitMessageIntoChunks([response]);
-                for (const chunk of chunks) {
-                    if (chunk) await message.reply(chunk);
+                const chunks = this.splitMessageIntoChunks(
+                    [response],
+                    { ...this.chunkOpts, spoiler: config.useVoiceResponse }
+                );
+
+                // If voice responses are enabled, synthesize and send audio
+                if (config.useVoiceResponse) {
+                    await message.channel.sendTyping();
+                    try {
+                        const audioFile = await this.elevenLabs.synthesizeSpeech(
+                            response.content,
+                            message.author.id
+                        );
+                        for (let i = 0; i < chunks.length; i++) {
+                            const chunk = chunks[i];
+                            if (!chunk) continue;
+                            if (i === 0) {
+                                await message.reply({
+                                    content: chunk,
+                                    files: [{
+                                        attachment: audioFile,
+                                        name: 'response.mp3'
+                                    }]
+                                });
+                            } else {
+                                await message.reply(chunk);
+                            }
+                        }
+                        // Cleanup audio file
+                        fs.unlinkSync(audioFile);
+                    } catch (error) {
+                        console.error('Error sending voice response:', error);
+                        await message.reply(`${this.sysPrefix}[ERROR] Could not generate voice response.`);
+                    }
+                } else {
+                    for (const chunk of chunks) {
+                        if (chunk) await message.reply(chunk);
+                    }
                 }
 
                 // Add response to log
@@ -545,6 +595,15 @@ If there was an error fetching the webpage, please mention this, as the develope
         this.state.updateConfig(id, isDM, { shouldMuseRegularly: enable });
         await message.reply(
             `${this.sysPrefix}Muse will ${enable ? 'now' : 'no longer'} happen automatically.`
+        );
+    }
+
+    private async toggleVoiceResponse(message: Message, id: string, isDM: boolean) {
+        const config = this.state.getConfig(id, isDM);
+        const newValue = !config.useVoiceResponse;
+        this.state.updateConfig(id, isDM, { useVoiceResponse: newValue });
+        await message.reply(
+            `${this.sysPrefix}Voice responses are now ${newValue ? 'ENABLED' : 'DISABLED'}.`
         );
     }
 } 

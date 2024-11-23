@@ -1,9 +1,10 @@
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
-import { BotState } from './new-bot';
+import { BotState } from './bot';
 import { CommandHandler } from './commands';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
+import { ElevenLabs } from './elevenlabs';
 dotenv.config();
 
 export class BotServer {
@@ -11,12 +12,12 @@ export class BotServer {
     private state: BotState;
     private openai: OpenAI;
     private anthropic: Anthropic;
+    private elevenLabs: ElevenLabs;
     private commands: CommandHandler;
     private museTimers: Map<string, {
         timer: NodeJS.Timeout;
         lastMessageTimestamp: number;
     }> = new Map();
-
     constructor() {
 
         this.client = new Client({
@@ -41,7 +42,9 @@ export class BotServer {
             apiKey: process.env.ANTHROPIC_API_KEY
         });
 
-        this.commands = new CommandHandler(this.state, this.openai, this.anthropic);
+        this.elevenLabs = new ElevenLabs(process.env.ELEVENLABS_API_KEY);
+
+        this.commands = new CommandHandler(this.state, this.openai, this.anthropic, this.elevenLabs);
 
         this.initializeEventListeners();
         this.initializeMuseTimers();
