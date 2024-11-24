@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import { ElevenLabs } from './elevenlabs';
+import readline from 'readline';
 dotenv.config();
 
 export class BotServer {
@@ -18,6 +19,7 @@ export class BotServer {
         timer: NodeJS.Timeout;
         lastMessageTimestamp: number;
     }> = new Map();
+    private isRunning: boolean = true;
     constructor() {
 
         this.client = new Client({
@@ -48,6 +50,7 @@ export class BotServer {
 
         this.initializeEventListeners();
         this.initializeMuseTimers();
+        this.setupQuitHandler();
     }
 
     private initializeMuseTimers() {
@@ -122,7 +125,35 @@ export class BotServer {
         }
     }
 
+    private setupQuitHandler() {
+        const stdin = process.stdin
+        readline.emitKeypressEvents(stdin as any);
+        if (stdin.isTTY) {
+            stdin.setRawMode(true);
+        }
+
+        process.stdin.on('keypress', async (str, key) => {
+            if (key.name === 'q') {
+                console.log('\n🎩 Very good, sir. Initiating shutdown sequence...');
+                await this.handleShutdown();
+            }
+        });
+
+        // Display quit message in bottom right
+        const displayQuitMessage = () => {
+            if (!this.isRunning) return;
+            process.stdout.write('\x1B[?25l'); // Hide cursor
+            process.stdout.write(`\x1B[${process.stdout.rows};${process.stdout.columns - 16}H`); // Move to bottom right
+            process.stdout.write('\x1B[30;47m Press Q to quit \x1B[0m'); // White background, black text
+            process.stdout.write(`\x1B[${process.stdout.rows};${process.stdout.columns}H`); // Move cursor to bottom right
+            setTimeout(displayQuitMessage, 1000); // Refresh every second
+        };
+
+        displayQuitMessage();
+    }
+
     private async handleShutdown() {
+        this.isRunning = false;
         console.log('🔄 Initiating graceful shutdown sequence...');
 
         // Persist data for all guilds
@@ -166,7 +197,7 @@ export class BotServer {
             }
         }
 
-        this.client.destroy();
+        await this.client.destroy();
         process.exit(0);
     }
 
@@ -244,4 +275,4 @@ export class BotServer {
 if (require.main === module) {
     const server = new BotServer();
     server.start().catch(console.error);
-} 
+}

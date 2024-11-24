@@ -193,4 +193,4 @@ export class BotState {
 
         return log;
     }
-} 
+}
