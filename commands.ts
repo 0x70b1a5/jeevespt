@@ -129,6 +129,7 @@ export class CommandHandler {
                     attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|py)$/)
                 )
             ) {
+                console.log(`🔍 Processing text file: ${attachment.name}`);
                 const content = await this.downloadAndReadFile(attachment.proxyURL, `text_${message.author.id}_${Date.now()}.txt`);
                 userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
             }
@@ -188,9 +189,11 @@ export class CommandHandler {
 
     private async downloadFile(url: string, filename: string): Promise<void> {
         try {
+            console.log(`🔍 Downloading file from ${url} to ${filename}`);
             const response = await new Promise((resolve, reject) => {
                 https.get(url, resolve).on('error', reject);
             });
+            console.log(`🔍 Downloaded file from ${url} to ${filename}`);
             await pipeline(response, fs.createWriteStream(filename));
         } catch (error) {
             console.error(`❌ Error downloading file ${filename}:`, error);
@@ -201,6 +204,7 @@ export class CommandHandler {
     private async downloadAndReadFile(url: string, filename: string): Promise<string> {
         await this.downloadFile(url, filename);
         const content = fs.readFileSync(filename, 'utf8');
+        console.log(`🔍 Read file from ${filename}: ${content.slice(0, 100)}...`);
         fs.unlinkSync(filename);
         return content;
     }
