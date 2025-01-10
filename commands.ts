@@ -123,7 +123,7 @@ export class CommandHandler {
                 audio = attachment;
                 break;
             } else if (
-                attachment.size < 50000 && // Increased to 50KB for more reasonable file sizes
+                attachment.size < 100000 && // 100kb
                 (
                     attachment.contentType?.startsWith('text/') ||
                     attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|py)$/)
