@@ -130,7 +130,7 @@ export class CommandHandler {
                 )
             ) {
                 console.log(`🔍 Processing text file: ${attachment.name}`);
-                const content = await this.downloadAndReadFile(attachment.proxyURL, `text_${message.author.id}_${Date.now()}.txt`);
+                const content = await this.downloadAndReadFile(attachment.url, `text_${message.author.id}_${Date.now()}.txt`);
                 userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
             }
         }
@@ -190,11 +190,17 @@ export class CommandHandler {
     private async downloadFile(url: string, filename: string): Promise<void> {
         try {
             console.log(`🔍 Downloading file from ${url} to ${filename}`);
-            const response = await new Promise((resolve, reject) => {
-                https.get(url, resolve).on('error', reject);
+            const response = await new Promise<any>((resolve, reject) => {
+                https.get(url, (res) => {
+                    if (res.statusCode !== 200) {
+                        reject(new Error(`Failed to download: ${res.statusCode} ${res.statusMessage}`));
+                        return;
+                    }
+                    resolve(res);
+                }).on('error', reject);
             });
-            console.log(`🔍 Downloaded file from ${url} to ${filename}`);
             await pipeline(response, fs.createWriteStream(filename));
+            console.log(`🔍 Downloaded file from ${url} to ${filename}`);
         } catch (error) {
             console.error(`❌ Error downloading file ${filename}:`, error);
             throw error;
