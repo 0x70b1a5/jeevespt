@@ -29,6 +29,7 @@ export const help: string[] = [
 \`!tokens INTEGER\`: Sets the maximum number of tokens to generate.
 \`!persist\`: Toggle whether data is saved between sessions.
 \`!dms\`: Toggle whether the bot will respond to direct messages.
+\`!voice\`: Enable/disable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).
 `,
     `
 ### Testing

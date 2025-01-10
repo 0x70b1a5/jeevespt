@@ -83,7 +83,7 @@ export class CommandHandler {
                 break;
 
             case 'muse':
-                await this.muse(message, id, isDM, args[0]);
+                await this.muse(message, id, isDM, args[0], true);
                 break;
 
             case 'museon':
@@ -122,6 +122,15 @@ export class CommandHandler {
             if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
                 audio = attachment;
                 break;
+            } else if (
+                attachment.size < 50000 && // Increased to 50KB for more reasonable file sizes
+                (
+                    attachment.contentType?.startsWith('text/') ||
+                    attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|py)$/)
+                )
+            ) {
+                const content = await this.downloadAndReadFile(attachment.proxyURL, `text_${message.author.id}_${Date.now()}.txt`);
+                userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
             }
         }
 
@@ -177,7 +186,26 @@ export class CommandHandler {
         );
     }
 
-    private async transcribeAudio(attachment: any, message: Message): Promise<string> {
+    private async downloadFile(url: string, filename: string): Promise<void> {
+        try {
+            const response = await new Promise((resolve, reject) => {
+                https.get(url, resolve).on('error', reject);
+            });
+            await pipeline(response, fs.createWriteStream(filename));
+        } catch (error) {
+            console.error(`❌ Error downloading file ${filename}:`, error);
+            throw error;
+        }
+    }
+
+    private async downloadAndReadFile(url: string, filename: string): Promise<string> {
+        await this.downloadFile(url, filename);
+        const content = fs.readFileSync(filename, 'utf8');
+        fs.unlinkSync(filename);
+        return content;
+    }
+
+    private async transcribeAudio(attachment: Attachment, message: Message): Promise<string> {
         const timestamp = Date.now();
         const userId = message.author.id;
         const filename = `audio_${userId}_${timestamp}.mp3`;
@@ -185,14 +213,9 @@ export class CommandHandler {
         console.log(`🎙️ Processing audio from ${message.author.tag} (${filename})`);
         await message.channel.sendTyping();
 
-        // Download the audio file with unique name
-        const file = fs.createWriteStream(filename);
-        const response = await new Promise((resolve, reject) => {
-            https.get(attachment.proxyURL, resolve).on('error', reject);
-        });
-
         try {
-            await pipeline(response, file);
+            // Download the audio file with unique name
+            await this.downloadFile(attachment.proxyURL, filename);
             console.log(`📥 Downloaded audio file: ${filename}`);
 
             const transcription = await whisper(this.openai, filename);
@@ -528,7 +551,7 @@ export class CommandHandler {
         }
     }
 
-    async muse(message: Message, id: string, isDM: boolean, url?: string) {
+    async muse(message: Message, id: string, isDM: boolean, url?: string, museWasRequested = false) {
         console.log(`🎯 Initiating muse for ${isDM ? 'user' : 'guild'}: ${id}${url ? ` with URL: ${url}` : ''}`);
         await message.channel.sendTyping();
 
@@ -549,7 +572,10 @@ export class CommandHandler {
 
         const prompt = {
             role: 'system',
-            content: `It's been a while since the last message. It's up to you to inject some activity into the situation! Please read the following webpage.
+            content: `
+${museWasRequested ? '' : 'It\'s been a while since the last message. It\'s up to you to inject some activity into the situation! '}
+
+Please read the following webpage.
 
 === BEGIN WEBPAGE ===
 ${pageText}
