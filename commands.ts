@@ -771,18 +771,19 @@ If there was an error fetching the webpage, please mention this, as the develope
             // Use the model to suggest an appropriate emoji
             const config = this.state.getConfig(id, false);
             const history = this.state.getLog(id, false).messages;
+            const messages = [
+                this.getSystemPrompt(id, false),
+                ...history,
+                {
+                    role: "user",
+                    content: `Based on this message and the context of the conversation, respond with a single emoji that would be an appropriate reaction. Only respond with the emoji itself, nothing else: "${content}"`
+                }
+            ] as MessageParam[];
             const response = await this.anthropic.messages.create({
                 model: config.model,
                 max_tokens: 30,
                 temperature: config.temperature,
-                messages: [
-                    this.getSystemPrompt(id, false) as MessageParam,
-                    ...history as MessageParam[],
-                    {
-                        role: "user",
-                        content: `Based on this message and the context of the conversation, respond with a single emoji that would be an appropriate reaction. Only respond with the emoji itself, nothing else: "${content}"`
-                    }
-                ]
+                messages
             });
 
             // Extract just the emoji from the response
@@ -795,7 +796,7 @@ If there was an error fetching the webpage, please mention this, as the develope
                 return emojiMatch[0];
             }
 
-            console.log(`🤖 Generated emoji reaction: ${responseText}`);
+            console.log(`🤖 Generated emoji reaction: ${responseText} Messages: ${JSON.stringify(messages)}`);
 
             // If no valid emoji found, do nothing
             return null;
