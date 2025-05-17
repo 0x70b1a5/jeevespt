@@ -772,7 +772,7 @@ If there was an error fetching the webpage, please mention this, as the develope
             const config = this.state.getConfig(id, false);
             const history = this.state.getLog(id, false).messages;
             const messages = [
-                { role: 'user', content: this.getSystemPrompt(id, false) }, // have to use "user"?!
+                { role: 'user', content: this.getSystemPrompt(id, false)?.content || '' }, // have to use "user"?!
                 ...history,
                 {
                     role: "user",
