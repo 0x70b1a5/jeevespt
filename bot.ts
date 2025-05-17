@@ -13,6 +13,9 @@ export interface BotConfig {
     model: string;
     allowDMs: boolean;
     useVoiceResponse: boolean;
+    // Reaction mode configuration
+    reactionModeEnabled: boolean;
+    reactionChannels: string[];
 }
 
 export interface MessageBuffer {
@@ -47,7 +50,10 @@ export class BotState {
         shouldMuseRegularly: true,
         model: 'claude-3-5-sonnet-latest',
         allowDMs: true,
-        useVoiceResponse: false
+        useVoiceResponse: false,
+        // Default reaction mode settings
+        reactionModeEnabled: false,
+        reactionChannels: []
     };
 
     constructor() {

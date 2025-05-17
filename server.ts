@@ -201,6 +201,12 @@ export class BotServer {
         this.client.on('messageCreate', async (message: Message) => {
             if (message.author.bot) return;
 
+            // Check reaction mode first (this doesn't require message to be in target channel)
+            if (message.guild) {
+                // Check if this message should get a reaction
+                await this.commands.handleReaction(message);
+            }
+
             // Check if message is from a DM or allowed channel
             const isValidChannel =
                 (message.channel.type === ChannelType.DM && this.state.getConfig(message.author.id, true).allowDMs) ||

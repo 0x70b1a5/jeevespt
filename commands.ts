@@ -102,6 +102,22 @@ export class CommandHandler {
                 await this.toggleVoiceResponse(message, id, isDM);
                 break;
 
+            case 'reacton':
+                await this.toggleReactionMode(message, id, isDM, true);
+                break;
+
+            case 'reactoff':
+                await this.toggleReactionMode(message, id, isDM, false);
+                break;
+
+            case 'reactadd':
+                await this.addReactionChannel(message, id, isDM, args[0]);
+                break;
+
+            case 'reactremove':
+                await this.removeReactionChannel(message, id, isDM, args[0]);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -641,5 +657,151 @@ If there was an error fetching the webpage, please mention this, as the develope
         await message.reply(
             `${this.sysPrefix}Voice responses are now ${newValue ? 'ENABLED' : 'DISABLED'}.`
         );
+    }
+
+    // Reaction Mode methods
+
+    private async toggleReactionMode(message: Message, id: string, isDM: boolean, enable: boolean) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Reaction mode is only available in servers, not in DMs.`);
+            return;
+        }
+
+        this.state.updateConfig(id, isDM, { reactionModeEnabled: enable });
+        await message.reply(`${this.sysPrefix}Reaction mode ${enable ? 'enabled' : 'disabled'}.`);
+    }
+
+    private async addReactionChannel(message: Message, id: string, isDM: boolean, channelName: string) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Reaction mode is only available in servers, not in DMs.`);
+            return;
+        }
+
+        if (!channelName) {
+            await message.reply(`${this.sysPrefix}Please specify a channel name.`);
+            return;
+        }
+
+        const config = this.state.getConfig(id, isDM);
+        const channelId = this.getChannelIdFromName(message, channelName);
+
+        if (!channelId) {
+            await message.reply(`${this.sysPrefix}Could not find channel "${channelName}".`);
+            return;
+        }
+
+        if (config.reactionChannels.includes(channelId)) {
+            await message.reply(`${this.sysPrefix}Channel "${channelName}" is already in the reaction list.`);
+            return;
+        }
+
+        const newChannels = [...config.reactionChannels, channelId];
+        this.state.updateConfig(id, isDM, { reactionChannels: newChannels });
+        await message.reply(`${this.sysPrefix}Added channel "${channelName}" to reaction mode.`);
+    }
+
+    private async removeReactionChannel(message: Message, id: string, isDM: boolean, channelName: string) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Reaction mode is only available in servers, not in DMs.`);
+            return;
+        }
+
+        if (!channelName) {
+            await message.reply(`${this.sysPrefix}Please specify a channel name.`);
+            return;
+        }
+
+        const config = this.state.getConfig(id, isDM);
+        const channelId = this.getChannelIdFromName(message, channelName);
+
+        if (!channelId) {
+            await message.reply(`${this.sysPrefix}Could not find channel "${channelName}".`);
+            return;
+        }
+
+        if (!config.reactionChannels.includes(channelId)) {
+            await message.reply(`${this.sysPrefix}Channel "${channelName}" is not in the reaction list.`);
+            return;
+        }
+
+        const newChannels = config.reactionChannels.filter(c => c !== channelId);
+        this.state.updateConfig(id, isDM, { reactionChannels: newChannels });
+        await message.reply(`${this.sysPrefix}Removed channel "${channelName}" from reaction mode.`);
+    }
+
+    private getChannelIdFromName(message: Message, channelName: string): string | null {
+        if (!message.guild) return null;
+
+        // Remove # if present
+        const name = channelName.startsWith('#') ? channelName.substring(1) : channelName;
+
+        // Try to find the channel by name
+        const channel = message.guild.channels.cache.find(
+            c => c.name.toLowerCase() === name.toLowerCase()
+        );
+
+        return channel?.id || null;
+    }
+
+    // Method to handle message reactions
+    async handleReaction(message: Message) {
+        if (!message.guild) return; // Only work in guilds
+
+        const id = message.guild.id;
+        const config = this.state.getConfig(id, false);
+        // Skip if reaction mode is disabled or no channels configured
+        if (!config.reactionModeEnabled || config.reactionChannels.length === 0) return;
+
+        // Skip if channel is not in the reaction list
+        if (!config.reactionChannels.includes(message.channel.id)) return;
+
+        // add history for context
+        const history = this.state.getLog(id, false).messages;
+
+        // Generate an appropriate emoji reaction
+        const emoji = await this.generateEmojiReaction(message.content, history);
+        if (emoji) {
+            try {
+                await message.react(emoji);
+            } catch (error) {
+                console.error('Error reacting to message:', error);
+            }
+        }
+    }
+
+    private async generateEmojiReaction(content: string, history: { role: string, content: string }[]): Promise<string | null> {
+        try {
+            // Use the model to suggest an appropriate emoji
+            const response = await this.anthropic.messages.create({
+                model: "claude-3-5-sonnet-latest",
+                max_tokens: 30,
+                temperature: 0.7,
+                messages: [
+                    ...history as MessageParam[],
+                    {
+                        role: "user",
+                        content: `Based on this message and the context of the conversation, respond with a single emoji that would be an appropriate reaction. Only respond with the emoji itself, nothing else: "${content}"`
+                    }
+                ]
+            });
+
+            // Extract just the emoji from the response
+            const responseText = response.content[0].type === 'text'
+                ? response.content[0].text
+                : '';
+
+            const emojiMatch = responseText.trim().match(/^(\p{Emoji}|:\w+:)$/u);
+            if (emojiMatch) {
+                return emojiMatch[0];
+            }
+
+            console.log(`🤖 Generated emoji reaction: ${responseText}`);
+
+            // If no valid emoji found, do nothing
+            return null;
+        } catch (error) {
+            console.error('Error generating emoji reaction:', error);
+            return null;
+        }
     }
 } 

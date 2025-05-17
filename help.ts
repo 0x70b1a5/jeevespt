@@ -49,6 +49,15 @@ The bot can be configured to automatically muse upon a random Wikipedia page eve
 \`!museoff\`: Disable automatic muse.
 \`!museinterval HOURS\`: Set muse interval to X hours.
 
+### Reaction Mode
+
+The bot can be configured to automatically react with appropriate emojis to messages in specific channels.
+
+\`!reacton\`: Enable reaction mode for monitored channels.
+\`!reactoff\`: Disable reaction mode.
+\`!reactadd CHANNEL-NAME\`: Add a channel to the list of monitored channels.
+\`!reactremove CHANNEL-NAME\`: Remove a channel from the list of monitored channels.
+
 ## Voice Commands
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear, and !parrot bla bla bla will reply with bla bla bla.
