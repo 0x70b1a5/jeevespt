@@ -1,5 +1,5 @@
 import { Attachment, Message } from 'discord.js';
-import { BotState } from './bot';
+import { BotConfig, BotState } from './bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import whisper from './whisper';
@@ -755,11 +755,8 @@ If there was an error fetching the webpage, please mention this, as the develope
         // Skip if channel is not in the reaction list
         if (!config.reactionChannels.includes(message.channel.id)) return;
 
-        // add history for context
-        const history = this.state.getLog(id, false).messages;
-
         // Generate an appropriate emoji reaction
-        const emoji = await this.generateEmojiReaction(message.content, history);
+        const emoji = await this.generateEmojiReaction(id, message.content);
         if (emoji) {
             try {
                 await message.react(emoji);
@@ -769,14 +766,17 @@ If there was an error fetching the webpage, please mention this, as the develope
         }
     }
 
-    private async generateEmojiReaction(content: string, history: { role: string, content: string }[]): Promise<string | null> {
+    private async generateEmojiReaction(id: string, content: string): Promise<string | null> {
         try {
             // Use the model to suggest an appropriate emoji
+            const config = this.state.getConfig(id, false);
+            const history = this.state.getLog(id, false).messages;
             const response = await this.anthropic.messages.create({
-                model: "claude-3-5-sonnet-latest",
+                model: config.model,
                 max_tokens: 30,
-                temperature: 0.7,
+                temperature: config.temperature,
                 messages: [
+                    this.getSystemPrompt(id, false) as MessageParam,
                     ...history as MessageParam[],
                     {
                         role: "user",
