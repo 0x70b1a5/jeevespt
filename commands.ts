@@ -756,6 +756,9 @@ If there was an error fetching the webpage, please mention this, as the develope
         // Skip if channel is not in the reaction list
         if (!config.reactionChannels.includes(message.channel.id)) return;
 
+        // wait 5 seconds while embeds load
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
         // Generate an appropriate emoji reaction
         const emoji = await this.generateEmojiReaction(message);
         if (emoji) {
