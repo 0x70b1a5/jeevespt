@@ -12,6 +12,7 @@ import fs from 'fs';
 import { promisify } from 'util';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { ElevenLabs } from './elevenlabs';
+import { formatMessage } from './formatMessage';
 const pipeline = promisify(require('stream').pipeline);
 
 export class CommandHandler {
@@ -180,7 +181,7 @@ export class CommandHandler {
         // Add message to both buffer and log
         const formattedMessage = {
             role: 'user',
-            content: `${dayjs().format('MM/DD/YYYY HH:mm:ss')} [${message.author.username}]: ${userMessage}`
+            content: formatMessage(message)
         };
 
         buffer.messages.push(formattedMessage);
@@ -756,7 +757,7 @@ If there was an error fetching the webpage, please mention this, as the develope
         if (!config.reactionChannels.includes(message.channel.id)) return;
 
         // Generate an appropriate emoji reaction
-        const emoji = await this.generateEmojiReaction(id, message.content);
+        const emoji = await this.generateEmojiReaction(message);
         if (emoji) {
             try {
                 await message.react(emoji);
@@ -766,19 +767,36 @@ If there was an error fetching the webpage, please mention this, as the develope
         }
     }
 
-    private async generateEmojiReaction(id: string, content: string): Promise<string | null> {
+    private async generateEmojiReaction(message: Message): Promise<string | null> {
         try {
-            // Use the model to suggest an appropriate emoji
+            // Fetch recent messages from this specific channel for context
+            const recentMessages = await message.channel.messages.fetch({ limit: 10 });
+
+            // Convert to an array and sort by timestamp (oldest first)
+            const channelHistory = [...recentMessages.values()]
+                .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
+                .map(msg => ({
+                    role: "user",
+                    content: formatMessage(msg)
+                }));
+
+            // Use the guild config for model settings
+            const id = message.guild!.id;
             const config = this.state.getConfig(id, false);
-            const history = this.state.getLog(id, false).messages;
+            const systemPrompt = this.getSystemPrompt(id, false);
+            if (systemPrompt) {
+                // The api doesn't let us set "system" here?!
+                systemPrompt.role = "user";
+            }
             const messages = [
-                { role: 'user', content: this.getSystemPrompt(id, false)?.content || '' }, // have to use "user"?!
-                ...history,
+                systemPrompt,
+                ...channelHistory,
                 {
                     role: "user",
-                    content: `Based on this message and the context of the conversation, respond with a single emoji that would be an appropriate reaction. Only respond with the emoji itself, nothing else: "${content}"`
+                    content: `Based on this conversation, please respond to the most recent message with a single emoji that would be an appropriate reaction. Only respond with the emoji itself.`
                 }
             ] as MessageParam[];
+
             const response = await this.anthropic.messages.create({
                 model: config.model,
                 max_tokens: 30,
