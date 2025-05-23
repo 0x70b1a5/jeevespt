@@ -155,17 +155,19 @@ export class CommandHandler {
         // Handle audio attachments if present
         let audio: Attachment | undefined;
         for (const [messageID, attachment] of message.attachments) {
-            if (attachment.name.match(/\.(mp3|ogg|wav)$/)) {
+            if (attachment.name.match(/\.(mp3|ogg|wav|m4a|aac|flac|webm)$/i)) {
                 audio = attachment;
                 break;
             } else if (
                 attachment.size < 100000 && // 100kb
                 (
                     attachment.contentType?.startsWith('text/') ||
-                    attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|py)$/)
+                    attachment.contentType?.includes('xml') ||
+                    attachment.contentType?.includes('svg') ||
+                    attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|svg|sh|bash|zsh|xml|ini|conf|cfg|env|gitignore|dockerfile)$/i)
                 )
             ) {
-                console.log(`🔍 Processing text file: ${attachment.name}`);
+                console.log(`🔍 Processing text file: ${attachment.name} (${attachment.contentType})`);
                 const content = await this.downloadAndReadFile(attachment.url, `text_${message.author.id}_${Date.now()}.txt`);
                 userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
             }
@@ -308,10 +310,18 @@ export class CommandHandler {
     private async transcribeAudio(attachment: Attachment, message: Message): Promise<string> {
         const timestamp = Date.now();
         const userId = message.author.id;
-        const sanitizedFilename = `audio_${userId}_${timestamp}.mp3`;
+
+        // Preserve original extension for better format handling
+        const originalExtension = path.extname(attachment.name || 'audio.mp3');
+        const sanitizedFilename = `audio_${userId}_${timestamp}${originalExtension}`;
         const safePath = path.join(TEMP_DIR, sanitizedFilename);
 
-        console.log(`🎙️ Processing audio from ${message.author.tag} (${safePath})`);
+        console.log(`🎙️ Processing audio from ${message.author.tag}:`);
+        console.log(`   File: ${attachment.name}`);
+        console.log(`   Content-Type: ${attachment.contentType}`);
+        console.log(`   Size: ${attachment.size} bytes`);
+        console.log(`   Path: ${safePath}`);
+
         await message.channel.sendTyping();
 
         try {
@@ -321,16 +331,25 @@ export class CommandHandler {
 
             const transcription = await whisper(this.openai, safePath);
             if (!transcription?.text?.length) {
-                await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
+                await message.reply(this.sysPrefix + '[ERROR] Could not process audio - transcription was empty.');
                 return '';
             }
 
-            console.log(`✍️ Transcribed audio for ${message.author.tag}`);
+            console.log(`✍️ Transcribed audio for ${message.author.tag}: "${transcription.text.substring(0, 100)}..."`);
             await message.reply(`${this.sysPrefix}Transcription: ${transcription.text}`);
             return transcription.text;
-        } catch (error) {
+        } catch (error: any) {
             console.error(`❌ Whisper error for ${safePath}:`, error);
-            await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
+
+            // More specific error messages
+            let errorMsg = '[ERROR] Could not process audio.';
+            if (error.message?.includes('format is not supported')) {
+                errorMsg = `[ERROR] Audio format not supported. Discord sent: ${attachment.contentType || 'unknown type'}`;
+            } else if (error.message?.includes('could not be decoded')) {
+                errorMsg = '[ERROR] Audio file appears to be corrupted or in an unsupported encoding.';
+            }
+
+            await message.reply(this.sysPrefix + errorMsg);
             return '';
         } finally {
             // Cleanup
@@ -993,6 +1012,18 @@ Examples:
         }
     }
 
+    private formatTimeLeft(ms: number): string {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days}d ${hours % 24}h`;
+        if (hours > 0) return `${hours}h ${minutes % 60}m`;
+        if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+        return `${seconds}s`;
+    }
+
     private async cancelReminder(message: Message, id: string, isDM: boolean, reminderId: string) {
         if (!reminderId) {
             await message.reply(`${this.sysPrefix}Usage: \`!cancelreminder <reminder_id>\``);
@@ -1021,16 +1052,4 @@ Examples:
             await message.reply(`${this.sysPrefix}Failed to cancel reminder.`);
         }
     }
-
-    private formatTimeLeft(ms: number): string {
-        const seconds = Math.floor(ms / 1000);
-        const minutes = Math.floor(seconds / 60);
-        const hours = Math.floor(minutes / 60);
-        const days = Math.floor(hours / 24);
-
-        if (days > 0) return `${days}d ${hours % 24}h`;
-        if (hours > 0) return `${hours}h ${minutes % 60}m`;
-        if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-        return `${seconds}s`;
-    }
-} 
+}
