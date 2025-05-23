@@ -100,7 +100,7 @@ export class BotServer {
 
     private async performMuse(id: string, isDM: boolean) {
         const channel = isDM
-            ? await this.client.users.fetch(id).then(user => user.createDM())
+            ? await this.client.users.fetch(id).then(user => user.dmChannel)
             : this.client.channels.cache
                 .filter(channel =>
                     channel.type === ChannelType.GuildText &&
@@ -253,7 +253,7 @@ export class BotServer {
             let channel;
             const user = await this.client.users.fetch(reminder.userId);
             if (reminder.isDM) {
-                channel = await user.createDM();
+                channel = user.dmChannel;
             } else {
                 channel = this.client.channels.cache.get(reminder.channelId);
             }
