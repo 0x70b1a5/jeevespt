@@ -225,6 +225,10 @@ export class CommandHandler {
         );
     }
 
+    private sanitizeFilename(filename: string): string {
+        return filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    }
+
     private async downloadFile(url: string, filename: string): Promise<void> {
         try {
             console.log(`🔍 Downloading file from ${url} to ${filename}`);
@@ -248,7 +252,7 @@ export class CommandHandler {
             }
 
             // Sanitize filename and ensure it's in temp directory
-            const sanitizedFilename = path.basename(filename).replace(/[^a-zA-Z0-9.-]/g, '_');
+            const sanitizedFilename = this.sanitizeFilename(filename);
             const safePath = path.join(TEMP_DIR, sanitizedFilename);
 
             // Ensure temp directory exists
@@ -260,23 +264,6 @@ export class CommandHandler {
                         reject(new Error(`Failed to download: ${res.statusCode} ${res.statusMessage}`));
                         return;
                     }
-
-                    // Check content length
-                    const contentLength = parseInt(res.headers['content-length'] || '0');
-                    if (contentLength > MAX_FILE_SIZE) {
-                        reject(new Error(`File too large: ${contentLength} bytes (max: ${MAX_FILE_SIZE})`));
-                        return;
-                    }
-
-                    let downloadedBytes = 0;
-                    res.on('data', (chunk) => {
-                        downloadedBytes += chunk.length;
-                        if (downloadedBytes > MAX_FILE_SIZE) {
-                            res.destroy();
-                            reject(new Error(`File too large: exceeded ${MAX_FILE_SIZE} bytes during download`));
-                            return;
-                        }
-                    });
 
                     resolve(res);
                 }).on('error', reject);
@@ -297,7 +284,7 @@ export class CommandHandler {
     }
 
     private async downloadAndReadFile(url: string, filename: string): Promise<string> {
-        const sanitizedFilename = path.basename(filename).replace(/[^a-zA-Z0-9.-]/g, '_');
+        const sanitizedFilename = this.sanitizeFilename(filename);
         const safePath = path.join(TEMP_DIR, sanitizedFilename);
 
         await this.downloadFile(url, filename);
@@ -310,28 +297,20 @@ export class CommandHandler {
     private async transcribeAudio(attachment: Attachment, message: Message): Promise<string> {
         const timestamp = Date.now();
         const userId = message.author.id;
+        const filename = `audio_${userId}_${timestamp}.mp3`;
 
-        // Preserve original extension for better format handling
-        const originalExtension = path.extname(attachment.name || 'audio.mp3');
-        const sanitizedFilename = `audio_${userId}_${timestamp}${originalExtension}`;
-        const safePath = path.join(TEMP_DIR, sanitizedFilename);
-
-        console.log(`🎙️ Processing audio from ${message.author.tag}:`);
-        console.log(`   File: ${attachment.name}`);
-        console.log(`   Content-Type: ${attachment.contentType}`);
-        console.log(`   Size: ${attachment.size} bytes`);
-        console.log(`   Path: ${safePath}`);
+        console.log(`🎙️ Processing audio from ${message.author.tag} (${filename})`);
 
         await message.channel.sendTyping();
 
         try {
             // Download the audio file with unique name
-            await this.downloadFile(attachment.proxyURL, sanitizedFilename);
-            console.log(`📥 Downloaded audio file: ${safePath}`);
+            await this.downloadFile(attachment.proxyURL, filename);
+            console.log(`📥 Downloaded audio file: ${filename}`);
 
-            const transcription = await whisper(this.openai, safePath);
+            const transcription = await whisper(this.openai, filename);
             if (!transcription?.text?.length) {
-                await message.reply(this.sysPrefix + '[ERROR] Could not process audio - transcription was empty.');
+                await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
                 return '';
             }
 
@@ -339,7 +318,7 @@ export class CommandHandler {
             await message.reply(`${this.sysPrefix}Transcription: ${transcription.text}`);
             return transcription.text;
         } catch (error: any) {
-            console.error(`❌ Whisper error for ${safePath}:`, error);
+            console.error(`❌ Whisper error for ${filename}:`, error);
 
             // More specific error messages
             let errorMsg = '[ERROR] Could not process audio.';
@@ -354,10 +333,10 @@ export class CommandHandler {
         } finally {
             // Cleanup
             try {
-                fs.unlinkSync(safePath);
-                console.log(`🧹 Cleaned up audio file: ${safePath}`);
+                fs.unlinkSync(filename);
+                console.log(`🧹 Cleaned up audio file: ${filename}`);
             } catch (error) {
-                console.error(`Error cleaning up audio file ${safePath}:`, error);
+                console.error(`Error cleaning up audio file ${filename}:`, error);
             }
         }
     }
@@ -965,7 +944,7 @@ Examples:
         }
 
         const reminder = {
-            id: `${message.author.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: `${message.author.id}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
             userId: message.author.id,
             channelId: message.channel.id,
             content: reminderContent,
