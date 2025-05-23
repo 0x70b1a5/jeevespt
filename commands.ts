@@ -747,6 +747,7 @@ If there was an error fetching the webpage, please mention this, as the develope
     // Method to handle message reactions
     async handleReaction(message: Message) {
         if (!message.guild) return; // Only work in guilds
+        if (message.author.bot) return; // Skip if message is from a bot
 
         const id = message.guild.id;
         const config = this.state.getConfig(id, false);
