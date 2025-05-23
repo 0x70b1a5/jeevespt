@@ -1,10 +1,12 @@
 import dayjs from "dayjs"
 import { Message } from "discord.js"
 
-export const formatMessage = (message: Message) => {
+export const prependTimestampAndUsername = (message: Message) => {
+    return `${dayjs(message.createdTimestamp).format('MM/DD/YYYY HH:mm:ss')} [${message.author.username}]: ${message.cleanContent}`;
+}
+
+export const extractEmbedDataToText = (message: Message) => {
     let formatted = '';
-    formatted += `${dayjs(message.createdTimestamp).format('MM/DD/YYYY HH:mm:ss')} [${message.author.username}]: ${message.content}`;
-    // Textify any embeds
     if (message.embeds) {
         for (const embed of message.embeds) {
             if (embed.url) {

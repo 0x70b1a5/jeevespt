@@ -12,9 +12,9 @@ import fs from 'fs';
 import { promisify } from 'util';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { ElevenLabs } from './elevenlabs';
-import { formatMessage } from './formatMessage';
 import path from 'path';
 import { URL } from 'url';
+import { extractEmbedDataToText, prependTimestampAndUsername } from './formatMessage';
 const pipeline = promisify(require('stream').pipeline);
 
 // Security constants for file downloads
@@ -36,7 +36,6 @@ export class CommandHandler {
         const [command, ...args] = message.content.slice(1).split(' ');
         console.log(`🎮 Handling command: ${command} from ${isDM ? 'DM' : 'guild'} (${message.author.tag})`);
         const id = isDM ? message.author.id : message.guild!.id;
-        const config = this.state.getConfig(id, isDM);
 
         switch (command.toLowerCase()) {
             case 'help':
@@ -150,7 +149,7 @@ export class CommandHandler {
         const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
 
-        let userMessage = message.cleanContent;
+        let userMessage = prependTimestampAndUsername(message);
 
         // Handle audio attachments if present
         let audio: Attachment | undefined;
@@ -172,8 +171,6 @@ export class CommandHandler {
                 userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
             }
         }
-
-        console.log(`🔍 User message: ${userMessage}`);
 
         if (audio) {
             userMessage = await this.transcribeAudio(audio, message) || userMessage;
@@ -201,10 +198,12 @@ export class CommandHandler {
             return; // transcription mode has already sent the message
         }
 
+        userMessage += extractEmbedDataToText(message);
+
         // Add message to both buffer and log
         const formattedMessage = {
             role: 'user',
-            content: formatMessage(message)
+            content: userMessage
         };
 
         buffer.messages.push(formattedMessage);
@@ -845,13 +844,15 @@ If there was an error fetching the webpage, please mention this, as the develope
         try {
             // Fetch recent messages from this specific channel for context
             const recentMessages = await message.channel.messages.fetch({ limit: 10 });
+            let userMessage = prependTimestampAndUsername(message);
+            userMessage += extractEmbedDataToText(message);
 
             // Convert to an array and sort by timestamp (oldest first)
             const channelHistory = [...recentMessages.values()]
                 .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
                 .map(msg => ({
                     role: "user",
-                    content: formatMessage(msg)
+                    content: userMessage
                 }));
 
             // Use the guild config for model settings
