@@ -229,7 +229,11 @@ export class CommandHandler {
         return filename.replace(/[^a-zA-Z0-9.-]/g, '_');
     }
 
-    private async downloadFile(url: string, filename: string): Promise<void> {
+    private createTempFilename(filename: string): string {
+        return path.join(TEMP_DIR, this.sanitizeFilename(filename));
+    }
+
+    private async downloadFile(url: string, filename: string, destination: string): Promise<void> {
         try {
             console.log(`🔍 Downloading file from ${url} to ${filename}`);
 
@@ -251,13 +255,6 @@ export class CommandHandler {
                 throw new Error('Only HTTPS URLs are allowed');
             }
 
-            // Sanitize filename and ensure it's in temp directory
-            const sanitizedFilename = this.sanitizeFilename(filename);
-            const safePath = path.join(TEMP_DIR, sanitizedFilename);
-
-            // Ensure temp directory exists
-            await fs.promises.mkdir(TEMP_DIR, { recursive: true });
-
             const response = await new Promise<any>((resolve, reject) => {
                 const req = https.get(url, (res) => {
                     if (res.statusCode !== 200) {
@@ -275,8 +272,8 @@ export class CommandHandler {
                 });
             });
 
-            await pipeline(response, fs.createWriteStream(safePath));
-            console.log(`🔍 Downloaded file from ${url} to ${safePath}`);
+            await pipeline(response, fs.createWriteStream(destination));
+            console.log(`🔍 Downloaded file from ${url} to ${destination}`);
         } catch (error) {
             console.error(`❌ Error downloading file ${filename}:`, error);
             throw error;
@@ -284,10 +281,8 @@ export class CommandHandler {
     }
 
     private async downloadAndReadFile(url: string, filename: string): Promise<string> {
-        const sanitizedFilename = this.sanitizeFilename(filename);
-        const safePath = path.join(TEMP_DIR, sanitizedFilename);
-
-        await this.downloadFile(url, filename);
+        const safePath = this.createTempFilename(filename);
+        await this.downloadFile(url, filename, safePath);
         const content = fs.readFileSync(safePath, 'utf8');
         console.log(`🔍 Read file from ${safePath}: ${content.slice(0, 100)}...`);
         fs.unlinkSync(safePath);
@@ -298,6 +293,7 @@ export class CommandHandler {
         const timestamp = Date.now();
         const userId = message.author.id;
         const filename = `audio_${userId}_${timestamp}.mp3`;
+        const safePath = this.createTempFilename(filename);
 
         console.log(`🎙️ Processing audio from ${message.author.tag} (${filename})`);
 
@@ -305,10 +301,10 @@ export class CommandHandler {
 
         try {
             // Download the audio file with unique name
-            await this.downloadFile(attachment.proxyURL, filename);
-            console.log(`📥 Downloaded audio file: ${filename}`);
+            await this.downloadFile(attachment.proxyURL, filename, safePath);
+            console.log(`📥 Downloaded audio file from ${attachment.proxyURL} to ${safePath}`);
 
-            const transcription = await whisper(this.openai, filename);
+            const transcription = await whisper(this.openai, safePath);
             if (!transcription?.text?.length) {
                 await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
                 return '';
@@ -318,7 +314,7 @@ export class CommandHandler {
             await message.reply(`${this.sysPrefix}Transcription: ${transcription.text}`);
             return transcription.text;
         } catch (error: any) {
-            console.error(`❌ Whisper error for ${filename}:`, error);
+            console.error(`❌ Whisper error for ${safePath}:`, error);
 
             // More specific error messages
             let errorMsg = '[ERROR] Could not process audio.';
@@ -333,10 +329,10 @@ export class CommandHandler {
         } finally {
             // Cleanup
             try {
-                fs.unlinkSync(filename);
-                console.log(`🧹 Cleaned up audio file: ${filename}`);
+                fs.unlinkSync(safePath);
+                console.log(`🧹 Cleaned up audio file: ${safePath}`);
             } catch (error) {
-                console.error(`Error cleaning up audio file ${filename}:`, error);
+                console.error(`Error cleaning up audio file ${safePath}:`, error);
             }
         }
     }
