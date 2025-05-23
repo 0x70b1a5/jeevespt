@@ -1,5 +1,5 @@
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
-import { BotState } from './bot';
+import { BotState, ScheduledReminder } from './bot';
 import { CommandHandler } from './commands';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
@@ -53,6 +53,7 @@ export class BotServer {
     private initializeMuseTimers() {
         setInterval(() => {
             this.checkAllMuseTimers();
+            this.checkReminders();
         }, 60000);
     }
 
@@ -99,7 +100,7 @@ export class BotServer {
 
     private async performMuse(id: string, isDM: boolean) {
         const channel = isDM
-            ? await this.client.users.fetch(id).then(user => user.dmChannel)
+            ? await this.client.users.fetch(id).then(user => user.createDM())
             : this.client.channels.cache
                 .filter(channel =>
                     channel.type === ChannelType.GuildText &&
@@ -233,6 +234,50 @@ export class BotServer {
         });
 
         process.on('SIGINT', () => this.handleShutdown());
+    }
+
+    private async checkReminders() {
+        const now = Date.now();
+        const allReminders = this.state.getAllReminders();
+
+        for (const reminder of allReminders) {
+            if (reminder.triggerTime.getTime() <= now) {
+                await this.triggerReminder(reminder);
+                this.state.removeReminder(reminder.id);
+            }
+        }
+    }
+
+    private async triggerReminder(reminder: ScheduledReminder) {
+        try {
+            let channel;
+            const user = await this.client.users.fetch(reminder.userId);
+            if (reminder.isDM) {
+                channel = await user.createDM();
+            } else {
+                channel = this.client.channels.cache.get(reminder.channelId);
+            }
+
+            if (!channel || !('send' in channel)) {
+                console.log(`🚫 Could not find channel for reminder: ${reminder.id}`);
+                return;
+            }
+
+            // Generate a custom reminder preface for the user, according to the bot's personality
+
+            const completion = await this.commands.generateResponse(reminder.userId, reminder.isDM, [{ role: 'user', content: `[SYSTEM] Hi! Admin here. User ${user.tag} has set a reminder for themselves, which has just expired. You are about to send them a message indicating its time has come. Here's the reminder: \n\n<reminder>${reminder.content}</reminder>\n\n. Please write a short message to the user as a preface to the reminder, adhering to your personality with utmost care.` }]);
+
+            await channel.send(
+                (completion?.content ?? "") + "\n\n" +
+                `⏰ **Reminder!** <@${reminder.userId}>\n` +
+                `📝 ${reminder.content}\n` +
+                `🕐 Set for: ${reminder.triggerTime.toLocaleString()}`
+            );
+
+            console.log(`✅ Triggered reminder for user ${reminder.userId}: "${reminder.content}"`);
+        } catch (error) {
+            console.error(`❌ Error triggering reminder ${reminder.id}:`, error);
+        }
     }
 
     public async start() {

@@ -28,6 +28,19 @@ export interface MessageLog {
     messages: { role: string; content: string }[];
 }
 
+export interface ScheduledReminder {
+    id: string;
+    userId: string;
+    channelId: string;
+    content: string;
+    triggerTime: Date;
+    recurring?: {
+        interval: number; // milliseconds
+        type: 'daily' | 'weekly' | 'custom';
+    };
+    isDM: boolean;
+}
+
 export type BotMode = 'jeeves' | 'tokipona' | 'jargon' | 'whisper' | 'customprompt';
 
 export class BotState {
@@ -38,6 +51,7 @@ export class BotState {
     private guildLogs: Map<string, MessageLog> = new Map();
     private userLogs: Map<string, MessageLog> = new Map();
     private customPrompts: Map<string, string> = new Map();
+    private scheduledReminders: Map<string, ScheduledReminder> = new Map();
 
     private defaultConfig: BotConfig = {
         mode: 'jeeves',
@@ -59,6 +73,7 @@ export class BotState {
     constructor() {
         // Load persisted data on startup
         this.loadPersistedData();
+        this.loadReminders();
     }
 
     private getConfigKey(id: string, isDM: boolean): string {
@@ -198,5 +213,71 @@ export class BotState {
         }
 
         return log;
+    }
+
+    // Reminder management methods
+    addReminder(reminder: ScheduledReminder) {
+        this.scheduledReminders.set(reminder.id, reminder);
+        // Persist immediately
+        this.persistReminders();
+    }
+
+    removeReminder(id: string): boolean {
+        const deleted = this.scheduledReminders.delete(id);
+        if (deleted) {
+            this.persistReminders();
+        }
+        return deleted;
+    }
+
+    getReminder(id: string): ScheduledReminder | undefined {
+        return this.scheduledReminders.get(id);
+    }
+
+    getAllReminders(): ScheduledReminder[] {
+        return Array.from(this.scheduledReminders.values());
+    }
+
+    getRemindersForUser(userId: string): ScheduledReminder[] {
+        return Array.from(this.scheduledReminders.values())
+            .filter(reminder => reminder.userId === userId);
+    }
+
+    private async persistReminders() {
+        try {
+            const remindersData = Array.from(this.scheduledReminders.entries()).map(([id, reminder]) => ({
+                ...reminder,
+                triggerTime: reminder.triggerTime.toISOString()
+            }));
+
+            await fs.promises.mkdir('data', { recursive: true });
+            await fs.promises.writeFile(
+                'data/reminders.json',
+                JSON.stringify(remindersData, null, 2)
+            );
+        } catch (error) {
+            console.error('Error persisting reminders:', error);
+        }
+    }
+
+    private async loadReminders() {
+        try {
+            const data = await fs.promises.readFile('data/reminders.json', 'utf8');
+            const remindersData = JSON.parse(data);
+
+            for (const reminderData of remindersData) {
+                const reminder: ScheduledReminder = {
+                    ...reminderData,
+                    triggerTime: new Date(reminderData.triggerTime)
+                };
+                this.scheduledReminders.set(reminder.id, reminder);
+            }
+
+            console.log(`📅 Loaded ${this.scheduledReminders.size} reminders`);
+        } catch (error: any) {
+            if (error.code !== 'ENOENT') {
+                console.error('Error loading reminders:', error);
+            }
+        }
     }
 } 

@@ -13,7 +13,14 @@ import { promisify } from 'util';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { ElevenLabs } from './elevenlabs';
 import { formatMessage } from './formatMessage';
+import path from 'path';
+import { URL } from 'url';
 const pipeline = promisify(require('stream').pipeline);
+
+// Security constants for file downloads
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+const ALLOWED_DOMAINS = ['cdn.discordapp.com', 'media.discordapp.net']; // Only Discord CDN
+const TEMP_DIR = './temp';
 
 export class CommandHandler {
     private sysPrefix = '[SYSTEM] ';
@@ -119,6 +126,18 @@ export class CommandHandler {
                 await this.removeReactionChannel(message, id, isDM, args[0]);
                 break;
 
+            case 'remind':
+                await this.addReminder(message, id, isDM, args);
+                break;
+
+            case 'reminders':
+                await this.listReminders(message, id, isDM);
+                break;
+
+            case 'cancelreminder':
+                await this.cancelReminder(message, id, isDM, args[0]);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -207,17 +226,68 @@ export class CommandHandler {
     private async downloadFile(url: string, filename: string): Promise<void> {
         try {
             console.log(`🔍 Downloading file from ${url} to ${filename}`);
+
+            // Validate URL
+            let parsedUrl: URL;
+            try {
+                parsedUrl = new URL(url);
+            } catch (error) {
+                throw new Error('Invalid URL provided');
+            }
+
+            // Check if domain is allowed (Discord CDN only)
+            if (!ALLOWED_DOMAINS.includes(parsedUrl.hostname)) {
+                throw new Error(`Domain not allowed: ${parsedUrl.hostname}`);
+            }
+
+            // Ensure HTTPS
+            if (parsedUrl.protocol !== 'https:') {
+                throw new Error('Only HTTPS URLs are allowed');
+            }
+
+            // Sanitize filename and ensure it's in temp directory
+            const sanitizedFilename = path.basename(filename).replace(/[^a-zA-Z0-9.-]/g, '_');
+            const safePath = path.join(TEMP_DIR, sanitizedFilename);
+
+            // Ensure temp directory exists
+            await fs.promises.mkdir(TEMP_DIR, { recursive: true });
+
             const response = await new Promise<any>((resolve, reject) => {
-                https.get(url, (res) => {
+                const req = https.get(url, (res) => {
                     if (res.statusCode !== 200) {
                         reject(new Error(`Failed to download: ${res.statusCode} ${res.statusMessage}`));
                         return;
                     }
+
+                    // Check content length
+                    const contentLength = parseInt(res.headers['content-length'] || '0');
+                    if (contentLength > MAX_FILE_SIZE) {
+                        reject(new Error(`File too large: ${contentLength} bytes (max: ${MAX_FILE_SIZE})`));
+                        return;
+                    }
+
+                    let downloadedBytes = 0;
+                    res.on('data', (chunk) => {
+                        downloadedBytes += chunk.length;
+                        if (downloadedBytes > MAX_FILE_SIZE) {
+                            res.destroy();
+                            reject(new Error(`File too large: exceeded ${MAX_FILE_SIZE} bytes during download`));
+                            return;
+                        }
+                    });
+
                     resolve(res);
                 }).on('error', reject);
+
+                // Set timeout
+                req.setTimeout(30000, () => {
+                    req.destroy();
+                    reject(new Error('Download timeout'));
+                });
             });
-            await pipeline(response, fs.createWriteStream(filename));
-            console.log(`🔍 Downloaded file from ${url} to ${filename}`);
+
+            await pipeline(response, fs.createWriteStream(safePath));
+            console.log(`🔍 Downloaded file from ${url} to ${safePath}`);
         } catch (error) {
             console.error(`❌ Error downloading file ${filename}:`, error);
             throw error;
@@ -225,27 +295,31 @@ export class CommandHandler {
     }
 
     private async downloadAndReadFile(url: string, filename: string): Promise<string> {
+        const sanitizedFilename = path.basename(filename).replace(/[^a-zA-Z0-9.-]/g, '_');
+        const safePath = path.join(TEMP_DIR, sanitizedFilename);
+
         await this.downloadFile(url, filename);
-        const content = fs.readFileSync(filename, 'utf8');
-        console.log(`🔍 Read file from ${filename}: ${content.slice(0, 100)}...`);
-        fs.unlinkSync(filename);
+        const content = fs.readFileSync(safePath, 'utf8');
+        console.log(`🔍 Read file from ${safePath}: ${content.slice(0, 100)}...`);
+        fs.unlinkSync(safePath);
         return content;
     }
 
     private async transcribeAudio(attachment: Attachment, message: Message): Promise<string> {
         const timestamp = Date.now();
         const userId = message.author.id;
-        const filename = `audio_${userId}_${timestamp}.mp3`;
+        const sanitizedFilename = `audio_${userId}_${timestamp}.mp3`;
+        const safePath = path.join(TEMP_DIR, sanitizedFilename);
 
-        console.log(`🎙️ Processing audio from ${message.author.tag} (${filename})`);
+        console.log(`🎙️ Processing audio from ${message.author.tag} (${safePath})`);
         await message.channel.sendTyping();
 
         try {
             // Download the audio file with unique name
-            await this.downloadFile(attachment.proxyURL, filename);
-            console.log(`📥 Downloaded audio file: ${filename}`);
+            await this.downloadFile(attachment.proxyURL, sanitizedFilename);
+            console.log(`📥 Downloaded audio file: ${safePath}`);
 
-            const transcription = await whisper(this.openai, filename);
+            const transcription = await whisper(this.openai, safePath);
             if (!transcription?.text?.length) {
                 await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
                 return '';
@@ -255,16 +329,16 @@ export class CommandHandler {
             await message.reply(`${this.sysPrefix}Transcription: ${transcription.text}`);
             return transcription.text;
         } catch (error) {
-            console.error(`❌ Whisper error for ${filename}:`, error);
+            console.error(`❌ Whisper error for ${safePath}:`, error);
             await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
             return '';
         } finally {
             // Cleanup
             try {
-                fs.unlinkSync(filename);
-                console.log(`🧹 Cleaned up audio file: ${filename}`);
+                fs.unlinkSync(safePath);
+                console.log(`🧹 Cleaned up audio file: ${safePath}`);
             } catch (error) {
-                console.error(`Error cleaning up audio file ${filename}:`, error);
+                console.error(`Error cleaning up audio file ${safePath}:`, error);
             }
         }
     }
@@ -489,7 +563,7 @@ export class CommandHandler {
         buffer.responseTimer = null;
     }
 
-    private async generateResponse(
+    async generateResponse(
         id: string,
         isDM: boolean,
         additionalMessages: { role: string, content: string }[] = [],
@@ -560,7 +634,7 @@ export class CommandHandler {
         }
     }
 
-    private getSystemPrompt(id: string, isDM: boolean): { role: string, content: string } | null {
+    getSystemPrompt(id: string, isDM: boolean): { role: string, content: string } | null {
         const config = this.state.getConfig(id, isDM);
 
         switch (config.mode) {
@@ -826,5 +900,137 @@ If there was an error fetching the webpage, please mention this, as the develope
             console.error('Error generating emoji reaction:', error);
             return null;
         }
+    }
+
+    // Reminder management methods
+    private async addReminder(message: Message, id: string, isDM: boolean, args: string[]) {
+        if (args.length < 2) {
+            await message.reply(`${this.sysPrefix}Usage: \`!remind <time> <message>\`
+Examples:
+- \`!remind 5m Take a break\`
+- \`!remind 2h Check the laundry\`
+- \`!remind 1d Review the proposal\`
+- \`!remind 30s Quick test\``);
+            return;
+        }
+
+        const timeStr = args[0];
+        const reminderContent = args.slice(1).join(' ');
+
+        // Parse time string (e.g., "5m", "2h", "1d", "30s")
+        const timeMatch = timeStr.match(/^(\d+)([smhd])$/i);
+        if (!timeMatch) {
+            await message.reply(`${this.sysPrefix}Invalid time format. Use: 30s, 5m, 2h, 1d`);
+            return;
+        }
+
+        const [, amount, unit] = timeMatch;
+        const multipliers = {
+            's': 1000,           // seconds
+            'm': 60 * 1000,      // minutes
+            'h': 60 * 60 * 1000, // hours
+            'd': 24 * 60 * 60 * 1000 // days
+        };
+
+        const delay = parseInt(amount) * multipliers[unit.toLowerCase() as keyof typeof multipliers];
+        const triggerTime = new Date(Date.now() + delay);
+
+        // Validate reasonable limits
+        if (delay < 10000) { // minimum 10 seconds
+            await message.reply(`${this.sysPrefix}Reminder must be at least 10 seconds in the future.`);
+            return;
+        }
+        if (delay > 365 * 24 * 60 * 60 * 1000) { // maximum 1 year
+            await message.reply(`${this.sysPrefix}Reminder cannot be more than 1 year in the future.`);
+            return;
+        }
+
+        const reminder = {
+            id: `${message.author.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            userId: message.author.id,
+            channelId: message.channel.id,
+            content: reminderContent,
+            triggerTime,
+            isDM
+        };
+
+        this.state.addReminder(reminder);
+
+        await message.reply(
+            `${this.sysPrefix}⏰ Reminder set for ${triggerTime.toLocaleString()}!\n` +
+            `📝 "${reminderContent}"\n` +
+            `🆔 ID: \`${reminder.id}\``
+        );
+    }
+
+    private async listReminders(message: Message, id: string, isDM: boolean) {
+        const userReminders = this.state.getRemindersForUser(message.author.id);
+
+        if (userReminders.length === 0) {
+            await message.reply(`${this.sysPrefix}You have no active reminders.`);
+            return;
+        }
+
+        const reminderList = userReminders
+            .sort((a, b) => a.triggerTime.getTime() - b.triggerTime.getTime())
+            .map(reminder => {
+                const timeLeft = reminder.triggerTime.getTime() - Date.now();
+                const timeStr = timeLeft > 0
+                    ? `in ${this.formatTimeLeft(timeLeft)}`
+                    : 'overdue';
+
+                return `⏰ ${reminder.triggerTime.toLocaleString()} (${timeStr})\n` +
+                    `📝 "${reminder.content}"\n` +
+                    `🆔 \`${reminder.id}\``;
+            })
+            .join('\n\n');
+
+        const chunks = this.splitMessageIntoChunks([{ role: 'user', content: reminderList }]);
+        await message.reply(`${this.sysPrefix}Your active reminders:`);
+
+        for (const chunk of chunks) {
+            if (chunk) await message.channel.send(chunk);
+        }
+    }
+
+    private async cancelReminder(message: Message, id: string, isDM: boolean, reminderId: string) {
+        if (!reminderId) {
+            await message.reply(`${this.sysPrefix}Usage: \`!cancelreminder <reminder_id>\``);
+            return;
+        }
+
+        const reminder = this.state.getReminder(reminderId);
+        if (!reminder) {
+            await message.reply(`${this.sysPrefix}Reminder not found: \`${reminderId}\``);
+            return;
+        }
+
+        if (reminder.userId !== message.author.id) {
+            await message.reply(`${this.sysPrefix}You can only cancel your own reminders.`);
+            return;
+        }
+
+        const deleted = this.state.removeReminder(reminderId);
+        if (deleted) {
+            await message.reply(
+                `${this.sysPrefix}✅ Cancelled reminder:\n` +
+                `📝 "${reminder.content}"\n` +
+                `⏰ Was scheduled for: ${reminder.triggerTime.toLocaleString()}`
+            );
+        } else {
+            await message.reply(`${this.sysPrefix}Failed to cancel reminder.`);
+        }
+    }
+
+    private formatTimeLeft(ms: number): string {
+        const seconds = Math.floor(ms / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (days > 0) return `${days}d ${hours % 24}h`;
+        if (hours > 0) return `${hours}h ${minutes % 60}m`;
+        if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+        return `${seconds}s`;
     }
 } 

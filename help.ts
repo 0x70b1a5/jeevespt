@@ -58,6 +58,19 @@ The bot can be configured to automatically react with appropriate emojis to mess
 \`!reactadd CHANNEL-NAME\`: Add a channel to the list of monitored channels.
 \`!reactremove CHANNEL-NAME\`: Remove a channel from the list of monitored channels.
 
+### Reminders
+
+Set personal reminders that will be delivered at the specified time.
+
+\`!remind <time> <message>\`: Set a reminder. Time format: 30s, 5m, 2h, 1d
+\`!reminders\`: List all your active reminders.
+\`!cancelreminder <id>\`: Cancel a specific reminder by ID.
+
+Examples:
+- \`!remind 5m Take a break\`
+- \`!remind 2h Check the laundry\`
+- \`!remind 1d Review the proposal\`
+
 ## Voice Commands
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear, and !parrot bla bla bla will reply with bla bla bla.
