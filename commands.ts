@@ -173,6 +173,8 @@ export class CommandHandler {
             }
         }
 
+        console.log(`🔍 User message: ${userMessage}`);
+
         if (audio) {
             userMessage = await this.transcribeAudio(audio, message) || userMessage;
             const firstWord = userMessage.split(' ')[0];
