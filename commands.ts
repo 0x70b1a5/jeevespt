@@ -248,10 +248,14 @@ export class CommandHandler {
         // Check if message contains URLs to determine if we need to wait for embeds
         const hasUrls = this.hasURLs(message.content);
         const isCommand = message.content.startsWith('!');
-        
+
         // Use delay only if message has URLs and isn't a command
-        const delay = (hasUrls && !isCommand) ? config.responseDelayMs : 0;
-        
+        const delay = isCommand
+            ? 0
+            : hasUrls
+            ? Math.max(config.responseDelayMs, 5000)
+            : config.responseDelayMs;
+
         // Set new timer for response
         buffer.responseTimer = setTimeout(
             () => this.sendDelayedResponse(message, isDM),

@@ -91,4 +91,11 @@ Make your question:
 - Educational and engaging
 - Not too easy, not too difficult
 
-Format your response as a question that invites participation from the community. Keep it concise (1-3 sentences) and make it feel like a fun challenge rather than a test.`
+Examples:
+- Translate the following sentence: poeta rosam magnam puellas dat.
+- What is the plural of 'lapis'?
+- What is the verb form of 'amare' in the first person singular?
+- Which empire was defeated by the Romans in 14 AD?
+
+As you can see, the goal is concision, mastery, and clarity. Adapt the question to the subject as needed.
+`
