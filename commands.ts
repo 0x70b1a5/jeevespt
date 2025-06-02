@@ -257,8 +257,8 @@ export class CommandHandler {
         const delay = isCommand
             ? 0
             : hasUrls
-            ? Math.max(config.responseDelayMs, 5000)
-            : config.responseDelayMs;
+                ? Math.max(config.responseDelayMs, 5000)
+                : config.responseDelayMs;
 
         // Set new timer for response
         buffer.responseTimer = setTimeout(
@@ -1215,7 +1215,7 @@ Examples:
                 temperature: 0.8,
                 messages: [{
                     role: 'user',
-                    content: `Create a learning question for ${subject}. Make it engaging and educational.`
+                    content: `Create a question for the following subject: ${subject}`
                 }],
                 system: learningPrompt
             });
@@ -1226,7 +1226,7 @@ Examples:
                 // Post the question and add it to the message log so the bot can respond to answers
                 const questionMessage = {
                     role: 'assistant',
-                    content: `📚 **${subject} Learning Question:**\n\n${questionText}`
+                    content: questionText
                 };
 
                 // Add the question to the conversation log so the bot remembers it asked this question
