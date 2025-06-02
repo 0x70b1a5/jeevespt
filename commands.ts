@@ -162,6 +162,12 @@ export class CommandHandler {
         }
     }
 
+    private hasURLs(text: string): boolean {
+        // Check for URLs in the message content
+        const urlRegex = /(https?:\/\/[^\s]+)/gi;
+        return urlRegex.test(text);
+    }
+
     async handleMessage(message: Message, isDM: boolean) {
         console.log(`📨 Processing message from ${isDM ? 'DM' : 'guild'} (${message.author.tag})`);
         const id = isDM ? message.author.id : message.guild!.id;
@@ -239,10 +245,17 @@ export class CommandHandler {
             clearTimeout(buffer.responseTimer);
         }
 
+        // Check if message contains URLs to determine if we need to wait for embeds
+        const hasUrls = this.hasURLs(message.content);
+        const isCommand = message.content.startsWith('!');
+        
+        // Use delay only if message has URLs and isn't a command
+        const delay = (hasUrls && !isCommand) ? config.responseDelayMs : 0;
+        
         // Set new timer for response
         buffer.responseTimer = setTimeout(
             () => this.sendDelayedResponse(message, isDM),
-            config.responseDelayMs
+            delay
         );
     }
 
@@ -846,8 +859,10 @@ If there was an error fetching the webpage, please mention this, as the develope
         // Skip if channel is not in the reaction list
         if (!config.reactionChannels.includes(message.channel.id)) return;
 
-        // wait 5 seconds while embeds load
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Only wait for embeds if message contains URLs
+        if (this.hasURLs(message.content)) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
 
         // Generate an appropriate emoji reaction
         const emoji = await this.generateEmojiReaction(message);

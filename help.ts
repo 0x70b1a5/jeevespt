@@ -48,7 +48,8 @@ The bot can be configured to automatically muse upon a random Wikipedia page eve
 \`!museon\`: Enable automatic muse.
 \`!museoff\`: Disable automatic muse.
 \`!museinterval HOURS\`: Set muse interval to X hours.
-
+`,
+`
 ### Reaction Mode
 
 The bot can be configured to automatically react with appropriate emojis to messages in specific channels.
@@ -57,7 +58,8 @@ The bot can be configured to automatically react with appropriate emojis to mess
 \`!reactoff\`: Disable reaction mode.
 \`!reactadd CHANNEL-NAME\`: Add a channel to the list of monitored channels.
 \`!reactremove CHANNEL-NAME\`: Remove a channel from the list of monitored channels.
-
+`,
+`
 ### Reminders
 
 Set personal reminders that will be delivered at the specified time.
@@ -70,7 +72,20 @@ Examples:
 - \`!remind 5m Take a break\`
 - \`!remind 2h Check the laundry\`
 - \`!remind 1d Review the proposal\`
+`,
+`
+### Learning System
 
+The bot can ask you educational questions on subjects you specify, spaced throughout the day.
+
+\`!learnon\`: Enable learning questions.
+\`!learnoff\`: Disable learning questions.
+\`!learnadd <subject>\`: Add a subject to learn about.
+\`!learnremove <subject>\`: Remove a subject from the learning list.
+\`!learnstatus\`: Show current learning configuration and progress.
+
+`,
+`
 ## Voice Commands
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear, and !parrot bla bla bla will reply with bla bla bla.
