@@ -54,6 +54,7 @@ export class BotServer {
         setInterval(() => {
             this.checkAllMuseTimers();
             this.checkReminders();
+            this.checkLearningQuestions();
         }, 60000);
     }
 
@@ -280,6 +281,59 @@ export class BotServer {
         }
     }
 
+    private async checkLearningQuestions() {
+        // Check guilds for learning questions
+        this.client.guilds.cache.forEach(async guild => {
+            const config = this.state.getConfig(guild.id, false);
+            if (!config.learningEnabled || config.learningSubjects.length === 0) return;
+
+            const nextSubject = this.state.getNextQuestionSubject(guild.id, false, config.learningSubjects);
+            if (nextSubject) {
+                await this.performLearningQuestion(guild.id, false, nextSubject);
+            }
+        });
+
+        // Check DMs for learning questions
+        this.client.users.cache.forEach(async user => {
+            const config = this.state.getConfig(user.id, true);
+            if (!config.learningEnabled || !config.allowDMs || config.learningSubjects.length === 0) return;
+
+            const nextSubject = this.state.getNextQuestionSubject(user.id, true, config.learningSubjects);
+            if (nextSubject) {
+                await this.performLearningQuestion(user.id, true, nextSubject);
+            }
+        });
+    }
+
+    private async performLearningQuestion(id: string, isDM: boolean, subject: string) {
+        const channel = isDM
+            ? await this.client.users.fetch(id).then(user => user.dmChannel)
+            : this.client.channels.cache
+                .filter(channel =>
+                    channel.type === ChannelType.GuildText &&
+                    channel.guild.id === id &&
+                    channel.name === process.env.TARGET_CHANNEL_NAME
+                )
+                .first() as TextChannel;
+
+        if (!channel) {
+            console.log(`🚫 Could not find valid channel for learning question (${isDM ? 'DM' : 'guild'}: ${id})`);
+            return;
+        }
+
+        try {
+            await channel.sendTyping();
+
+            // Generate a learning question using the commands module
+            await this.commands.performLearningQuestion(channel, id, isDM, subject);
+
+            // Record that we asked a question for this subject
+            this.state.recordQuestionAsked(id, isDM, subject);
+        } catch (error) {
+            console.error('Error performing learning question:', error);
+        }
+    }
+
     public async start() {
         console.log('🚀 Starting bot...');
         try {
@@ -295,4 +349,4 @@ export class BotServer {
 if (require.main === module) {
     const server = new BotServer();
     server.start().catch(console.error);
-} 
+}

@@ -1,9 +1,9 @@
-import { Attachment, Message } from 'discord.js';
-import { BotConfig, BotState } from './bot';
+import { Attachment, DMChannel, Message, TextChannel } from 'discord.js';
+import { BotConfig, BotState, ReactionHistory } from './bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import whisper from './whisper';
-import { JEEVES_PROMPT, TOKIPONA_PROMPT, JARGONATUS_PROMPT } from './prompts';
+import { JEEVES_PROMPT, TOKIPONA_PROMPT, JARGONATUS_PROMPT, LEARNING_PROMPT_TEMPLATE } from './prompts';
 import dayjs from 'dayjs';
 import { help } from './help';
 import { getWebpage } from './getWebpage';
@@ -135,6 +135,26 @@ export class CommandHandler {
 
             case 'cancelreminder':
                 await this.cancelReminder(message, id, isDM, args[0]);
+                break;
+
+            case 'learnon':
+                await this.toggleLearning(message, id, isDM, true);
+                break;
+
+            case 'learnoff':
+                await this.toggleLearning(message, id, isDM, false);
+                break;
+
+            case 'learnadd':
+                await this.addLearningSubject(message, id, isDM, args.join(' '));
+                break;
+
+            case 'learnremove':
+                await this.removeLearningSubject(message, id, isDM, args.join(' '));
+                break;
+
+            case 'learnstatus':
+                await this.showLearningStatus(message, id, isDM);
                 break;
 
             default:
@@ -584,7 +604,6 @@ export class CommandHandler {
             );
 
         const latestMessages = [
-            systemPrompt,
             ...recentLogMessages,  // Recent history from log
             ...buffer.messages,    // Current burst of messages
             ...additionalMessages  // Any additional context
@@ -600,7 +619,8 @@ export class CommandHandler {
                     content: msg?.content
                 })).filter(m => Boolean(m?.content)) as MessageParam[],
                 temperature: config.temperature,
-                max_tokens: config.maxResponseLength
+                max_tokens: config.maxResponseLength,
+                system: systemPrompt?.content || ''
             });
 
             const botMsg = completion.content[0];
@@ -834,6 +854,9 @@ If there was an error fetching the webpage, please mention this, as the develope
         if (emoji) {
             try {
                 await message.react(emoji);
+                // Record the successful reaction for future reference
+                this.state.recordReaction(id, false, emoji, message.content, message.channel.id);
+                console.log(`🎭 Recorded reaction: ${emoji} for guild ${id}`);
             } catch (error) {
                 console.error('Error reacting to message:', error);
             }
@@ -859,16 +882,20 @@ If there was an error fetching the webpage, please mention this, as the develope
             const id = message.guild!.id;
             const config = this.state.getConfig(id, false);
             const systemPrompt = this.getSystemPrompt(id, false);
-            if (systemPrompt) {
-                // The api doesn't let us set "system" here?!
-                systemPrompt.role = "user";
+
+            // Get recent reactions to encourage variety
+            const recentReactions = this.state.getRecentReactions(id, false);
+            let reactionContext = '';
+            if (recentReactions.length > 0) {
+                const recentEmojis = recentReactions.map(r => r.emoji).join(', ');
+                reactionContext = `\n\nIMPORTANT: My recent reactions were: ${recentEmojis}. Please choose a different emoji to add variety and avoid repetition.`;
             }
+
             const messages = [
-                systemPrompt,
                 ...channelHistory,
                 {
                     role: "user",
-                    content: `Based on this conversation, please respond to the most recent message with a single emoji that would be an appropriate reaction. Only respond with the emoji itself.`
+                    content: `Based on this conversation, please respond to the most recent message with a single emoji that would be an appropriate reaction. Only respond with the emoji itself.${reactionContext}`
                 }
             ] as MessageParam[];
 
@@ -876,7 +903,8 @@ If there was an error fetching the webpage, please mention this, as the develope
                 model: config.model,
                 max_tokens: 30,
                 temperature: config.temperature,
-                messages
+                messages,
+                system: systemPrompt?.content || ''
             });
 
             // Extract just the emoji from the response
@@ -1028,6 +1056,150 @@ Examples:
             );
         } else {
             await message.reply(`${this.sysPrefix}Failed to cancel reminder.`);
+        }
+    }
+
+    async toggleLearning(message: Message, id: string, isDM: boolean, enabled: boolean) {
+        this.state.updateConfig(id, isDM, { learningEnabled: enabled });
+        await message.reply(
+            `${this.sysPrefix}Learning questions ${enabled ? 'enabled' : 'disabled'} for ${isDM ? 'DMs' : 'this server'}.`
+        );
+    }
+
+    async addLearningSubject(message: Message, id: string, isDM: boolean, subject: string) {
+        if (!subject.trim()) {
+            await message.reply(`${this.sysPrefix}Please specify a subject to add. Usage: !learnadd [subject]`);
+            return;
+        }
+
+        const config = this.state.getConfig(id, isDM);
+        const subjectTrimmed = subject.trim();
+
+        if (config.learningSubjects.includes(subjectTrimmed)) {
+            await message.reply(`${this.sysPrefix}"${subjectTrimmed}" is already in the learning subjects list.`);
+            return;
+        }
+
+        const newSubjects = [...config.learningSubjects, subjectTrimmed];
+        this.state.updateConfig(id, isDM, { learningSubjects: newSubjects });
+
+        await message.reply(
+            `${this.sysPrefix}Added "${subjectTrimmed}" to learning subjects.\n` +
+            `Current subjects: ${newSubjects.join(', ')}\n` +
+            `Questions will be spaced throughout the day (every ${Math.round(24 / newSubjects.length * 10) / 10} hours per subject).`
+        );
+    }
+
+    async removeLearningSubject(message: Message, id: string, isDM: boolean, subject: string) {
+        if (!subject.trim()) {
+            await message.reply(`${this.sysPrefix}Please specify a subject to remove. Usage: !learnremove [subject]`);
+            return;
+        }
+
+        const config = this.state.getConfig(id, isDM);
+        const subjectTrimmed = subject.trim();
+
+        if (!config.learningSubjects.includes(subjectTrimmed)) {
+            await message.reply(
+                `${this.sysPrefix}"${subjectTrimmed}" is not in the learning subjects list.\n` +
+                `Current subjects: ${config.learningSubjects.join(', ') || 'none'}`
+            );
+            return;
+        }
+
+        const newSubjects = config.learningSubjects.filter(s => s !== subjectTrimmed);
+        this.state.updateConfig(id, isDM, { learningSubjects: newSubjects });
+
+        await message.reply(
+            `${this.sysPrefix}Removed "${subjectTrimmed}" from learning subjects.\n` +
+            `Current subjects: ${newSubjects.join(', ') || 'none'}` +
+            (newSubjects.length > 0 ? `\nQuestions will be spaced throughout the day (every ${Math.round(24 / newSubjects.length * 10) / 10} hours per subject).` : '')
+        );
+    }
+
+    async showLearningStatus(message: Message, id: string, isDM: boolean) {
+        const config = this.state.getConfig(id, isDM);
+        const tracker = this.state.getLearningTracker(id, isDM);
+
+        let status = `📚 **Learning System Status:**\n`;
+        status += `🔹 Enabled: ${config.learningEnabled ? '✅' : '❌'}\n`;
+        status += `🔹 Subjects: ${config.learningSubjects.join(', ') || 'none'}\n\n`;
+
+        if (config.learningEnabled && config.learningSubjects.length > 0) {
+            status += `📊 **Today's Questions:**\n`;
+            for (const subject of config.learningSubjects) {
+                const count = tracker.dailyQuestionCount.get(subject) || 0;
+                const lastTime = tracker.lastQuestionTimes.get(subject);
+                const lastTimeStr = lastTime ? new Date(lastTime).toLocaleTimeString() : 'never';
+                status += `🔸 ${subject}: ${count} questions (last: ${lastTimeStr})\n`;
+            }
+
+            const nextSubject = this.state.getNextQuestionSubject(id, isDM, config.learningSubjects);
+            if (nextSubject) {
+                status += `\n⏰ Next question: ${nextSubject} (ready now!)`;
+            } else {
+                const timeUntilNext = this.state.getTimeUntilNextQuestion(id, isDM, config.learningSubjects);
+                if (timeUntilNext < Infinity) {
+                    const hours = Math.floor(timeUntilNext / (1000 * 60 * 60));
+                    const minutes = Math.floor((timeUntilNext % (1000 * 60 * 60)) / (1000 * 60));
+                    status += `\n⏰ Next question in: ${hours}h ${minutes}m`;
+                }
+            }
+        }
+
+        await message.reply(status);
+    }
+
+    async performLearningQuestion(channel: TextChannel | DMChannel, id: string, isDM: boolean, subject: string) {
+        console.log(`📚 Generating learning question for ${isDM ? 'user' : 'guild'}: ${id}, subject: ${subject}`);
+
+        try {
+            // Create a prompt specifically for learning questions (not using main system prompt)
+            const learningPrompt = LEARNING_PROMPT_TEMPLATE.replace('{SUBJECT}', subject);
+
+            // Generate the learning question using the anthropic API directly
+            // We don't use the main generateResponse method to avoid mixing with conversation context
+            const response = await this.anthropic.messages.create({
+                model: 'claude-3-5-sonnet-latest',
+                max_tokens: 300,
+                temperature: 0.8,
+                messages: [{
+                    role: 'user',
+                    content: `Create a learning question for ${subject}. Make it engaging and educational.`
+                }],
+                system: learningPrompt
+            });
+
+            const questionText = response.content[0]?.type === 'text' ? response.content[0].text : '';
+
+            if (questionText) {
+                // Post the question and add it to the message log so the bot can respond to answers
+                const questionMessage = {
+                    role: 'assistant',
+                    content: `📚 **${subject} Learning Question:**\n\n${questionText}`
+                };
+
+                // Add the question to the conversation log so the bot remembers it asked this question
+                const log = this.state.getLog(id, isDM);
+                log.messages.push(questionMessage);
+
+                // Trim log if needed
+                const config = this.state.getConfig(id, isDM);
+                if (log.messages.length > config.messageLimit) {
+                    log.messages = log.messages.slice(-config.messageLimit);
+                }
+
+                // Send the question
+                await channel.send(questionMessage.content);
+
+                console.log(`✅ Posted learning question for ${subject}`);
+            } else {
+                console.error('Failed to generate learning question - empty response');
+                await channel.send(`${this.sysPrefix}Sorry, I couldn't generate a learning question right now.`);
+            }
+        } catch (error) {
+            console.error('Error generating learning question:', error);
+            await channel.send(`${this.sysPrefix}Error generating learning question: ${error}`);
         }
     }
 }
