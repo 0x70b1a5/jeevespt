@@ -157,6 +157,10 @@ export class CommandHandler {
                 await this.showLearningStatus(message, id, isDM);
                 break;
 
+            case 'learn':
+                await this.triggerLearningQuestion(message, id, isDM);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -1167,6 +1171,33 @@ Examples:
         }
 
         await message.reply(status);
+    }
+
+    async triggerLearningQuestion(message: Message, id: string, isDM: boolean) {
+        const config = this.state.getConfig(id, isDM);
+
+        if (!config.learningEnabled) {
+            await message.reply(`${this.sysPrefix}Learning questions are disabled. Use \`!learnon\` to enable them.`);
+            return;
+        }
+
+        if (config.learningSubjects.length === 0) {
+            await message.reply(`${this.sysPrefix}No learning subjects configured. Use \`!learnadd <subject>\` to add subjects.`);
+            return;
+        }
+
+        // Pick the next subject that should be asked, or the first one if none are due
+        let subject = this.state.getNextQuestionSubject(id, isDM, config.learningSubjects);
+        if (!subject) {
+            // If no subject is due, pick a random one
+            subject = config.learningSubjects[Math.floor(Math.random() * config.learningSubjects.length)];
+        }
+
+        // Record that we're asking a question about this subject
+        this.state.recordQuestionAsked(id, isDM, subject);
+
+        // Generate and send the learning question
+        await this.performLearningQuestion(message.channel as any, id, isDM, subject);
     }
 
     async performLearningQuestion(channel: TextChannel | DMChannel, id: string, isDM: boolean, subject: string) {

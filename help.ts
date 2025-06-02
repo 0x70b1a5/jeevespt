@@ -83,6 +83,7 @@ The bot can ask you educational questions on subjects you specify, spaced throug
 \`!learnadd <subject>\`: Add a subject to learn about.
 \`!learnremove <subject>\`: Remove a subject from the learning list.
 \`!learnstatus\`: Show current learning configuration and progress.
+\`!learn\`: Immediately ask a learning question from your configured subjects.
 
 `,
 `
