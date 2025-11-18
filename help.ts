@@ -24,7 +24,7 @@ export const help: string[] = [
 ### Configuration
 
 \`!temperature FLOAT\`: Sets temperature (0-2) to X.
-\`!model STRING\`: Sets model. Any string will work, but if you specify an invalid model the bot will break.
+\`!model STRING\`: Sets model. The bot will validate that you're using a valid Anthropic model and show you a list of available models if you specify an invalid one.
 \`!delay SECONDS\`: Sets reponse delay to SECONDS seconds. This can be useful if you want the bot to wait for someone to send a few different messages before responding.
 \`!tokens INTEGER\`: Sets the maximum number of tokens to generate.
 \`!persist\`: Toggle whether data is saved between sessions.

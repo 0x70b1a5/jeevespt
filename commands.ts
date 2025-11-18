@@ -1,5 +1,5 @@
 import { Attachment, DMChannel, Message, TextChannel } from 'discord.js';
-import { BotConfig, BotState, ReactionHistory } from './bot';
+import { BotConfig, BotState, ReactionHistory, VALID_ANTHROPIC_MODELS, isValidAnthropicModel } from './bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import whisper from './whisper';
@@ -24,6 +24,9 @@ const TEMP_DIR = './temp';
 
 export class CommandHandler {
     private sysPrefix = '[SYSTEM] ';
+    private modelListCache: string[] | null = null;
+    private modelListCacheTime: number = 0;
+    private readonly MODEL_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
     constructor(
         private state: BotState,
@@ -457,12 +460,74 @@ export class CommandHandler {
         }
     }
 
+    /**
+     * Fetches the list of valid Anthropic models from the API.
+     * Uses a cache to avoid excessive API calls.
+     * Falls back to the static list if the API call fails.
+     */
+    private async getValidModels(): Promise<string[]> {
+        // Check if we have a valid cache
+        const now = Date.now();
+        if (this.modelListCache && (now - this.modelListCacheTime) < this.MODEL_CACHE_DURATION) {
+            return this.modelListCache;
+        }
+
+        try {
+            // Fetch models from the API
+            const response = await fetch('https://api.anthropic.com/v1/models', {
+                headers: {
+                    'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+                    'anthropic-version': '2023-06-01'
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json() as { data: Array<{ id: string }> };
+                const modelIds = data.data.map(model => model.id);
+
+                // Update cache
+                this.modelListCache = modelIds;
+                this.modelListCacheTime = now;
+
+                console.log(`✅ Fetched ${modelIds.length} models from Anthropic API`);
+                return modelIds;
+            } else {
+                console.warn(`⚠️ Failed to fetch models from API (${response.status}), using static list`);
+                return [...VALID_ANTHROPIC_MODELS];
+            }
+        } catch (error) {
+            console.warn(`⚠️ Error fetching models from API, using static list:`, error);
+            return [...VALID_ANTHROPIC_MODELS];
+        }
+    }
+
     private async setModel(message: Message, id: string, isDM: boolean, modelName: string) {
-        if (modelName) {
-            this.state.updateConfig(id, isDM, { model: modelName });
-            await message.reply(`${this.sysPrefix}Model set to \`${modelName}\`.`);
-        } else {
+        if (!modelName) {
             await message.reply(`${this.sysPrefix}Couldn't parse requested model.`);
+            return;
+        }
+
+        // Fetch the current list of valid models
+        const validModels = await this.getValidModels();
+        const isValidModel = validModels.includes(modelName);
+
+        // Set the model regardless of validity (for testing purposes)
+        this.state.updateConfig(id, isDM, { model: modelName });
+
+        if (!isValidModel) {
+            // Show warning but still allow the model to be set
+            const modelList = validModels
+                .map(m => `• \`${m}\``)
+                .join('\n');
+
+            await message.reply(
+                `${this.sysPrefix}Model set to \`${modelName}\`.\n\n` +
+                `**⚠️ Warning:** \`${modelName}\` is not a recognized Anthropic model. ` +
+                `This may be fine for testing purposes, but using an invalid model will cause the bot to fail when generating responses.\n\n` +
+                `**Valid Anthropic models:**\n${modelList}`
+            );
+        } else {
+            await message.reply(`${this.sysPrefix}Model set to \`${modelName}\`.`);
         }
     }
 
