@@ -2,12 +2,12 @@ import dayjs from "dayjs"
 import { Message } from "discord.js"
 
 export const prependTimestampAndUsername = (message: Message) => {
-    // Get display name from guild member if available, fallback to global name, then username
-    const displayName = message.member?.displayName || message.author.globalName || message.author.username;
+    // Get display name from guild member if available, fallback to username
+    const displayName = message.member?.displayName;
     const username = message.author.username;
 
     // Format: timestamp [handle/displayname]: content
-    const userIdentifier = displayName !== username ? `${username}/${displayName}` : username;
+    const userIdentifier = displayName && displayName !== username ? `${username}/${displayName}` : username;
     return `${dayjs(message.createdTimestamp).format('MM/DD/YYYY HH:mm:ss')} [${userIdentifier}]: ${message.cleanContent}`;
 }
 
