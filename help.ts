@@ -30,6 +30,10 @@ export const help: string[] = [
 \`!persist\`: Toggle whether data is saved between sessions.
 \`!dms\`: Toggle whether the bot will respond to direct messages.
 \`!voice\`: Enable/disable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).
+\`!config\`: Show current channel configuration.
+\`!config <channel> <frequency>\`: Configure how the bot responds in a specific channel.
+  - Frequencies: \`all\` (respond to every message), \`mentions\` (only when mentioned), \`none\` (ignore messages)
+  - Examples: \`!config general all\`, \`!config random mentions\`, \`!config off-topic none\`
 `,
     `
 ### Testing

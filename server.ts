@@ -209,28 +209,63 @@ export class BotServer {
                 await this.commands.handleReaction(message);
             }
 
-            // Check if message is from a DM or allowed channel
-            const isValidChannel =
-                (message.channel.type === ChannelType.DM && this.state.getConfig(message.author.id, true).allowDMs) ||
-                ((message.channel as TextChannel)?.name === process.env.TARGET_CHANNEL_NAME);
+            const isDM = message.channel.type === ChannelType.DM;
+            const id = isDM ? message.author.id : message.guild!.id;
 
-            if (!isValidChannel) {
-                console.log('📝 Ignoring message from invalid channel', {
+            // Determine if we should process this message and whether we should respond
+            let shouldProcess = false;
+            let shouldRespond = false;
+
+            if (isDM) {
+                // DM logic: check allowDMs config
+                const config = this.state.getConfig(message.author.id, true);
+                shouldProcess = config.allowDMs;
+                shouldRespond = config.allowDMs;
+            } else {
+                // Guild channel logic
+                const channelId = message.channel.id;
+                const membership = this.state.getChannelMembership(id, false, channelId);
+
+                if (membership) {
+                    // Channel is explicitly configured
+                    switch (membership.responseFrequency) {
+                        case 'none':
+                            shouldProcess = false;
+                            shouldRespond = false;
+                            break;
+                        case 'all':
+                            shouldProcess = true;
+                            shouldRespond = true;
+                            break;
+                        case 'mentions':
+                            shouldProcess = true;
+                            // Check if bot is mentioned
+                            shouldRespond = message.mentions.has(this.client.user!.id);
+                            break;
+                    }
+                } else if ((message.channel as TextChannel)?.name === process.env.TARGET_CHANNEL_NAME) {
+                    // Backwards compatibility: TARGET_CHANNEL_NAME behaves like EveryMessage
+                    shouldProcess = true;
+                    shouldRespond = true;
+                }
+            }
+
+            if (!shouldProcess) {
+                console.log('📝 Ignoring message from unconfigured channel', {
                     isDM: message.channel.type === ChannelType.DM,
                     channelName: (message.channel as TextChannel)?.name,
-                    targetChannel: process.env.TARGET_CHANNEL_NAME
+                    channelId: message.channel.id
                 });
                 return;
             }
 
-            const isDM = message.channel.type === ChannelType.DM;
-            console.log(`📨 Processing message from ${message.author.tag} in ${isDM ? 'DM' : message.guild?.name}`);
+            console.log(`📨 Processing message from ${message.author.tag} in ${isDM ? 'DM' : message.guild?.name} (shouldRespond: ${shouldRespond})`);
 
             // Handle commands or regular messages
             if (message.content.startsWith('!')) {
                 await this.commands.handleCommand(message, isDM);
             } else {
-                await this.commands.handleMessage(message, isDM);
+                await this.commands.handleMessage(message, isDM, shouldRespond);
             }
         });
 

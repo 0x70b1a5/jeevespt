@@ -32,6 +32,16 @@ export function isValidAnthropicModel(model: string): boolean {
     return VALID_ANTHROPIC_MODELS.includes(model as any);
 }
 
+export enum ResponseFrequency {
+    None = 'none',
+    EveryMessage = 'all',
+    WhenMentioned = 'mentions'
+}
+
+export interface ChannelMembershipConfig {
+    responseFrequency: ResponseFrequency;
+}
+
 export interface BotConfig {
     mode: BotMode;
     messageLimit: number;
@@ -50,6 +60,8 @@ export interface BotConfig {
     // Learning system configuration
     learningEnabled: boolean;
     learningSubjects: string[];
+    // Channel membership configuration
+    channelMemberships: Map<string, ChannelMembershipConfig>;
 }
 
 export interface MessageBuffer {
@@ -125,7 +137,9 @@ export class BotState {
         reactionChannels: [],
         // Default learning settings
         learningEnabled: false,
-        learningSubjects: ['Latin', 'toki pona']
+        learningSubjects: ['Latin', 'toki pona'],
+        // Default channel membership settings
+        channelMemberships: new Map()
     };
 
     constructor() {
@@ -213,7 +227,12 @@ export class BotState {
 
                 if (data.config) {
                     const map = isDM ? this.userConfigs : this.guildConfigs;
-                    map.set(id, { ...this.defaultConfig, ...data.config });
+                    const config = { ...this.defaultConfig, ...data.config };
+                    // Convert channelMemberships from plain object to Map
+                    if (data.config.channelMemberships) {
+                        config.channelMemberships = new Map(Object.entries(data.config.channelMemberships));
+                    }
+                    map.set(id, config);
                 }
 
                 if (data.messages) {
@@ -270,8 +289,14 @@ export class BotState {
                 recentReactions: reactionTracker.recentReactions
             };
 
+            // Convert channelMemberships Map to object for JSON serialization
+            const configForSerialization = {
+                ...config,
+                channelMemberships: Object.fromEntries(config.channelMemberships)
+            };
+
             const data = {
-                config,
+                config: configForSerialization,
                 messages: log.messages,
                 customPrompt,
                 learningData,
@@ -501,5 +526,36 @@ export class BotState {
     getRecentReactions(id: string, isDM: boolean): ReactionHistory[] {
         const tracker = this.getReactionTracker(id, isDM);
         return tracker.recentReactions;
+    }
+
+    // Channel membership management methods
+    setChannelMembership(id: string, isDM: boolean, channelId: string, membership: ChannelMembershipConfig) {
+        const config = this.getConfig(id, isDM);
+        config.channelMemberships.set(channelId, membership);
+
+        if (config.shouldSaveData) {
+            this.persistData(id, isDM);
+        }
+    }
+
+    getChannelMembership(id: string, isDM: boolean, channelId: string): ChannelMembershipConfig | undefined {
+        const config = this.getConfig(id, isDM);
+        return config.channelMemberships.get(channelId);
+    }
+
+    removeChannelMembership(id: string, isDM: boolean, channelId: string): boolean {
+        const config = this.getConfig(id, isDM);
+        const deleted = config.channelMemberships.delete(channelId);
+
+        if (deleted && config.shouldSaveData) {
+            this.persistData(id, isDM);
+        }
+
+        return deleted;
+    }
+
+    getAllChannelMemberships(id: string, isDM: boolean): Map<string, ChannelMembershipConfig> {
+        const config = this.getConfig(id, isDM);
+        return config.channelMemberships;
     }
 }

@@ -1,5 +1,5 @@
 import { Attachment, DMChannel, Message, TextChannel, Webhook, Collection } from 'discord.js';
-import { BotConfig, BotState, ReactionHistory, VALID_ANTHROPIC_MODELS, isValidAnthropicModel } from './bot';
+import { BotConfig, BotState, ReactionHistory, VALID_ANTHROPIC_MODELS, isValidAnthropicModel, ResponseFrequency } from './bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import whisper from './whisper';
@@ -194,6 +194,10 @@ export class CommandHandler {
                 await this.triggerLearningQuestion(message, id, isDM);
                 break;
 
+            case 'config':
+                await this.configureChannelMembership(message, id, isDM, args);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -205,8 +209,8 @@ export class CommandHandler {
         return urlRegex.test(text);
     }
 
-    async handleMessage(message: Message, isDM: boolean) {
-        console.log(`📨 Processing message from ${isDM ? 'DM' : 'guild'} (${message.author.tag})`);
+    async handleMessage(message: Message, isDM: boolean, shouldRespond: boolean = true) {
+        console.log(`📨 Processing message from ${isDM ? 'DM' : 'guild'} (${message.author.tag}), shouldRespond: ${shouldRespond}`);
         const id = isDM ? message.author.id : message.guild!.id;
         const buffer = this.state.getBuffer(id, isDM);
         const log = this.state.getLog(id, isDM);
@@ -282,22 +286,25 @@ export class CommandHandler {
             clearTimeout(buffer.responseTimer);
         }
 
-        // Check if message contains URLs to determine if we need to wait for embeds
-        const hasUrls = this.hasURLs(message.content);
-        const isCommand = message.content.startsWith('!');
+        // Only set a response timer if we should respond
+        if (shouldRespond) {
+            // Check if message contains URLs to determine if we need to wait for embeds
+            const hasUrls = this.hasURLs(message.content);
+            const isCommand = message.content.startsWith('!');
 
-        // Use delay only if message has URLs and isn't a command
-        const delay = isCommand
-            ? 0
-            : hasUrls
-                ? Math.max(config.responseDelayMs, 5000)
-                : config.responseDelayMs;
+            // Use delay only if message has URLs and isn't a command
+            const delay = isCommand
+                ? 0
+                : hasUrls
+                    ? Math.max(config.responseDelayMs, 5000)
+                    : config.responseDelayMs;
 
-        // Set new timer for response
-        buffer.responseTimer = setTimeout(
-            () => this.sendDelayedResponse(message, isDM),
-            delay
-        );
+            // Set new timer for response
+            buffer.responseTimer = setTimeout(
+                () => this.sendDelayedResponse(message, isDM),
+                delay
+            );
+        }
     }
 
     private sanitizeFilename(filename: string): string {
@@ -1451,5 +1458,119 @@ Examples:
         } catch (error) {
             console.error('Error sending regular message:', error);
         }
+    }
+
+    // Channel membership configuration methods
+    private async configureChannelMembership(message: Message, id: string, isDM: boolean, args: string[]) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Channel configuration is only available in servers, not in DMs.`);
+            return;
+        }
+
+        // Parse arguments: !config <channelName> <responseFrequency>
+        if (args.length === 0) {
+            // Show current configuration
+            await this.showChannelConfiguration(message, id, isDM);
+            return;
+        }
+
+        if (args.length < 2) {
+            await message.reply(
+                `${this.sysPrefix}Usage: \`!config <channelName> <responseFrequency>\`\n` +
+                `Response frequencies: \`all\`, \`mentions\`, \`none\`\n` +
+                `Example: \`!config general all\` - respond to every message in #general\n` +
+                `Example: \`!config random mentions\` - only respond when mentioned in #random\n` +
+                `Example: \`!config off-topic none\` - ignore messages in #off-topic`
+            );
+            return;
+        }
+
+        const channelName = args[0];
+        const frequencyStr = args[1].toLowerCase();
+
+        // Validate response frequency
+        const validFrequencies = ['all', 'mentions', 'none'];
+        if (!validFrequencies.includes(frequencyStr)) {
+            await message.reply(
+                `${this.sysPrefix}Invalid response frequency: \`${frequencyStr}\`\n` +
+                `Valid options: ${validFrequencies.map(f => `\`${f}\``).join(', ')}`
+            );
+            return;
+        }
+
+        // Find the channel
+        const channelId = this.getChannelIdFromName(message, channelName);
+        if (!channelId) {
+            await message.reply(`${this.sysPrefix}Could not find channel "${channelName}".`);
+            return;
+        }
+
+        // Map string to ResponseFrequency enum
+        let responseFrequency: ResponseFrequency;
+        switch (frequencyStr) {
+            case 'all':
+                responseFrequency = ResponseFrequency.EveryMessage;
+                break;
+            case 'mentions':
+                responseFrequency = ResponseFrequency.WhenMentioned;
+                break;
+            case 'none':
+                responseFrequency = ResponseFrequency.None;
+                break;
+            default:
+                // Should never happen due to validation above
+                return;
+        }
+
+        // Set the channel membership
+        this.state.setChannelMembership(id, isDM, channelId, { responseFrequency });
+
+        const channel = message.guild!.channels.cache.get(channelId);
+        const channelMention = channel ? `<#${channelId}>` : channelName;
+
+        let behaviorDescription = '';
+        switch (responseFrequency) {
+            case 'all':
+                behaviorDescription = 'respond to every message';
+                break;
+            case 'mentions':
+                behaviorDescription = 'only respond when mentioned';
+                break;
+            case 'none':
+                behaviorDescription = 'ignore all messages';
+                break;
+        }
+
+        await message.reply(
+            `${this.sysPrefix}Configured ${channelMention} to **${responseFrequency}** mode.\n` +
+            `I will ${behaviorDescription} in that channel.`
+        );
+    }
+
+    private async showChannelConfiguration(message: Message, id: string, isDM: boolean) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Channel configuration is only available in servers.`);
+            return;
+        }
+
+        const memberships = this.state.getAllChannelMemberships(id, isDM);
+
+        if (memberships.size === 0) {
+            await message.reply(
+                `${this.sysPrefix}No channels are currently configured.\n` +
+                `Use \`!config <channelName> <responseFrequency>\` to configure a channel.\n` +
+                `Response frequencies: \`all\`, \`mentions\`, \`none\``
+            );
+            return;
+        }
+
+        let configList = '📋 **Channel Configuration:**\n\n';
+        for (const [channelId, membership] of memberships) {
+            const channel = message.guild!.channels.cache.get(channelId);
+            const channelName = channel ? `<#${channelId}>` : `Unknown (${channelId})`;
+            configList += `• ${channelName}: **${membership.responseFrequency}**\n`;
+        }
+
+        await message.reply(configList);
     }
 }
