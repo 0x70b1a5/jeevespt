@@ -1,4 +1,4 @@
-import { Attachment, DMChannel, Message, TextChannel } from 'discord.js';
+import { Attachment, DMChannel, Message, TextChannel, Webhook, Collection } from 'discord.js';
 import { BotConfig, BotState, ReactionHistory, VALID_ANTHROPIC_MODELS, isValidAnthropicModel } from './bot';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
@@ -22,11 +22,41 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 const ALLOWED_DOMAINS = ['cdn.discordapp.com', 'media.discordapp.net']; // Only Discord CDN
 const TEMP_DIR = './temp';
 
+// Persona configurations for different modes
+interface PersonaConfig {
+    name: string;
+    avatar: string;
+}
+
+const PERSONAS: Record<string, PersonaConfig> = {
+    jeeves: {
+        name: 'Jeeves',
+        avatar: 'https://lovecrypt.nyc3.cdn.digitaloceanspaces.com/jeeves.jpeg'
+    },
+    tokipona: {
+        name: 'jan pona',
+        avatar: 'https://lovecrypt.nyc3.cdn.digitaloceanspaces.com/mumumu.png'
+    },
+    jargon: {
+        name: 'Jargonatus',
+        avatar: 'https://lovecrypt.nyc3.cdn.digitaloceanspaces.com/Grand%20Mask.png'
+    },
+    whisper: {
+        name: 'Whisper Bot',
+        avatar: 'https://lovecrypt.nyc3.cdn.digitaloceanspaces.com/Grand%20Mask.png'
+    },
+    customprompt: {
+        name: 'Custom Bot',
+        avatar: 'https://lovecrypt.nyc3.cdn.digitaloceanspaces.com/Grand%20Mask.png'
+    }
+};
+
 export class CommandHandler {
     private sysPrefix = '[SYSTEM] ';
     private modelListCache: string[] | null = null;
     private modelListCacheTime: number = 0;
     private readonly MODEL_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+    private webhookCache: Collection<string, Webhook> = new Collection(); // Cache webhooks by channel ID
 
     constructor(
         private state: BotState,
@@ -503,7 +533,17 @@ export class CommandHandler {
 
     private async setModel(message: Message, id: string, isDM: boolean, modelName: string) {
         if (!modelName) {
-            await message.reply(`${this.sysPrefix}Couldn't parse requested model.`);
+            // If no model name provided, list available models
+            const validModels = await this.getValidModels();
+            const currentConfig = this.state.getConfig(id, isDM);
+            const modelList = validModels
+                .map(m => `• \`${m}\`${m === currentConfig.model ? ' ⭐ (current)' : ''}`)
+                .join('\n');
+
+            await message.reply(
+                `${this.sysPrefix}**Available Anthropic models:**\n${modelList}\n\n` +
+                `Use \`!model <model_name>\` to switch models.`
+            );
             return;
         }
 
@@ -628,15 +668,17 @@ export class CommandHandler {
                             const chunk = chunks[i];
                             if (!chunk) continue;
                             if (i === 0) {
-                                await message.reply({
-                                    content: chunk,
-                                    files: [{
+                                await this.sendWebhookMessage(
+                                    message.channel,
+                                    chunk,
+                                    config.mode,
+                                    [{
                                         attachment: audioFile,
                                         name: 'response.mp3'
                                     }]
-                                });
+                                );
                             } else {
-                                await message.reply(chunk);
+                                await this.sendWebhookMessage(message.channel, chunk, config.mode);
                             }
                         }
                         // Cleanup audio file
@@ -647,7 +689,9 @@ export class CommandHandler {
                     }
                 } else {
                     for (const chunk of chunks) {
-                        if (chunk) await message.reply(chunk);
+                        if (chunk) {
+                            await this.sendWebhookMessage(message.channel, chunk, config.mode);
+                        }
                     }
                 }
 
@@ -698,6 +742,15 @@ export class CommandHandler {
         console.log(`📚 Context size: ${latestMessages.length} messages (${recentLogMessages.length} from log, ${buffer.messages.length} from buffer)`);
 
         try {
+            // Add length constraint guidance for short token limits
+            let enhancedSystemPrompt = systemPrompt?.content || '';
+            const isShortResponse = config.maxResponseLength <= 300;
+
+            if (isShortResponse) {
+                const lengthGuidance = `\n\nIMPORTANT: You have a strict limit of ${config.maxResponseLength} tokens for your response. Please ensure your response is complete and ends naturally within this limit. Be concise and prioritize the most essential information. Do not start sentences you cannot finish within the token limit.`;
+                enhancedSystemPrompt += lengthGuidance;
+            }
+
             const completion = await this.anthropic.messages.create({
                 model: config.model,
                 messages: latestMessages.map(msg => ({
@@ -706,7 +759,7 @@ export class CommandHandler {
                 })).filter(m => Boolean(m?.content)) as MessageParam[],
                 temperature: config.temperature,
                 max_tokens: config.maxResponseLength,
-                system: systemPrompt?.content || ''
+                system: enhancedSystemPrompt
             });
 
             const botMsg = completion.content[0];
@@ -794,12 +847,15 @@ If there was an error fetching the webpage, please mention this, as the develope
 
         const response = await this.generateResponse(id, isDM, [prompt]);
         if (response) {
+            const config = this.state.getConfig(id, isDM);
             const chunks = this.splitMessageIntoChunks([response]);
             for (const chunk of chunks) {
-                if (chunk) await message.reply(chunk);
+                if (chunk) {
+                    await this.sendWebhookMessage(message.channel, chunk, config.mode);
+                }
             }
             if (url) {
-                await message.channel.send(url);
+                await this.sendWebhookMessage(message.channel, url, config.mode);
             }
         }
     }
@@ -1304,8 +1360,8 @@ Examples:
                     log.messages = log.messages.slice(-config.messageLimit);
                 }
 
-                // Send the question
-                await channel.send(questionMessage.content);
+                // Send the question using webhook
+                await this.sendWebhookMessage(channel, questionMessage.content, config.mode);
 
                 console.log(`✅ Posted learning question for ${subject}`);
             } else {
@@ -1315,6 +1371,93 @@ Examples:
         } catch (error) {
             console.error('Error generating learning question:', error);
             await channel.send(`${this.sysPrefix}Error generating learning question: ${error}`);
+        }
+    }
+
+    /**
+     * Get or create a webhook for the given channel and persona
+     */
+    private async getWebhookForChannel(channel: TextChannel, mode: string): Promise<Webhook | null> {
+        try {
+            const cacheKey = `${channel.id}_${mode}`;
+
+            // Check cache first
+            if (this.webhookCache.has(cacheKey)) {
+                return this.webhookCache.get(cacheKey)!;
+            }
+
+            // Get persona config
+            const persona = PERSONAS[mode] || PERSONAS.jeeves;
+
+            // Try to find existing webhook
+            const webhooks = await channel.fetchWebhooks();
+            let webhook = webhooks.find(wh => wh.name === `JeevesBot_${mode}`);
+
+            // Create new webhook if not found
+            if (!webhook) {
+                webhook = await channel.createWebhook({
+                    name: `JeevesBot_${mode}`,
+                    avatar: persona.avatar,
+                    reason: `Webhook for ${persona.name} persona`
+                });
+                console.log(`🔗 Created webhook for ${mode} mode in ${channel.name}`);
+            }
+
+            // Cache the webhook
+            this.webhookCache.set(cacheKey, webhook);
+            return webhook;
+        } catch (error) {
+            console.error(`Error managing webhook for ${mode} mode:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Send a message using webhook with appropriate persona, fallback to regular message
+     */
+    private async sendWebhookMessage(
+        channel: TextChannel | DMChannel,
+        content: string,
+        mode: string,
+        files?: any[]
+    ): Promise<void> {
+        // Don't use webhooks in DMs
+        if (channel instanceof DMChannel) {
+            if (files && files.length > 0) {
+                await channel.send({ content, files });
+            } else {
+                await channel.send(content);
+            }
+            return;
+        }
+
+        try {
+            const webhook = await this.getWebhookForChannel(channel as TextChannel, mode);
+            const persona = PERSONAS[mode] || PERSONAS.jeeves;
+
+            if (webhook) {
+                await webhook.send({
+                    content,
+                    username: persona.name,
+                    avatarURL: persona.avatar,
+                    files
+                });
+            } else {
+                // Fallback to regular message
+                if (files && files.length > 0) {
+                    await channel.send({ content, files });
+                } else {
+                    await channel.send(content);
+                }
+            }
+        } catch (error) {
+            console.error('Error sending webhook message:', error);
+            // Fallback to regular message
+            if (files && files.length > 0) {
+                await channel.send({ content, files });
+            } else {
+                await channel.send(content);
+            }
         }
     }
 }
