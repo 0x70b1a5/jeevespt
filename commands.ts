@@ -1416,48 +1416,40 @@ Examples:
      * Send a message using webhook with appropriate persona, fallback to regular message
      */
     private async sendWebhookMessage(
-        channel: TextChannel | DMChannel,
+        channel: any,
         content: string,
         mode: string,
         files?: any[]
     ): Promise<void> {
-        // Don't use webhooks in DMs
-        if (channel instanceof DMChannel) {
-            if (files && files.length > 0) {
-                await channel.send({ content, files });
-            } else {
-                await channel.send(content);
+        // Only use webhooks for TextChannels, fallback to regular sends for other types
+        if (channel.type === 0) { // TextChannel type
+            try {
+                const webhook = await this.getWebhookForChannel(channel as TextChannel, mode);
+                const persona = PERSONAS[mode] || PERSONAS.jeeves;
+
+                if (webhook) {
+                    await webhook.send({
+                        content,
+                        username: persona.name,
+                        avatarURL: persona.avatar,
+                        files
+                    });
+                    return;
+                }
+            } catch (error) {
+                console.error('Error sending webhook message:', error);
             }
-            return;
         }
 
+        // Fallback to regular message for all other cases
         try {
-            const webhook = await this.getWebhookForChannel(channel as TextChannel, mode);
-            const persona = PERSONAS[mode] || PERSONAS.jeeves;
-
-            if (webhook) {
-                await webhook.send({
-                    content,
-                    username: persona.name,
-                    avatarURL: persona.avatar,
-                    files
-                });
-            } else {
-                // Fallback to regular message
-                if (files && files.length > 0) {
-                    await channel.send({ content, files });
-                } else {
-                    await channel.send(content);
-                }
-            }
-        } catch (error) {
-            console.error('Error sending webhook message:', error);
-            // Fallback to regular message
             if (files && files.length > 0) {
                 await channel.send({ content, files });
             } else {
                 await channel.send(content);
             }
+        } catch (error) {
+            console.error('Error sending regular message:', error);
         }
     }
 }
