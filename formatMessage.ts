@@ -2,8 +2,8 @@ import dayjs from "dayjs"
 import { Message } from "discord.js"
 
 export const prependTimestampAndUsername = (message: Message) => {
-    // Get display name from guild member if available, fallback to global display name, then username
-    const displayName = message.member?.displayName || message.author.displayName || message.author.username;
+    // Get display name from guild member if available, fallback to global name, then username
+    const displayName = message.member?.displayName || message.author.globalName || message.author.username;
     const username = message.author.username;
 
     // Format: timestamp [handle/displayname]: content
