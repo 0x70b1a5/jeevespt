@@ -1469,8 +1469,6 @@ Examples:
             return;
         }
 
-	const freq = args.pop()
-	args = [args[0], args.slice(1).join(' '), freq].filter(a => a)
 
         // Parse arguments: !config <channelName> <responseFrequency>
         if (args.length === 0) {
@@ -1497,7 +1495,7 @@ Examples:
         const validFrequencies = ['all', 'mentions', 'none'];
         if (!validFrequencies.includes(frequencyStr)) {
             await message.reply(
-                `${this.sysPrefix}Invalid response frequency: \`${frequencyStr}\`\n` +
+                `${this.sysPrefix}Invalid response frequency: \`${frequencyStr}\`\n${args.join()}\n` +
                 `Valid options: ${validFrequencies.map(f => `\`${f}\``).join(', ')}`
             );
             return;
