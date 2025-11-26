@@ -1332,15 +1332,18 @@ Examples:
         console.log(`📚 Generating learning question for ${isDM ? 'user' : 'guild'}: ${id}, subject: ${subject}`);
 
         try {
+            // Get config to use the user's configured model
+            const config = this.state.getConfig(id, isDM);
+
             // Create a prompt specifically for learning questions (not using main system prompt)
             const learningPrompt = LEARNING_PROMPT_TEMPLATE.replace('{SUBJECT}', subject);
 
             // Generate the learning question using the anthropic API directly
             // We don't use the main generateResponse method to avoid mixing with conversation context
             const response = await this.anthropic.messages.create({
-                model: 'claude-3-5-sonnet-latest',
+                model: config.model,
                 max_tokens: 300,
-                temperature: 0.8,
+                temperature: config.temperature,
                 messages: [{
                     role: 'user',
                     content: `Create a question for the following subject: ${subject}`
@@ -1362,7 +1365,6 @@ Examples:
                 log.messages.push(questionMessage);
 
                 // Trim log if needed
-                const config = this.state.getConfig(id, isDM);
                 if (log.messages.length > config.messageLimit) {
                     log.messages = log.messages.slice(-config.messageLimit);
                 }
@@ -1466,6 +1468,9 @@ Examples:
             await message.reply(`${this.sysPrefix}Channel configuration is only available in servers, not in DMs.`);
             return;
         }
+
+	const freq = args.pop()
+	args = [args[0], args.slice(1).join(' '), freq].filter(a => a)
 
         // Parse arguments: !config <channelName> <responseFrequency>
         if (args.length === 0) {
