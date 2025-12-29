@@ -91,6 +91,21 @@ The bot can ask you educational questions on subjects you specify, spaced throug
 
 `,
 `
+### Autotranslate
+
+The bot can automatically translate messages in specific channels to a target language. This works independently of other modes - even if the bot is not monitoring a channel, it will still translate messages if autotranslate is enabled for that channel.
+
+\`!translateadd <channel> <language>\`: Add a channel to autotranslate. All messages in that channel will be translated to the specified language.
+\`!translateremove <channel>\`: Remove a channel from autotranslate.
+\`!translatelist\`: Show all channels configured for autotranslate.
+
+Examples:
+- \`!translateadd toki-pona "toki pona"\` - translates messages from #toki-pona to toki pona
+- \`!translateadd spanish-practice Spanish\` - translates messages from #spanish-practice to Spanish
+- \`!translateremove toki-pona\` - stops translating messages from #toki-pona
+
+`,
+`
 ## Voice Commands
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear, and !parrot bla bla bla will reply with bla bla bla.

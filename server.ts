@@ -207,6 +207,9 @@ export class BotServer {
             if (message.guild) {
                 // Check if this message should get a reaction
                 await this.commands.handleReaction(message);
+
+                // Check if this message should be auto-translated
+                await this.commands.handleAutotranslate(message);
             }
 
             const isDM = message.channel.type === ChannelType.DM;

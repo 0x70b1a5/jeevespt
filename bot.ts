@@ -42,6 +42,11 @@ export interface ChannelMembershipConfig {
     responseFrequency: ResponseFrequency;
 }
 
+export interface AutotranslateChannel {
+    channelId: string;
+    language: string;
+}
+
 export interface BotConfig {
     mode: BotMode;
     messageLimit: number;
@@ -62,6 +67,8 @@ export interface BotConfig {
     learningSubjects: string[];
     // Channel membership configuration
     channelMemberships: Map<string, ChannelMembershipConfig>;
+    // Autotranslate configuration
+    autotranslateChannels: AutotranslateChannel[];
 }
 
 export interface MessageBuffer {
@@ -139,7 +146,9 @@ export class BotState {
         learningEnabled: false,
         learningSubjects: ['Latin', 'toki pona'],
         // Default channel membership settings
-        channelMemberships: new Map()
+        channelMemberships: new Map(),
+        // Default autotranslate settings
+        autotranslateChannels: []
     };
 
     constructor() {
@@ -557,5 +566,55 @@ export class BotState {
     getAllChannelMemberships(id: string, isDM: boolean): Map<string, ChannelMembershipConfig> {
         const config = this.getConfig(id, isDM);
         return config.channelMemberships;
+    }
+
+    // Autotranslate management methods
+    addAutotranslateChannel(id: string, isDM: boolean, channelId: string, language: string) {
+        const config = this.getConfig(id, isDM);
+
+        // Check if channel is already in autotranslate list
+        const existingIndex = config.autotranslateChannels.findIndex(
+            ch => ch.channelId === channelId
+        );
+
+        if (existingIndex >= 0) {
+            // Update existing entry
+            config.autotranslateChannels[existingIndex].language = language;
+        } else {
+            // Add new entry
+            config.autotranslateChannels.push({ channelId, language });
+        }
+
+        if (config.shouldSaveData) {
+            this.persistData(id, isDM);
+        }
+    }
+
+    removeAutotranslateChannel(id: string, isDM: boolean, channelId: string): boolean {
+        const config = this.getConfig(id, isDM);
+        const initialLength = config.autotranslateChannels.length;
+
+        config.autotranslateChannels = config.autotranslateChannels.filter(
+            ch => ch.channelId !== channelId
+        );
+
+        const wasRemoved = config.autotranslateChannels.length < initialLength;
+
+        if (wasRemoved && config.shouldSaveData) {
+            this.persistData(id, isDM);
+        }
+
+        return wasRemoved;
+    }
+
+    getAutotranslateLanguage(id: string, isDM: boolean, channelId: string): string | null {
+        const config = this.getConfig(id, isDM);
+        const channel = config.autotranslateChannels.find(ch => ch.channelId === channelId);
+        return channel?.language || null;
+    }
+
+    getAllAutotranslateChannels(id: string, isDM: boolean): AutotranslateChannel[] {
+        const config = this.getConfig(id, isDM);
+        return config.autotranslateChannels;
     }
 }

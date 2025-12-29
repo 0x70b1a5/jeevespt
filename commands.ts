@@ -198,6 +198,18 @@ export class CommandHandler {
                 await this.configureChannelMembership(message, id, isDM, args);
                 break;
 
+            case 'translateadd':
+                await this.addAutotranslateChannel(message, id, isDM, args);
+                break;
+
+            case 'translateremove':
+                await this.removeAutotranslateChannel(message, id, isDM, args[0]);
+                break;
+
+            case 'translatelist':
+                await this.listAutotranslateChannels(message, id, isDM);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -1575,5 +1587,184 @@ Examples:
         }
 
         await message.reply(configList);
+    }
+
+    // Autotranslate management methods
+    private async addAutotranslateChannel(message: Message, id: string, isDM: boolean, args: string[]) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Autotranslate is only available in servers, not in DMs.`);
+            return;
+        }
+
+        if (args.length < 2) {
+            await message.reply(
+                `${this.sysPrefix}Usage: \`!translateadd <channelName> <language>\`\n` +
+                `Example: \`!translateadd toki-pona "toki pona"\` - translates messages from #toki-pona to toki pona`
+            );
+            return;
+        }
+
+        const channelName = args[0];
+        const language = args.slice(1).join(' ');
+
+        // Find the channel
+        const channelId = this.getChannelIdFromName(message, channelName);
+        if (!channelId) {
+            await message.reply(`${this.sysPrefix}Could not find channel "${channelName}".`);
+            return;
+        }
+
+        // Add the autotranslate channel
+        this.state.addAutotranslateChannel(id, isDM, channelId, language);
+
+        const channel = message.guild!.channels.cache.get(channelId);
+        const channelMention = channel ? `<#${channelId}>` : channelName;
+
+        await message.reply(
+            `${this.sysPrefix}Added ${channelMention} to autotranslate.\n` +
+            `Messages in that channel will be automatically translated to **${language}**.`
+        );
+    }
+
+    private async removeAutotranslateChannel(message: Message, id: string, isDM: boolean, channelName: string) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Autotranslate is only available in servers, not in DMs.`);
+            return;
+        }
+
+        if (!channelName) {
+            await message.reply(`${this.sysPrefix}Please specify a channel name.`);
+            return;
+        }
+
+        // Find the channel
+        const channelId = this.getChannelIdFromName(message, channelName);
+        if (!channelId) {
+            await message.reply(`${this.sysPrefix}Could not find channel "${channelName}".`);
+            return;
+        }
+
+        const wasRemoved = this.state.removeAutotranslateChannel(id, isDM, channelId);
+
+        if (wasRemoved) {
+            const channel = message.guild!.channels.cache.get(channelId);
+            const channelMention = channel ? `<#${channelId}>` : channelName;
+            await message.reply(`${this.sysPrefix}Removed ${channelMention} from autotranslate.`);
+        } else {
+            await message.reply(`${this.sysPrefix}Channel "${channelName}" is not in the autotranslate list.`);
+        }
+    }
+
+    private async listAutotranslateChannels(message: Message, id: string, isDM: boolean) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}Autotranslate is only available in servers.`);
+            return;
+        }
+
+        const channels = this.state.getAllAutotranslateChannels(id, isDM);
+
+        if (channels.length === 0) {
+            await message.reply(
+                `${this.sysPrefix}No channels are currently configured for autotranslate.\n` +
+                `Use \`!translateadd <channelName> <language>\` to add a channel.`
+            );
+            return;
+        }
+
+        let channelList = '🌐 **Autotranslate Channels:**\n\n';
+        for (const { channelId, language } of channels) {
+            const channel = message.guild!.channels.cache.get(channelId);
+            const channelName = channel ? `<#${channelId}>` : `Unknown (${channelId})`;
+            channelList += `• ${channelName} → **${language}**\n`;
+        }
+
+        await message.reply(channelList);
+    }
+
+    // Method to handle autotranslate for a message
+    async handleAutotranslate(message: Message) {
+        if (!message.guild) return; // Only work in guilds
+        if (message.author.bot) return; // Skip if message is from a bot
+
+        const id = message.guild.id;
+        const language = this.state.getAutotranslateLanguage(id, false, message.channel.id);
+
+        if (!language) return; // Channel is not configured for autotranslate
+
+        // Skip empty messages or commands
+        if (!message.content || message.content.trim().length === 0 || message.content.startsWith('!')) {
+            return;
+        }
+
+        try {
+            // First, check if the message is already in the target language
+            const isAlreadyInTargetLanguage = await this.detectLanguage(message.content, language, id);
+
+            if (isAlreadyInTargetLanguage) {
+                console.log(`🌐 Message already in ${language}, skipping translation`);
+                return;
+            }
+
+            // Generate the translation using the AI
+            const translation = await this.generateTranslation(message.content, language, id);
+
+            if (translation) {
+                // Reply to the original message with the translation
+                await message.reply(translation);
+                console.log(`🌐 Auto-translated message in ${message.channel.id} to ${language}`);
+            }
+        } catch (error) {
+            console.error('Error auto-translating message:', error);
+        }
+    }
+
+    private async detectLanguage(text: string, targetLanguage: string, guildId: string): Promise<boolean> {
+        try {
+            const config = this.state.getConfig(guildId, false);
+
+            const response = await this.anthropic.messages.create({
+                model: config.model,
+                max_tokens: 10,
+                temperature: 0.1,
+                messages: [{
+                    role: 'user',
+                    content: `Is the following text written in ${targetLanguage}? Respond with only "yes" or "no":\n\n${text}`
+                }],
+                system: `You are a language detection expert. Determine if text is written in the specified language.`
+            });
+
+            const detectionResult = response.content[0]?.type === 'text'
+                ? response.content[0].text.trim().toLowerCase()
+                : '';
+
+            return detectionResult === 'yes';
+        } catch (error) {
+            console.error('Error detecting language:', error);
+            // If detection fails, proceed with translation to be safe
+            return false;
+        }
+    }
+
+    private async generateTranslation(text: string, targetLanguage: string, guildId: string): Promise<string | null> {
+        try {
+            const config = this.state.getConfig(guildId, false);
+
+            const response = await this.anthropic.messages.create({
+                model: config.model,
+                max_tokens: 1000,
+                temperature: 0.3, // Lower temperature for more accurate translation
+                messages: [{
+                    role: 'user',
+                    content: `Translate the following text to ${targetLanguage}. Only respond with the translation, nothing else:\n\n${text}`
+                }],
+                system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.`
+            });
+
+            const translationText = response.content[0]?.type === 'text' ? response.content[0].text : null;
+            return translationText;
+        } catch (error) {
+            console.error('Error generating translation:', error);
+            return null;
+        }
     }
 }
