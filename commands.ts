@@ -1696,23 +1696,42 @@ Examples:
             return;
         }
 
+        // Wait for embeds if message contains URLs
+        if (this.hasURLs(message.content)) {
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
         try {
+            // Extract message content (without embeds)
+            const messageContent = message.cleanContent;
+
             // First, check if the message is already in the target language
-            const isAlreadyInTargetLanguage = await this.detectLanguage(message.content, language, id);
+            const isAlreadyInTargetLanguage = await this.detectLanguage(messageContent, language, id);
 
             if (isAlreadyInTargetLanguage) {
                 console.log(`🌐 Message already in ${language}, skipping translation`);
                 return;
             }
 
-            // Generate the translation using the AI
-            const translation = await this.generateTranslation(message.content, language, id);
+            // Extract embed data separately
+            const embedData = extractEmbedDataToText(message);
 
-            if (translation) {
-                // Reply to the original message with the translation
-                await message.reply(translation);
-                console.log(`🌐 Auto-translated message in ${message.channel.id} to ${language}`);
+            // Generate the translation for the main message content
+            let translation = await this.generateTranslation(messageContent, language, id);
+
+            if (!translation) return;
+
+            // If there are embeds, translate them separately and add in XML block
+            if (embedData && embedData.trim().length > 0) {
+                const embedTranslation = await this.generateTranslation(embedData.trim(), language, id);
+                if (embedTranslation) {
+                    translation += `\n<embed>${embedTranslation}</embed>`;
+                }
             }
+
+            // Reply to the original message with the translation
+            await message.reply(translation);
+            console.log(`🌐 Auto-translated message in ${message.channel.id} to ${language}`);
         } catch (error) {
             console.error('Error auto-translating message:', error);
         }
