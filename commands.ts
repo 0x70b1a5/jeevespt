@@ -1976,7 +1976,17 @@ Examples:
                     role: 'user',
                     content: `Translate the following text to ${targetLanguage}. Only respond with the translation, nothing else:\n\n${text}`
                 }],
-                system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.`
+                system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.
+
+IMPORTANT: When translating embedded content (social media posts, articles, etc.):
+- Translate ONLY the actual text content: usernames, handles, publication titles, post content, descriptions
+- Replace ALL URLs with the string "<url>" - do not include the actual URLs
+- Strip markdown formatting and provide plain text translations
+- Focus on the readable text content, exclude technical elements
+
+Example:
+Input: "Posted by @alice: Check out this article https://example.com/article about **technology**"
+Output in Spanish: "Publicado por @alice: Mira este artículo <url> sobre tecnología"`
             });
 
             const translationText = response.content[0]?.type === 'text' ? response.content[0].text : null;
