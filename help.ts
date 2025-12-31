@@ -115,6 +115,8 @@ Examples:
 
 Note: Users can have multiple languages configured. All translations are sent in a single message to reduce API calls. Duplicate languages (e.g., if both channel and user want Latin) are automatically skipped.
 
+To skip translation for a specific message, start it with "notr" (e.g., "notr this won't be translated").
+
 `,
 `
 ## Voice Commands

@@ -1833,6 +1833,11 @@ Examples:
             return;
         }
 
+        // Skip messages that start with "notr" (no translation)
+        if (message.content.trim().toLowerCase().startsWith('notr')) {
+            return;
+        }
+
         // Wait for embeds if message contains URLs
         if (this.hasURLs(message.content)) {
             await new Promise(resolve => setTimeout(resolve, 5000));
