@@ -210,6 +210,18 @@ export class CommandHandler {
                 await this.listAutotranslateChannels(message, id, isDM);
                 break;
 
+            case 'translateadduser':
+                await this.addAutotranslateUser(message, id, isDM, args);
+                break;
+
+            case 'translateremoveuser':
+                await this.removeAutotranslateUser(message, id, isDM, args);
+                break;
+
+            case 'translatelistusers':
+                await this.listAutotranslateUsers(message, id, isDM);
+                break;
+
             default:
                 await message.reply(`${this.sysPrefix}Unrecognized command "${command}".`);
         }
@@ -1681,15 +1693,114 @@ Examples:
         await message.reply(channelList);
     }
 
+    // User autotranslate management methods
+    private async addAutotranslateUser(message: Message, id: string, isDM: boolean, args: string[]) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}User autotranslate is only available in servers, not in DMs.`);
+            return;
+        }
+
+        if (args.length < 2) {
+            await message.reply(
+                `${this.sysPrefix}Usage: \`!translateadduser <@user or userId> <language>\`\n` +
+                `Example: \`!translateadduser @Alice Quenya\` - translates messages for Alice to Quenya\n` +
+                `Example: \`!translateadduser 123456789 Latin\` - translates messages for user ID to Latin`
+            );
+            return;
+        }
+
+        // Parse user mention or ID
+        let userId: string | null = null;
+        const firstArg = args[0];
+
+        // Check if it's a mention (e.g., <@123456789> or <@!123456789>)
+        const mentionMatch = firstArg.match(/^<@!?(\d+)>$/);
+        if (mentionMatch) {
+            userId = mentionMatch[1];
+        } else if (/^\d+$/.test(firstArg)) {
+            // It's a direct user ID
+            userId = firstArg;
+        } else {
+            await message.reply(`${this.sysPrefix}Invalid user format. Use @mention or user ID.`);
+            return;
+        }
+
+        const language = args.slice(1).join(' ');
+
+        // Add the autotranslate user preference
+        this.state.addAutotranslateUser(id, isDM, userId, language);
+
+        await message.reply(
+            `${this.sysPrefix}Added <@${userId}> to autotranslate.\n` +
+            `Messages from that user will be automatically translated to **${language}**.`
+        );
+    }
+
+    private async removeAutotranslateUser(message: Message, id: string, isDM: boolean, args: string[]) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}User autotranslate is only available in servers, not in DMs.`);
+            return;
+        }
+
+        if (args.length < 1) {
+            await message.reply(`${this.sysPrefix}Please specify a user mention or ID.`);
+            return;
+        }
+
+        // Parse user mention or ID
+        let userId: string | null = null;
+        const firstArg = args[0];
+
+        // Check if it's a mention
+        const mentionMatch = firstArg.match(/^<@!?(\d+)>$/);
+        if (mentionMatch) {
+            userId = mentionMatch[1];
+        } else if (/^\d+$/.test(firstArg)) {
+            userId = firstArg;
+        } else {
+            await message.reply(`${this.sysPrefix}Invalid user format. Use @mention or user ID.`);
+            return;
+        }
+
+        const wasRemoved = this.state.removeAutotranslateUser(id, isDM, userId);
+
+        if (wasRemoved) {
+            await message.reply(`${this.sysPrefix}Removed <@${userId}> from autotranslate.`);
+        } else {
+            await message.reply(`${this.sysPrefix}User <@${userId}> is not in the autotranslate list.`);
+        }
+    }
+
+    private async listAutotranslateUsers(message: Message, id: string, isDM: boolean) {
+        if (isDM) {
+            await message.reply(`${this.sysPrefix}User autotranslate is only available in servers.`);
+            return;
+        }
+
+        const users = this.state.getAllAutotranslateUsers(id, isDM);
+
+        if (users.length === 0) {
+            await message.reply(
+                `${this.sysPrefix}No users are currently configured for autotranslate.\n` +
+                `Use \`!translateadduser <@user> <language>\` to add a user.`
+            );
+            return;
+        }
+
+        let userList = '🌐 **Autotranslate Users:**\n\n';
+        for (const { userId, language } of users) {
+            userList += `• <@${userId}> → **${language}**\n`;
+        }
+
+        await message.reply(userList);
+    }
+
     // Method to handle autotranslate for a message
     async handleAutotranslate(message: Message) {
         if (!message.guild) return; // Only work in guilds
         if (message.author.bot) return; // Skip if message is from a bot
 
         const id = message.guild.id;
-        const language = this.state.getAutotranslateLanguage(id, false, message.channel.id);
-
-        if (!language) return; // Channel is not configured for autotranslate
 
         // Skip empty messages or commands
         if (!message.content || message.content.trim().length === 0 || message.content.startsWith('!')) {
@@ -1704,26 +1815,71 @@ Examples:
         try {
             // Extract message content (without embeds)
             const messageContent = message.cleanContent;
-
-            // First, check if the message is already in the target language
-            const isAlreadyInTargetLanguage = await this.detectLanguage(messageContent, language, id);
-
-            if (isAlreadyInTargetLanguage) {
-                console.log(`🌐 Message already in ${language}, skipping translation`);
-                return;
-            }
-
-            // Extract embed data separately
             const embedData = extractEmbedDataToText(message);
 
-            // Generate the translation for the main message content
-            let translation = await this.generateTranslation(messageContent, language, id);
+            // Track languages we've already translated to (to avoid duplicates)
+            const translatedLanguages = new Set<string>();
 
-            if (!translation) return;
+            // First loop: translate for channel-wide language configuration
+            const channelLanguage = this.state.getAutotranslateLanguage(id, false, message.channel.id);
+            if (channelLanguage) {
+                const translated = await this.performTranslation(
+                    message,
+                    messageContent,
+                    embedData,
+                    channelLanguage,
+                    id
+                );
+                if (translated) {
+                    translatedLanguages.add(channelLanguage.toLowerCase());
+                }
+            }
+
+            // Second loop: translate for user-specific language preferences
+            const userLanguage = this.state.getAutotranslateUserLanguage(id, false, message.author.id);
+            if (userLanguage) {
+                // Only translate if it's different from the channel language
+                if (!translatedLanguages.has(userLanguage.toLowerCase())) {
+                    await this.performTranslation(
+                        message,
+                        messageContent,
+                        embedData,
+                        userLanguage,
+                        id
+                    );
+                } else {
+                    console.log(`🌐 Skipping user translation to ${userLanguage} - already translated for channel`);
+                }
+            }
+        } catch (error) {
+            console.error('Error auto-translating message:', error);
+        }
+    }
+
+    private async performTranslation(
+        message: Message,
+        messageContent: string,
+        embedData: string,
+        targetLanguage: string,
+        guildId: string
+    ): Promise<boolean> {
+        try {
+            // First, check if the message is already in the target language
+            const isAlreadyInTargetLanguage = await this.detectLanguage(messageContent, targetLanguage, guildId);
+
+            if (isAlreadyInTargetLanguage) {
+                console.log(`🌐 Message already in ${targetLanguage}, skipping translation`);
+                return false;
+            }
+
+            // Generate the translation for the main message content
+            let translation = await this.generateTranslation(messageContent, targetLanguage, guildId);
+
+            if (!translation) return false;
 
             // If there are embeds, translate them separately and add in XML block
             if (embedData && embedData.trim().length > 0) {
-                const embedTranslation = await this.generateTranslation(embedData.trim(), language, id);
+                const embedTranslation = await this.generateTranslation(embedData.trim(), targetLanguage, guildId);
                 if (embedTranslation) {
                     translation += `\n<embed>${embedTranslation}</embed>`;
                 }
@@ -1731,9 +1887,11 @@ Examples:
 
             // Reply to the original message with the translation
             await message.reply(translation);
-            console.log(`🌐 Auto-translated message in ${message.channel.id} to ${language}`);
+            console.log(`🌐 Auto-translated message in ${message.channel.id} to ${targetLanguage}`);
+            return true;
         } catch (error) {
-            console.error('Error auto-translating message:', error);
+            console.error(`Error translating to ${targetLanguage}:`, error);
+            return false;
         }
     }
 

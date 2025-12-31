@@ -93,16 +93,25 @@ The bot can ask you educational questions on subjects you specify, spaced throug
 `
 ### Autotranslate
 
-The bot can automatically translate messages in specific channels to a target language. This works independently of other modes - even if the bot is not monitoring a channel, it will still translate messages if autotranslate is enabled for that channel.
+The bot can automatically translate messages in specific channels or for specific users to a target language. This works independently of other modes - even if the bot is not monitoring a channel, it will still translate messages if autotranslate is enabled.
 
+**Channel-wide translation:**
 \`!translateadd <channel> <language>\`: Add a channel to autotranslate. All messages in that channel will be translated to the specified language.
 \`!translateremove <channel>\`: Remove a channel from autotranslate.
 \`!translatelist\`: Show all channels configured for autotranslate.
 
+**User-specific translation:**
+\`!translateadduser <@user> <language>\`: Add a user to autotranslate. Messages from that user will be translated to the specified language.
+\`!translateremoveuser <@user>\`: Remove a user from autotranslate.
+\`!translatelistusers\`: Show all users configured for autotranslate.
+
 Examples:
-- \`!translateadd toki-pona "toki pona"\` - translates messages from #toki-pona to toki pona
-- \`!translateadd spanish-practice Spanish\` - translates messages from #spanish-practice to Spanish
+- \`!translateadd toki-pona "toki pona"\` - translates all messages in #toki-pona to toki pona
+- \`!translateadduser @Alice Quenya\` - translates messages from Alice to Quenya
+- \`!translateadd spanish-practice Spanish\` - translates all messages in #spanish-practice to Spanish
 - \`!translateremove toki-pona\` - stops translating messages from #toki-pona
+
+Note: If a channel is configured for one language and a user is configured for a different language, both translations will be sent. If they're the same language, only one translation is sent to avoid duplicates.
 
 `,
 `

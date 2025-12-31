@@ -47,6 +47,11 @@ export interface AutotranslateChannel {
     language: string;
 }
 
+export interface AutotranslateUser {
+    userId: string;
+    language: string;
+}
+
 export interface BotConfig {
     mode: BotMode;
     messageLimit: number;
@@ -69,6 +74,7 @@ export interface BotConfig {
     channelMemberships: Map<string, ChannelMembershipConfig>;
     // Autotranslate configuration
     autotranslateChannels: AutotranslateChannel[];
+    autotranslateUsers: AutotranslateUser[];
 }
 
 export interface MessageBuffer {
@@ -148,7 +154,8 @@ export class BotState {
         // Default channel membership settings
         channelMemberships: new Map(),
         // Default autotranslate settings
-        autotranslateChannels: []
+        autotranslateChannels: [],
+        autotranslateUsers: []
     };
 
     constructor() {
@@ -616,5 +623,55 @@ export class BotState {
     getAllAutotranslateChannels(id: string, isDM: boolean): AutotranslateChannel[] {
         const config = this.getConfig(id, isDM);
         return config.autotranslateChannels;
+    }
+
+    // Autotranslate user management methods
+    addAutotranslateUser(id: string, isDM: boolean, userId: string, language: string) {
+        const config = this.getConfig(id, isDM);
+
+        // Check if user is already in autotranslate list
+        const existingIndex = config.autotranslateUsers.findIndex(
+            user => user.userId === userId
+        );
+
+        if (existingIndex >= 0) {
+            // Update existing entry
+            config.autotranslateUsers[existingIndex].language = language;
+        } else {
+            // Add new entry
+            config.autotranslateUsers.push({ userId, language });
+        }
+
+        if (config.shouldSaveData) {
+            this.persistData(id, isDM);
+        }
+    }
+
+    removeAutotranslateUser(id: string, isDM: boolean, userId: string): boolean {
+        const config = this.getConfig(id, isDM);
+        const initialLength = config.autotranslateUsers.length;
+
+        config.autotranslateUsers = config.autotranslateUsers.filter(
+            user => user.userId !== userId
+        );
+
+        const wasRemoved = config.autotranslateUsers.length < initialLength;
+
+        if (wasRemoved && config.shouldSaveData) {
+            this.persistData(id, isDM);
+        }
+
+        return wasRemoved;
+    }
+
+    getAutotranslateUserLanguage(id: string, isDM: boolean, userId: string): string | null {
+        const config = this.getConfig(id, isDM);
+        const user = config.autotranslateUsers.find(u => u.userId === userId);
+        return user?.language || null;
+    }
+
+    getAllAutotranslateUsers(id: string, isDM: boolean): AutotranslateUser[] {
+        const config = this.getConfig(id, isDM);
+        return config.autotranslateUsers;
     }
 }
