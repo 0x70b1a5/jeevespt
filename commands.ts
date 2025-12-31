@@ -1743,7 +1743,13 @@ Examples:
         }
 
         if (args.length < 1) {
-            await message.reply(`${this.sysPrefix}Please specify a user mention or ID.`);
+            await message.reply(
+                `${this.sysPrefix}Usage: \`!translateremoveuser <@user> [language]\`\n` +
+                `Remove a specific language or all languages for a user.\n` +
+                `Examples:\n` +
+                `- \`!translateremoveuser @Alice Latin\` - removes only Latin\n` +
+                `- \`!translateremoveuser @Alice\` - removes all languages for Alice`
+            );
             return;
         }
 
@@ -1762,12 +1768,23 @@ Examples:
             return;
         }
 
-        const wasRemoved = this.state.removeAutotranslateUser(id, isDM, userId);
+        // Optional language parameter
+        const language = args.length > 1 ? args.slice(1).join(' ') : undefined;
+
+        const wasRemoved = this.state.removeAutotranslateUser(id, isDM, userId, language);
 
         if (wasRemoved) {
-            await message.reply(`${this.sysPrefix}Removed <@${userId}> from autotranslate.`);
+            if (language) {
+                await message.reply(`${this.sysPrefix}Removed **${language}** for <@${userId}> from autotranslate.`);
+            } else {
+                await message.reply(`${this.sysPrefix}Removed all languages for <@${userId}> from autotranslate.`);
+            }
         } else {
-            await message.reply(`${this.sysPrefix}User <@${userId}> is not in the autotranslate list.`);
+            if (language) {
+                await message.reply(`${this.sysPrefix}User <@${userId}> does not have **${language}** configured.`);
+            } else {
+                await message.reply(`${this.sysPrefix}User <@${userId}> is not in the autotranslate list.`);
+            }
         }
     }
 
@@ -1787,9 +1804,18 @@ Examples:
             return;
         }
 
-        let userList = '🌐 **Autotranslate Users:**\n\n';
+        // Group languages by user
+        const userLanguageMap = new Map<string, string[]>();
         for (const { userId, language } of users) {
-            userList += `• <@${userId}> → **${language}**\n`;
+            if (!userLanguageMap.has(userId)) {
+                userLanguageMap.set(userId, []);
+            }
+            userLanguageMap.get(userId)!.push(language);
+        }
+
+        let userList = '🌐 **Autotranslate Users:**\n\n';
+        for (const [userId, languages] of userLanguageMap) {
+            userList += `• <@${userId}> → **${languages.join(', ')}**\n`;
         }
 
         await message.reply(userList);
@@ -1817,39 +1843,53 @@ Examples:
             const messageContent = message.cleanContent;
             const embedData = extractEmbedDataToText(message);
 
-            // Track languages we've already translated to (to avoid duplicates)
+            // Collect all translations with their language labels
+            const translations: { language: string; text: string }[] = [];
             const translatedLanguages = new Set<string>();
 
             // First loop: translate for channel-wide language configuration
             const channelLanguage = this.state.getAutotranslateLanguage(id, false, message.channel.id);
             if (channelLanguage) {
-                const translated = await this.performTranslation(
-                    message,
+                const translation = await this.performTranslation(
                     messageContent,
                     embedData,
                     channelLanguage,
                     id
                 );
-                if (translated) {
+                if (translation) {
+                    translations.push({ language: channelLanguage, text: translation });
                     translatedLanguages.add(channelLanguage.toLowerCase());
                 }
             }
 
             // Second loop: translate for user-specific language preferences
-            const userLanguage = this.state.getAutotranslateUserLanguage(id, false, message.author.id);
-            if (userLanguage) {
-                // Only translate if it's different from the channel language
+            const userLanguages = this.state.getAutotranslateUserLanguages(id, false, message.author.id);
+            for (const userLanguage of userLanguages) {
+                // Only translate if it's different from already-translated languages
                 if (!translatedLanguages.has(userLanguage.toLowerCase())) {
-                    await this.performTranslation(
-                        message,
+                    const translation = await this.performTranslation(
                         messageContent,
                         embedData,
                         userLanguage,
                         id
                     );
+                    if (translation) {
+                        translations.push({ language: userLanguage, text: translation });
+                        translatedLanguages.add(userLanguage.toLowerCase());
+                    }
                 } else {
-                    console.log(`🌐 Skipping user translation to ${userLanguage} - already translated for channel`);
+                    console.log(`🌐 Skipping user translation to ${userLanguage} - already translated`);
                 }
+            }
+
+            // Send all translations in a single message
+            if (translations.length > 0) {
+                const formattedTranslations = translations
+                    .map(({ language, text }) => `**${language}:** ${text}`)
+                    .join('\n\n');
+
+                await message.reply(formattedTranslations);
+                console.log(`🌐 Auto-translated message to ${translations.length} language(s): ${translations.map(t => t.language).join(', ')}`);
             }
         } catch (error) {
             console.error('Error auto-translating message:', error);
@@ -1857,25 +1897,24 @@ Examples:
     }
 
     private async performTranslation(
-        message: Message,
         messageContent: string,
         embedData: string,
         targetLanguage: string,
         guildId: string
-    ): Promise<boolean> {
+    ): Promise<string | null> {
         try {
             // First, check if the message is already in the target language
             const isAlreadyInTargetLanguage = await this.detectLanguage(messageContent, targetLanguage, guildId);
 
             if (isAlreadyInTargetLanguage) {
                 console.log(`🌐 Message already in ${targetLanguage}, skipping translation`);
-                return false;
+                return null;
             }
 
             // Generate the translation for the main message content
             let translation = await this.generateTranslation(messageContent, targetLanguage, guildId);
 
-            if (!translation) return false;
+            if (!translation) return null;
 
             // If there are embeds, translate them separately and add in XML block
             if (embedData && embedData.trim().length > 0) {
@@ -1885,13 +1924,11 @@ Examples:
                 }
             }
 
-            // Reply to the original message with the translation
-            await message.reply(translation);
-            console.log(`🌐 Auto-translated message in ${message.channel.id} to ${targetLanguage}`);
-            return true;
+            console.log(`🌐 Generated translation to ${targetLanguage}`);
+            return translation;
         } catch (error) {
             console.error(`Error translating to ${targetLanguage}:`, error);
-            return false;
+            return null;
         }
     }
 

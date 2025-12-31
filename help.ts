@@ -101,17 +101,19 @@ The bot can automatically translate messages in specific channels or for specifi
 \`!translatelist\`: Show all channels configured for autotranslate.
 
 **User-specific translation:**
-\`!translateadduser <@user> <language>\`: Add a user to autotranslate. Messages from that user will be translated to the specified language.
-\`!translateremoveuser <@user>\`: Remove a user from autotranslate.
+\`!translateadduser <@user> <language>\`: Add a language for a user. Can be called multiple times to add multiple languages.
+\`!translateremoveuser <@user> [language]\`: Remove a specific language or all languages for a user.
 \`!translatelistusers\`: Show all users configured for autotranslate.
 
 Examples:
 - \`!translateadd toki-pona "toki pona"\` - translates all messages in #toki-pona to toki pona
 - \`!translateadduser @Alice Quenya\` - translates messages from Alice to Quenya
+- \`!translateadduser @Alice Latin\` - also translates Alice's messages to Latin (she now gets both!)
+- \`!translateremoveuser @Alice Latin\` - removes only Latin, keeps Quenya
+- \`!translateremoveuser @Alice\` - removes all languages for Alice
 - \`!translateadd spanish-practice Spanish\` - translates all messages in #spanish-practice to Spanish
-- \`!translateremove toki-pona\` - stops translating messages from #toki-pona
 
-Note: If a channel is configured for one language and a user is configured for a different language, both translations will be sent. If they're the same language, only one translation is sent to avoid duplicates.
+Note: Users can have multiple languages configured. All translations are sent in a single message to reduce API calls. Duplicate languages (e.g., if both channel and user want Latin) are automatically skipped.
 
 `,
 `

@@ -629,16 +629,13 @@ export class BotState {
     addAutotranslateUser(id: string, isDM: boolean, userId: string, language: string) {
         const config = this.getConfig(id, isDM);
 
-        // Check if user is already in autotranslate list
-        const existingIndex = config.autotranslateUsers.findIndex(
-            user => user.userId === userId
+        // Check if this exact user+language combination already exists
+        const exists = config.autotranslateUsers.some(
+            user => user.userId === userId && user.language.toLowerCase() === language.toLowerCase()
         );
 
-        if (existingIndex >= 0) {
-            // Update existing entry
-            config.autotranslateUsers[existingIndex].language = language;
-        } else {
-            // Add new entry
+        if (!exists) {
+            // Add new entry (allow multiple languages per user)
             config.autotranslateUsers.push({ userId, language });
         }
 
@@ -647,13 +644,21 @@ export class BotState {
         }
     }
 
-    removeAutotranslateUser(id: string, isDM: boolean, userId: string): boolean {
+    removeAutotranslateUser(id: string, isDM: boolean, userId: string, language?: string): boolean {
         const config = this.getConfig(id, isDM);
         const initialLength = config.autotranslateUsers.length;
 
-        config.autotranslateUsers = config.autotranslateUsers.filter(
-            user => user.userId !== userId
-        );
+        if (language) {
+            // Remove specific user+language combination
+            config.autotranslateUsers = config.autotranslateUsers.filter(
+                user => !(user.userId === userId && user.language.toLowerCase() === language.toLowerCase())
+            );
+        } else {
+            // Remove all languages for this user
+            config.autotranslateUsers = config.autotranslateUsers.filter(
+                user => user.userId !== userId
+            );
+        }
 
         const wasRemoved = config.autotranslateUsers.length < initialLength;
 
@@ -664,10 +669,11 @@ export class BotState {
         return wasRemoved;
     }
 
-    getAutotranslateUserLanguage(id: string, isDM: boolean, userId: string): string | null {
+    getAutotranslateUserLanguages(id: string, isDM: boolean, userId: string): string[] {
         const config = this.getConfig(id, isDM);
-        const user = config.autotranslateUsers.find(u => u.userId === userId);
-        return user?.language || null;
+        return config.autotranslateUsers
+            .filter(u => u.userId === userId)
+            .map(u => u.language);
     }
 
     getAllAutotranslateUsers(id: string, isDM: boolean): AutotranslateUser[] {
