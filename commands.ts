@@ -14,7 +14,7 @@ import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { ElevenLabs } from './elevenlabs';
 import path from 'path';
 import { URL } from 'url';
-import { extractEmbedDataToText, prependTimestampAndUsername } from './formatMessage';
+import { extractEmbedDataToText, extractTranslatableEmbedContent, prependTimestampAndUsername } from './formatMessage';
 const pipeline = promisify(require('stream').pipeline);
 
 // Security constants for file downloads
@@ -1846,7 +1846,7 @@ Examples:
         try {
             // Extract message content (without embeds)
             const messageContent = message.cleanContent;
-            const embedData = extractEmbedDataToText(message);
+            const embedData = extractTranslatableEmbedContent(message);
 
             // Collect all translations with their language labels
             const translations: { language: string; text: string }[] = [];

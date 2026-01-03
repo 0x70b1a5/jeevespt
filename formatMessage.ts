@@ -37,3 +37,22 @@ export const extractEmbedDataToText = (message: Message) => {
     }
     return formatted;
 }
+
+// Extract only translatable prose content from embeds (for autotranslate)
+// Skips URLs, provider names, and other metadata
+export const extractTranslatableEmbedContent = (message: Message) => {
+    let formatted = '';
+    if (message.embeds) {
+        for (const embed of message.embeds) {
+            // Only include description - this is the main prose content
+            if (embed.description) {
+                formatted += `\n${embed.description}`;
+            }
+            // Only include title if it's not just a URL or domain name
+            if (embed.title && !embed.title.match(/^https?:\/\//i) && !embed.title.match(/^\S+\.\S+$/)) {
+                formatted += `\n${embed.title}`;
+            }
+        }
+    }
+    return formatted;
+}
