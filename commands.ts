@@ -1833,8 +1833,8 @@ Examples:
             return;
         }
 
-        // Skip messages that start with "notr" (no translation)
-        if (message.content.trim().toLowerCase().startsWith('notr')) {
+        // Skip messages that start with ". " (no translation)
+        if (message.content.trim().startsWith('. ')) {
             return;
         }
 
@@ -1908,6 +1908,20 @@ Examples:
         guildId: string
     ): Promise<string | null> {
         try {
+            // Combine message and embed data for checking if there's translatable content
+            const fullText = (messageContent + ' ' + embedData).trim();
+
+            // Check if there's any meaningful text (not just URLs and usernames)
+            // Remove URLs and check if anything substantial remains
+            const textWithoutUrls = fullText.replace(/https?:\/\/\S+/gi, '').replace(/\[.*?\]\(.*?\)/g, '').trim();
+            const textWithoutUsernames = textWithoutUrls.replace(/@\w+/g, '').trim();
+
+            // Skip if there's no substantial text to translate
+            if (textWithoutUsernames.length === 0) {
+                console.log(`🌐 Skipping translation - no meaningful content (only URLs/usernames)`);
+                return null;
+            }
+
             // First, check if the message is already in the target language
             const isAlreadyInTargetLanguage = await this.detectLanguage(messageContent, targetLanguage, guildId);
 
@@ -1921,11 +1935,11 @@ Examples:
 
             if (!translation) return null;
 
-            // If there are embeds, translate them separately and add in XML block
+            // If there are embeds, translate them and append inline (no XML wrapper)
             if (embedData && embedData.trim().length > 0) {
                 const embedTranslation = await this.generateTranslation(embedData.trim(), targetLanguage, guildId);
                 if (embedTranslation) {
-                    translation += `\n<embed>${embedTranslation}</embed>`;
+                    translation += `\n${embedTranslation}`;
                 }
             }
 
@@ -1976,17 +1990,7 @@ Examples:
                     role: 'user',
                     content: `Translate the following text to ${targetLanguage}. Only respond with the translation, nothing else:\n\n${text}`
                 }],
-                system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.
-
-IMPORTANT: When translating embedded content (social media posts, articles, etc.):
-- Translate ONLY the actual text content: usernames, handles, publication titles, post content, descriptions
-- Replace ALL URLs with the string "<url>" - do not include the actual URLs
-- Strip markdown formatting and provide plain text translations
-- Focus on the readable text content, exclude technical elements
-
-Example:
-Input: "Posted by @alice: Check out this article https://example.com/article about **technology**"
-Output in Spanish: "Publicado por @alice: Mira este artículo <url> sobre tecnología"`
+                system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.`
             });
 
             const translationText = response.content[0]?.type === 'text' ? response.content[0].text : null;
