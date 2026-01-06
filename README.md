@@ -1,5 +1,11 @@
 # JeevesPT - A general-purpose AI Discord bot
 
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript)
+![Discord.js](https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude-Anthropic-d4a27f?logo=anthropic)
+![License](https://img.shields.io/badge/license-ISC-green)
+![Satisfaction](https://img.shields.io/badge/satisfaction-given,%20sir-success)
+
 A sophisticated Discord bot powered by Claude (Anthropic) with multiple personas, voice capabilities, spaced-repetition learning, auto-translation, and more.
 
 ## Features
