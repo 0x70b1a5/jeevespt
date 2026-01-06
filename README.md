@@ -8,6 +8,8 @@
 
 A sophisticated Discord bot powered by Claude (Anthropic) with multiple personas, voice capabilities, spaced-repetition learning, auto-translation, and more.
 
+With apologies to P. G. Wodehouse.
+
 ## Features
 
 ### Multi-Persona System
