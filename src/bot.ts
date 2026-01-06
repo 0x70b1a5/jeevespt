@@ -1,5 +1,5 @@
 import fs from 'fs'
-import { JEEVES_PROMPT } from '../prompts/prompts';
+import { JEEVES_PROMPT } from './prompts/prompts';
 
 // Valid Anthropic Claude models (as of January 2025)
 export const VALID_ANTHROPIC_MODELS = [

@@ -3,7 +3,7 @@ import { BotConfig, BotState, ReactionHistory, VALID_ANTHROPIC_MODELS, isValidAn
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import whisper from './whisper';
-import { JEEVES_PROMPT, TOKIPONA_PROMPT, JARGONATUS_PROMPT, LEARNING_PROMPT_TEMPLATE } from '../prompts/prompts';
+import { JEEVES_PROMPT, TOKIPONA_PROMPT, JARGONATUS_PROMPT, LEARNING_PROMPT_TEMPLATE } from './prompts/prompts';
 import dayjs from 'dayjs';
 import { help } from './help';
 import { getWebpage } from './getWebpage';
