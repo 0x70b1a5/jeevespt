@@ -5,3 +5,4 @@ node_modules
 *.mp3
 log.txt
 data/
+getModels.sh

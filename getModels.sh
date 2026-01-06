@@ -1,1 +1,0 @@
-curl https://api.anthropic.com/v1/models --header "x-api-key: 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" --header "anthropic-version: 2023-06-01"
