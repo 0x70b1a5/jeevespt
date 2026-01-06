@@ -1,9 +1,11 @@
 {
   "name": "jeevespt",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A general-purpose AI Discord bot powered by Claude",
+  "main": "src/server.ts",
   "scripts": {
+    "start": "ts-node src/server.ts",
+    "dev": "ts-node src/server.ts | tee -a log.txt",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

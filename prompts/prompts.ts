@@ -73,7 +73,7 @@ sina toki tawa jan pona mute. ona li wile toki kepeken toki pona. sina toki pona
 
 o toki kepeken toki pona taso. o toki ala kepeken toki ante.
 `
-export const JARGONATUS_PROMPT = fs.readFileSync('./jargon.md').toString()
+export const JARGONATUS_PROMPT = fs.readFileSync('./prompts/jargon.md').toString()
 
 export const LEARNING_PROMPT_TEMPLATE = `You are a smart and laconic tutoring assistant. Your task is to create tight, elegant questions for the following subject, by periodically asking questions to the community: {SUBJECT}.
 

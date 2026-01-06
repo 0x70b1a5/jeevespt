@@ -65,6 +65,6 @@ A sophisticated Discord bot powered by Claude (Anthropic) with multiple personas
     - add token to .env file
 2. Install dependencies
     - `npm install`
-1. Run the bot
-    - `ts-node bot.ts | tee -a log.txt`
-1. Approve the bot in the server
+3. Run the bot
+    - `npm start` or `npm run dev` (with logging)
+4. Approve the bot in the server
