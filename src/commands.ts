@@ -417,7 +417,13 @@ export class CommandHandler {
             }
 
             console.log(`✍️ Transcribed audio for ${message.author.tag}: "${transcription.text.substring(0, 100)}..."`);
-            await message.reply(`${this.sysPrefix}Transcription: ${transcription.text}`);
+
+            // Use chunking for long transcriptions
+            const chunks = this.splitMessageIntoChunks([{ role: 'user', content: transcription.text }]);
+            await message.reply(`${this.sysPrefix}Transcription:`);
+            for (const chunk of chunks) {
+                if (chunk) await message.channel.send(chunk);
+            }
             return transcription.text;
         } catch (error: any) {
             console.error(`❌ Whisper error for ${safePath}:`, error);
