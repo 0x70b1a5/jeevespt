@@ -27,6 +27,7 @@ export const help: string[] = [
 \`!model STRING\`: Sets model. The bot will validate that you're using a valid Anthropic model and show you a list of available models if you specify an invalid one.
 \`!delay SECONDS\`: Sets reponse delay to SECONDS seconds. This can be useful if you want the bot to wait for someone to send a few different messages before responding.
 \`!tokens INTEGER\`: Sets the maximum number of tokens to generate.
+\`!speedscalar FLOAT\`: Sets the transcription speed scalar (0.5-4.0, default: 1.0). Audio is pre-processed with ffmpeg at this speed before being sent to Whisper. Higher values can improve transcription efficiency for long audio. If transcription fails, the bot automatically retries at 2.0x speed.
 \`!persist\`: Toggle whether data is saved between sessions.
 \`!dms\`: Toggle whether the bot will respond to direct messages.
 \`!voice\`: Enable/disable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).

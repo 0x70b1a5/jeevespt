@@ -75,6 +75,8 @@ export interface BotConfig {
     // Autotranslate configuration
     autotranslateChannels: AutotranslateChannel[];
     autotranslateUsers: AutotranslateUser[];
+    // Transcription speed scalar (1.0 = normal speed, >1.0 = faster)
+    transcriptionSpeedScalar: number;
 }
 
 export interface MessageBuffer {
@@ -155,7 +157,9 @@ export class BotState {
         channelMemberships: new Map(),
         // Default autotranslate settings
         autotranslateChannels: [],
-        autotranslateUsers: []
+        autotranslateUsers: [],
+        // Default transcription speed scalar
+        transcriptionSpeedScalar: 1.0
     };
 
     constructor() {

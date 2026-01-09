@@ -110,6 +110,10 @@ export class CommandHandler {
                 await this.setTokens(message, id, isDM, args[0]);
                 break;
 
+            case 'speedscalar':
+                await this.setSpeedScalar(message, id, isDM, args[0]);
+                break;
+
             case 'limit':
                 await this.setLimit(message, id, isDM, args[0]);
                 break;
@@ -264,7 +268,7 @@ export class CommandHandler {
         }
 
         if (audio) {
-            userMessage = await this.transcribeAudio(audio, message) || userMessage;
+            userMessage = await this.transcribeAudio(audio, message, id, isDM) || userMessage;
             const firstWord = userMessage.split(' ')[0];
             const secondWord = userMessage.split(' ')[1]?.replace(/[^a-zA-Z0-9]/g, '') || '';
             const rest = userMessage.slice(userMessage.indexOf(secondWord) + secondWord.length).trim();
@@ -395,13 +399,15 @@ export class CommandHandler {
         return content;
     }
 
-    private async transcribeAudio(attachment: Attachment, message: Message): Promise<string> {
+    private async transcribeAudio(attachment: Attachment, message: Message, id: string, isDM: boolean): Promise<string> {
         const timestamp = Date.now();
         const userId = message.author.id;
         const filename = `audio_${userId}_${timestamp}.mp3`;
         const safePath = this.createTempFilename(filename);
+        const config = this.state.getConfig(id, isDM);
+        const speedScalar = config.transcriptionSpeedScalar;
 
-        console.log(`🎙️ Processing audio from ${message.author.tag} (${filename})`);
+        console.log(`🎙️ Processing audio from ${message.author.tag} (${filename}) with speed scalar ${speedScalar}`);
 
         await message.channel.sendTyping();
 
@@ -410,21 +416,32 @@ export class CommandHandler {
             await this.downloadFile(attachment.proxyURL, filename, safePath);
             console.log(`📥 Downloaded audio file from ${attachment.proxyURL} to ${safePath}`);
 
-            const transcription = await whisper(this.openai, safePath);
-            if (!transcription?.text?.length) {
+            const result = await whisper(this.openai, safePath, speedScalar);
+
+            // Handle transcription errors
+            if (result.error) {
+                console.error(`❌ Transcription error: ${result.error}`);
+                await message.reply(this.sysPrefix + `[ERROR] ${result.error}`);
+                return '';
+            }
+
+            if (!result.text?.length) {
                 await message.reply(this.sysPrefix + '[ERROR] Could not process audio.');
                 return '';
             }
 
-            console.log(`✍️ Transcribed audio for ${message.author.tag}: "${transcription.text.substring(0, 100)}..."`);
+            // Log details about the transcription
+            const retryInfo = result.wasRetry ? ' (succeeded on retry with 2x speed)' : '';
+            const speedInfo = result.speedScalarUsed !== 1.0 ? ` at ${result.speedScalarUsed}x speed` : '';
+            console.log(`✍️ Transcribed audio for ${message.author.tag}${speedInfo}${retryInfo}: "${result.text.substring(0, 100)}..."`);
 
             // Use chunking for long transcriptions
-            const chunks = this.splitMessageIntoChunks([{ role: 'user', content: transcription.text }]);
+            const chunks = this.splitMessageIntoChunks([{ role: 'user', content: result.text }]);
             await message.reply(`${this.sysPrefix}Transcription:`);
             for (const chunk of chunks) {
                 if (chunk) await message.channel.send(chunk);
             }
-            return transcription.text;
+            return result.text;
         } catch (error: any) {
             console.error(`❌ Whisper error for ${safePath}:`, error);
 
@@ -477,7 +494,8 @@ export class CommandHandler {
 - Current mode: \`${config.mode}\`
 - Max response length (tokens): ${config.maxResponseLength}
 - Persist data: ${config.shouldSaveData ? 'enabled' : 'disabled'}
-- Direct messages: ${config.allowDMs ? 'enabled' : 'disabled'}`,
+- Direct messages: ${config.allowDMs ? 'enabled' : 'disabled'}
+- Transcription speed scalar: ${config.transcriptionSpeedScalar}x`,
             ...help
         ];
 
@@ -625,6 +643,20 @@ export class CommandHandler {
             await message.reply(`${this.sysPrefix}Max response length set to ${tokens} tokens.`);
         } else {
             await message.reply(`${this.sysPrefix}Failed to parse requested tokens. Format: \`!tokens TOKENS\` where TOKENS is a number greater than zero.`);
+        }
+    }
+
+    private async setSpeedScalar(message: Message, id: string, isDM: boolean, value: string) {
+        const scalar = Number(value);
+        if (!isNaN(scalar) && scalar >= 0.5 && scalar <= 4.0) {
+            this.state.updateConfig(id, isDM, { transcriptionSpeedScalar: scalar });
+            if (scalar === 1.0) {
+                await message.reply(`${this.sysPrefix}Transcription speed scalar set to \`${scalar}\` (normal speed).`);
+            } else {
+                await message.reply(`${this.sysPrefix}Transcription speed scalar set to \`${scalar}\`. Audio will be sped up ${scalar}x before transcription.`);
+            }
+        } else {
+            await message.reply(`${this.sysPrefix}Failed to parse speed scalar. Format: \`!speedscalar FLOAT\` where FLOAT is between 0.5 and 4.0 (default: 1.0).`);
         }
     }
 
