@@ -15,6 +15,7 @@ import { ElevenLabs } from './elevenlabs';
 import path from 'path';
 import { URL } from 'url';
 import { extractEmbedDataToText, extractTranslatableEmbedContent, prependTimestampAndUsername } from './formatMessage';
+import { tracedClaudeCompletion, tracedWhisperTranscription, tracedTTS, tracedMessageHandler } from './instrumentation';
 const pipeline = promisify(require('stream').pipeline);
 
 // Security constants for file downloads
@@ -416,7 +417,10 @@ export class CommandHandler {
             await this.downloadFile(attachment.proxyURL, filename, safePath);
             console.log(`📥 Downloaded audio file from ${attachment.proxyURL} to ${safePath}`);
 
-            const result = await whisper(this.openai, safePath, speedScalar);
+            const result = await tracedWhisperTranscription(
+                speedScalar,
+                () => whisper(this.openai, safePath, speedScalar)
+            );
 
             // Handle transcription errors
             if (result.error) {
@@ -715,6 +719,12 @@ export class CommandHandler {
         const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
 
+        await tracedMessageHandler(
+            message.channelId,
+            message.guildId,
+            message.attachments.size > 0,
+            config.mode,
+            async () => {
         try {
             await message.channel.sendTyping();
             const response = await this.generateResponse(id, isDM);
@@ -729,9 +739,12 @@ export class CommandHandler {
                 if (config.useVoiceResponse) {
                     await message.channel.sendTyping();
                     try {
-                        const audioFile = await this.elevenLabs.synthesizeSpeech(
-                            response.content,
-                            message.author.id
+                        const audioFile = await tracedTTS(
+                            response.content.length,
+                            () => this.elevenLabs.synthesizeSpeech(
+                                response.content,
+                                message.author.id
+                            )
                         );
                         for (let i = 0; i < chunks.length; i++) {
                             const chunk = chunks[i];
@@ -771,6 +784,8 @@ export class CommandHandler {
             console.error('Error sending delayed response:', error);
             await message.reply(`${this.sysPrefix}[ERROR] Failed to generate response.`);
         }
+            }
+        );
 
         // Clear buffer after response
         buffer.messages = [];
@@ -820,16 +835,20 @@ export class CommandHandler {
                 enhancedSystemPrompt += lengthGuidance;
             }
 
-            const completion = await this.anthropic.messages.create({
-                model: config.model,
-                messages: latestMessages.map(msg => ({
-                    role: msg?.role === 'assistant' ? 'assistant' : 'user',
-                    content: msg?.content
-                })).filter(m => Boolean(m?.content)) as MessageParam[],
-                temperature: config.temperature,
-                max_tokens: config.maxResponseLength,
-                system: enhancedSystemPrompt
-            });
+            const completion = await tracedClaudeCompletion(
+                config.model,
+                latestMessages.length,
+                () => this.anthropic.messages.create({
+                    model: config.model,
+                    messages: latestMessages.map(msg => ({
+                        role: msg?.role === 'assistant' ? 'assistant' : 'user',
+                        content: msg?.content
+                    })).filter(m => Boolean(m?.content)) as MessageParam[],
+                    temperature: config.temperature,
+                    max_tokens: config.maxResponseLength,
+                    system: enhancedSystemPrompt
+                })
+            );
 
             const botMsg = completion.content[0];
             if (botMsg?.type === 'text') {
