@@ -30,7 +30,8 @@ export const help: string[] = [
 \`!speedscalar FLOAT\`: Sets the transcription speed scalar (0.5-4.0, default: 1.0). Audio is pre-processed with ffmpeg at this speed before being sent to Whisper. Higher values can improve transcription efficiency for long audio. If transcription fails, the bot automatically retries at 2.0x speed.
 \`!persist\`: Toggle whether data is saved between sessions.
 \`!dms\`: Toggle whether the bot will respond to direct messages.
-\`!voice\`: Enable/disable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).
+\`!voiceon\`: Enable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).
+\`!voiceoff\`: Disable voice output.
 \`!config\`: Show current channel configuration.
 \`!config <channel> <frequency>\`: Configure how the bot responds in a specific channel.
   - Frequencies: \`all\` (respond to every message), \`mentions\` (only when mentioned), \`none\` (ignore messages)
