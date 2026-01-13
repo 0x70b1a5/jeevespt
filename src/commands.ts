@@ -143,8 +143,12 @@ export class CommandHandler {
                 await this.setMuseInterval(message, id, isDM, Number(args[0]));
                 break;
 
-            case 'voice':
-                await this.toggleVoiceResponse(message, id, isDM);
+            case 'voiceon':
+                await this.setVoiceResponse(message, id, isDM, true);
+                break;
+
+            case 'voiceoff':
+                await this.setVoiceResponse(message, id, isDM, false);
                 break;
 
             case 'reacton':
@@ -970,12 +974,10 @@ If there was an error fetching the webpage, please mention this, as the develope
         );
     }
 
-    private async toggleVoiceResponse(message: Message, id: string, isDM: boolean) {
-        const config = this.state.getConfig(id, isDM);
-        const newValue = !config.useVoiceResponse;
-        this.state.updateConfig(id, isDM, { useVoiceResponse: newValue });
+    private async setVoiceResponse(message: Message, id: string, isDM: boolean, enable: boolean) {
+        this.state.updateConfig(id, isDM, { useVoiceResponse: enable });
         await message.reply(
-            `${this.sysPrefix}Voice responses are now ${newValue ? 'ENABLED' : 'DISABLED'}.`
+            `${this.sysPrefix}Voice responses are now ${enable ? 'ENABLED' : 'DISABLED'}.`
         );
     }
 

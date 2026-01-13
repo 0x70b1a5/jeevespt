@@ -29,11 +29,16 @@ if (!tracesUrl || !token) {
   console.warn("[TRACING] WARNING: Better Stack tracing not fully configured - traces will not be sent");
 }
 
+// Disable metrics and logs exporters (we only want traces)
+process.env.OTEL_METRICS_EXPORTER = "none";
+process.env.OTEL_LOGS_EXPORTER = "none";
+
 // Set OTEL env vars - the exporter reads these directly
 process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = fullUrl;
 process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS = `Authorization=Bearer ${token}`;
 
 console.log(`[TRACING] Set OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${fullUrl}`);
+console.log(`[TRACING] Disabled metrics and logs exporters`);
 
 const exporter = new OTLPTraceExporter();
 
