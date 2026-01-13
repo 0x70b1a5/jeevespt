@@ -1,3 +1,5 @@
+import "./tracing"; // MUST be first import for OpenTelemetry instrumentation
+
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState, ScheduledReminder } from './bot';
 import { CommandHandler } from './commands';
