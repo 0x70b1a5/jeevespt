@@ -6,20 +6,25 @@ import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
+import { diag, DiagConsoleLogger, DiagLogLevel } from "@opentelemetry/api";
+
+// Enable verbose OpenTelemetry diagnostic logging
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 
 // Debug: log the config being used
 const tracesUrl = process.env.BETTERSTACK_TRACES_URL;
 const token = process.env.BETTERSTACK_SOURCE_TOKEN;
-console.log(`Tracing URL: ${tracesUrl}`);
-console.log(`Tracing token set: ${token ? "yes" : "NO - MISSING!"}`);
+const fullUrl = tracesUrl?.startsWith("http") ? tracesUrl : `https://${tracesUrl}`;
+console.log(`[TRACING] URL: ${fullUrl}`);
+console.log(`[TRACING] Token: ${token ? token.substring(0, 8) + "..." : "NO - MISSING!"}`);
 if (!tracesUrl || !token) {
-  console.warn("WARNING: Better Stack tracing not fully configured - traces will not be sent");
+  console.warn("[TRACING] WARNING: Better Stack tracing not fully configured - traces will not be sent");
 }
 
 const exporter = new OTLPTraceExporter({
-  url: tracesUrl?.startsWith("http") ? tracesUrl : `https://${tracesUrl}`,
+  url: fullUrl,
   headers: {
-    Authorization: `Bearer ${process.env.BETTERSTACK_SOURCE_TOKEN}`,
+    Authorization: `Bearer ${token}`,
   },
 });
 
