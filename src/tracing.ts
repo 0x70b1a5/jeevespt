@@ -14,19 +14,28 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.DEBUG);
 // Debug: log the config being used
 const tracesUrl = process.env.BETTERSTACK_TRACES_URL;
 const token = process.env.BETTERSTACK_SOURCE_TOKEN;
-const fullUrl = tracesUrl?.startsWith("http") ? tracesUrl : `https://${tracesUrl}`;
-console.log(`[TRACING] URL: ${fullUrl}`);
+// Build the full URL with protocol and path
+let fullUrl = tracesUrl || "";
+if (!fullUrl.startsWith("http")) {
+  fullUrl = `https://${fullUrl}`;
+}
+if (!fullUrl.endsWith("/v1/traces")) {
+  fullUrl = fullUrl.replace(/\/$/, "") + "/v1/traces";
+}
+
+console.log(`[TRACING] Full URL: ${fullUrl}`);
 console.log(`[TRACING] Token: ${token ? token.substring(0, 8) + "..." : "NO - MISSING!"}`);
 if (!tracesUrl || !token) {
   console.warn("[TRACING] WARNING: Better Stack tracing not fully configured - traces will not be sent");
 }
 
-const exporter = new OTLPTraceExporter({
-  url: fullUrl,
-  headers: {
-    Authorization: `Bearer ${token}`,
-  },
-});
+// Set OTEL env vars - the exporter reads these directly
+process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = fullUrl;
+process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS = `Authorization=Bearer ${token}`;
+
+console.log(`[TRACING] Set OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=${fullUrl}`);
+
+const exporter = new OTLPTraceExporter();
 
 const sdk = new NodeSDK({
   resource: resourceFromAttributes({
