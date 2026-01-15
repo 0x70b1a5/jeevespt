@@ -46,7 +46,6 @@ jest.mock('fs', () => ({
 jest.mock('./prompts/prompts', () => ({
   JEEVES_PROMPT: 'You are Jeeves, a butler.',
   TOKIPONA_PROMPT: 'sina jan pi toki pona.',
-  JARGONATUS_PROMPT: 'You speak in tech jargon.',
   LEARNING_PROMPT_TEMPLATE: 'Create questions about {SUBJECT}.'
 }));
 
@@ -174,14 +173,6 @@ describe('CommandHandler', () => {
       
       expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('toki pona'));
       expect(state.getConfig('guild123', false).mode).toBe('tokipona');
-    });
-
-    it('should handle !jargon command', async () => {
-      const message = createMockMessage({ content: '!jargon' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Omnissiah'));
-      expect(state.getConfig('guild123', false).mode).toBe('jargon');
     });
 
     it('should handle !whisper command', async () => {
@@ -432,12 +423,6 @@ describe('CommandHandler', () => {
       state.updateConfig('guild123', false, { mode: 'tokipona' });
       const prompt = handler.getSystemPrompt('guild123', false);
       expect(prompt?.content).toContain('toki pona');
-    });
-
-    it('should return jargon prompt for jargon mode', () => {
-      state.updateConfig('guild123', false, { mode: 'jargon' });
-      const prompt = handler.getSystemPrompt('guild123', false);
-      expect(prompt?.content).toContain('jargon');
     });
 
     it('should return null for whisper mode', () => {

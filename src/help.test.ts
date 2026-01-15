@@ -23,7 +23,6 @@ describe('help', () => {
     const allHelp = help.join('');
     expect(allHelp).toContain('!jeeves');
     expect(allHelp).toContain('!tokipona');
-    expect(allHelp).toContain('!jargon');
     expect(allHelp).toContain('!whisper');
   });
 

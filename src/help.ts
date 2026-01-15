@@ -9,7 +9,6 @@ export const help: string[] = [
 
 \`!jeeves\`: Act like Jeeves. Clears memory.
 \`!tokipona\`: Speak toki pona. Clears memory.
-\`!jargon\`: Speak Jargon. Clears memory.
 \`!whisper\`: Switch to transcription-only mode. (no messages will be sent to the AI.) The bot will reply to audio messages with text transcriptions.
 \`!prompt YOUR_PROMPT_HERE\`: Change the System Prompt to your specified text. The System Prompt will form the backbone of the AI's personality for subsequent conversations. To undo this command, select one of the other personalities.
 
@@ -33,9 +32,9 @@ export const help: string[] = [
 \`!voiceon\`: Enable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).
 \`!voiceoff\`: Disable voice output.
 \`!config\`: Show current channel configuration.
-\`!config <channel> <frequency>\`: Configure how the bot responds in a specific channel.
+\`!config <#channel> <frequency>\`: Configure how the bot responds in a specific channel.
   - Frequencies: \`all\` (respond to every message), \`mentions\` (only when mentioned), \`none\` (ignore messages)
-  - Examples: \`!config general all\`, \`!config random mentions\`, \`!config off-topic none\`
+  - Examples: \`!config #general all\`, \`!config #random mentions\`, \`!config #off-topic none\`
 `,
     `
 ### Testing
@@ -62,8 +61,8 @@ The bot can be configured to automatically react with appropriate emojis to mess
 
 \`!reacton\`: Enable reaction mode for monitored channels.
 \`!reactoff\`: Disable reaction mode.
-\`!reactadd CHANNEL-NAME\`: Add a channel to the list of monitored channels.
-\`!reactremove CHANNEL-NAME\`: Remove a channel from the list of monitored channels.
+\`!reactadd <#channel>\`: Add a channel to the list of monitored channels.
+\`!reactremove <#channel>\`: Remove a channel from the list of monitored channels.
 `,
 `
 ### Reminders
@@ -98,8 +97,8 @@ The bot can ask you educational questions on subjects you specify, spaced throug
 The bot can automatically translate messages in specific channels or for specific users to a target language. This works independently of other modes - even if the bot is not monitoring a channel, it will still translate messages if autotranslate is enabled.
 
 **Channel-wide translation:**
-\`!translateadd <channel> <language>\`: Add a channel to autotranslate. All messages in that channel will be translated to the specified language.
-\`!translateremove <channel>\`: Remove a channel from autotranslate.
+\`!translateadd <#channel> <language>\`: Add a channel to autotranslate. All messages in that channel will be translated to the specified language.
+\`!translateremove <#channel>\`: Remove a channel from autotranslate.
 \`!translatelist\`: Show all channels configured for autotranslate.
 
 **User-specific translation:**
@@ -108,12 +107,12 @@ The bot can automatically translate messages in specific channels or for specifi
 \`!translatelistusers\`: Show all users configured for autotranslate.
 
 Examples:
-- \`!translateadd toki-pona "toki pona"\` - translates all messages in #toki-pona to toki pona
+- \`!translateadd #toki-pona "toki pona"\` - translates all messages in #toki-pona to toki pona
 - \`!translateadduser @Alice Quenya\` - translates messages from Alice to Quenya
 - \`!translateadduser @Alice Latin\` - also translates Alice's messages to Latin (she now gets both!)
 - \`!translateremoveuser @Alice Latin\` - removes only Latin, keeps Quenya
 - \`!translateremoveuser @Alice\` - removes all languages for Alice
-- \`!translateadd spanish-practice Spanish\` - translates all messages in #spanish-practice to Spanish
+- \`!translateadd #spanish-practice Spanish\` - translates all messages in #spanish-practice to Spanish
 
 Note: Users can have multiple languages configured. All translations are sent in a single message to reduce API calls. Duplicate languages (e.g., if both channel and user want Latin) are automatically skipped.
 
