@@ -211,7 +211,8 @@ export class CommandHandler {
         id: string,
         isDM: boolean,
         additionalMessages: { role: string; content: string }[] = [],
-        retryCount = 0
+        retryCount = 0,
+        isReminder = false
     ): Promise<GeneratedResponse | null> {
         console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}${retryCount > 0 ? ` (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})` : ''}`);
 
@@ -243,6 +244,10 @@ export class CommandHandler {
             if (isShortResponse) {
                 const lengthGuidance = `\n\nIMPORTANT: You have a strict limit of ${config.maxResponseLength} tokens for your response. Please ensure your response is complete and ends naturally within this limit. Be concise and prioritize the most essential information. Do not start sentences you cannot finish within the token limit.`;
                 enhancedSystemPrompt += lengthGuidance;
+            }
+
+            if (isReminder) {
+                enhancedSystemPrompt += `\n\nIMPORTANT: You are about to send a reminder to a user. You are part of a system that can set reminders; however, do not break character for this message.`;
             }
 
             const completion = await this.anthropic.messages.create({

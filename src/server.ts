@@ -304,7 +304,18 @@ export class BotServer {
 
             // Generate a custom reminder preface for the user, according to the bot's personality
 
-            const completion = await this.commands.generateResponse(reminder.userId, reminder.isDM, [{ role: 'user', content: `[SYSTEM] Hi! Admin here. User ${user.tag} has set a reminder for themselves, which has just expired. You are about to send them a message indicating its time has come. Here's the reminder: \n\n<reminder>${reminder.content}</reminder>\n\n. Please write a short message to the user as a preface to the reminder, adhering to your personality with utmost care.` }]);
+            const msg =  `User ${user.tag} has set a reminder for themselves, which has just expired. I am about to send them a message indicating its time has come. Here's the reminder: \n\n<reminder>${reminder.content}</reminder>\n\n. I should write a short message to the user as a preface to the reminder, adhering to my personality with utmost care.`
+
+            const completion = await this.commands.generateResponse(
+                reminder.userId,
+                reminder.isDM,
+                [{
+                    role: 'assistant',
+                    content: msg,
+                }],
+                2,
+                true
+            );
 
             await channel.send(
                 (completion?.content ?? "") + "\n\n" +
