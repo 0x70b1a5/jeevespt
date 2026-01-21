@@ -71,11 +71,10 @@ export const promptCommand: Command = {
         deps.state.updateConfig(ctx.id, ctx.isDM, { mode: 'customprompt' });
         deps.state.setCustomPrompt(ctx.id, ctx.isDM, prompt);
 
-        await commandUtils.reply(ctx.message, 'Prompt set to:');
-        const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: prompt }]);
-        for (const chunk of chunks) {
-            if (chunk) await ctx.message.channel.send(chunk);
-        }
+        const charCount = prompt.length >= 1000
+            ? `${Math.round(prompt.length / 1000)}k`
+            : prompt.length.toString();
+        await commandUtils.reply(ctx.message, `Prompt set (${charCount} chars).`);
     }
 };
 
