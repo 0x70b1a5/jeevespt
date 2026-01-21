@@ -125,17 +125,9 @@ export class CommandHandler {
             if (attachment.name.match(/\.(mp3|ogg|wav|m4a|aac|flac|webm)$/i)) {
                 audio = attachment;
                 break;
-            } else if (
-                attachment.size < 100000 &&
-                (
-                    attachment.contentType?.startsWith('text/') ||
-                    attachment.contentType?.includes('xml') ||
-                    attachment.contentType?.includes('svg') ||
-                    attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|svg|sh|bash|zsh|xml|ini|conf|cfg|env|gitignore|dockerfile)$/i)
-                )
-            ) {
+            } else if (this.utils.isTextFileAttachment(attachment)) {
                 console.log(`🔍 Processing text file: ${attachment.name} (${attachment.contentType})`);
-                const content = await this.downloadAndReadFile(attachment.url, `text_${message.author.id}_${Date.now()}.txt`);
+                const content = await this.utils.downloadAndReadTextFile(attachment.url, `text_${message.author.id}_${Date.now()}.txt`);
                 userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
             }
         }

@@ -304,13 +304,13 @@ export class BotServer {
 
             // Generate a custom reminder preface for the user, according to the bot's personality
 
-            const msg =  `User ${user.tag} has set a reminder for themselves, which has just expired. I am about to send them a message indicating its time has come. Here's the reminder: \n\n<reminder>${reminder.content}</reminder>\n\n. I should write a short message to the user as a preface to the reminder, adhering to my personality with utmost care.`
+            const msg =  `Hi!  It's me, ${user.tag}.  I've set an automated reminder to go off right now.  Here's the reminder: \n\n<reminder>${reminder.content}</reminder>\n\n. Can you please write me a short message so that when I see it, I remember to do the thing it's about?`
 
             const completion = await this.commands.generateResponse(
                 reminder.userId,
                 reminder.isDM,
                 [{
-                    role: 'assistant',
+                    role: 'user',
                     content: msg,
                 }],
                 2,

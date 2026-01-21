@@ -40,7 +40,32 @@ export const whisperCommand = createModeCommand('whisper');
 export const promptCommand: Command = {
     names: ['prompt'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const prompt = ctx.args.join(' ');
+        let prompt = ctx.args.join(' ');
+
+        // Check for text file attachments and extract their contents
+        for (const [, attachment] of ctx.message.attachments) {
+            if (commandUtils.isTextFileAttachment(attachment)) {
+                try {
+                    console.log(`🔍 Processing text file for prompt: ${attachment.name}`);
+                    const fileContent = await commandUtils.downloadAndReadTextFile(
+                        attachment.url,
+                        `prompt_${ctx.message.author.id}_${Date.now()}.txt`
+                    );
+                    // Prepend or use file content as prompt
+                    prompt = prompt ? `${prompt}\n\n${fileContent}` : fileContent;
+                } catch (error) {
+                    console.error(`❌ Error reading text file ${attachment.name}:`, error);
+                    await commandUtils.replyError(ctx.message, `Could not read file: ${attachment.name}`);
+                    return;
+                }
+            }
+        }
+
+        if (!prompt.trim()) {
+            await commandUtils.replyError(ctx.message, 'Please provide a prompt text or attach a text file.');
+            return;
+        }
+
         const log = deps.state.getLog(ctx.id, ctx.isDM);
         log.messages = [];
         deps.state.updateConfig(ctx.id, ctx.isDM, { mode: 'customprompt' });

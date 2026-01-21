@@ -1,6 +1,12 @@
-import { Message, TextChannel, Webhook, Collection } from 'discord.js';
-import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS } from './constants';
+import { Message, TextChannel, Webhook, Collection, Attachment } from 'discord.js';
+import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS, ALLOWED_DOMAINS, TEMP_DIR } from './constants';
 import { ChunkOptions, CommandUtils } from './types';
+import fs from 'fs';
+import https from 'https';
+import path from 'path';
+import { URL } from 'url';
+import { promisify } from 'util';
+const pipeline = promisify(require('stream').pipeline);
 
 /**
  * Shared utilities for command handlers
@@ -144,6 +150,83 @@ export class CommandUtilsImpl implements CommandUtils {
     hasURLs(text: string): boolean {
         const urlRegex = /(https?:\/\/[^\s]+)/gi;
         return urlRegex.test(text);
+    }
+
+    /**
+     * Check if an attachment is a readable text file
+     */
+    isTextFileAttachment(attachment: Attachment): boolean {
+        return (
+            attachment.size < 100000 &&
+            (
+                attachment.contentType?.startsWith('text/') ||
+                attachment.contentType?.includes('xml') ||
+                attachment.contentType?.includes('svg') ||
+                !!attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|svg|sh|bash|zsh|xml|ini|conf|cfg|env|gitignore|dockerfile)$/i)
+            )
+        );
+    }
+
+    /**
+     * Download and read a text file from a URL
+     */
+    async downloadAndReadTextFile(url: string, filename: string): Promise<string> {
+        const safePath = this.createTempFilename(filename);
+        await this.downloadFile(url, filename, safePath);
+        const content = fs.readFileSync(safePath, 'utf8');
+        console.log(`🔍 Read file from ${safePath}: ${content.slice(0, 100)}...`);
+        fs.unlinkSync(safePath);
+        return content;
+    }
+
+    private sanitizeFilename(filename: string): string {
+        return filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+    }
+
+    private createTempFilename(filename: string): string {
+        return path.join(TEMP_DIR, this.sanitizeFilename(filename));
+    }
+
+    private async downloadFile(url: string, filename: string, destination: string): Promise<void> {
+        try {
+            console.log(`🔍 Downloading file from ${url} to ${filename}`);
+
+            let parsedUrl: URL;
+            try {
+                parsedUrl = new URL(url);
+            } catch (error) {
+                throw new Error('Invalid URL provided');
+            }
+
+            if (!ALLOWED_DOMAINS.includes(parsedUrl.hostname)) {
+                throw new Error(`Domain not allowed: ${parsedUrl.hostname}`);
+            }
+
+            if (parsedUrl.protocol !== 'https:') {
+                throw new Error('Only HTTPS URLs are allowed');
+            }
+
+            const response = await new Promise<any>((resolve, reject) => {
+                const req = https.get(url, (res) => {
+                    if (res.statusCode !== 200) {
+                        reject(new Error(`Failed to download: ${res.statusCode} ${res.statusMessage}`));
+                        return;
+                    }
+                    resolve(res);
+                }).on('error', reject);
+
+                req.setTimeout(30000, () => {
+                    req.destroy();
+                    reject(new Error('Download timeout'));
+                });
+            });
+
+            await pipeline(response, fs.createWriteStream(destination));
+            console.log(`🔍 Downloaded file from ${url} to ${destination}`);
+        } catch (error) {
+            console.error(`❌ Error downloading file ${filename}:`, error);
+            throw error;
+        }
     }
 }
 
