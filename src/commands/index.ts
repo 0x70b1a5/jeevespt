@@ -382,31 +382,40 @@ export class CommandHandler {
 
                 if (config.useVoiceResponse) {
                     await message.channel.sendTyping();
+                    let audioFile: string | null = null;
+
+                    // Try to synthesize voice, but don't block message send on failure
                     try {
-                        // Use IPA synthesis for tokipona/lugso, ElevenLabs for others
-                        const audioFile = (config.mode === 'tokipona' || config.mode === 'lugso')
+                        audioFile = (config.mode === 'tokipona' || config.mode === 'lugso')
                             ? await synthesizeIPA(response.content, message.author.id, config.mode)
                             : await this.elevenLabs.synthesizeSpeech(response.content, message.author.id);
-                        for (let i = 0; i < chunks.length; i++) {
-                            const chunk = chunks[i];
-                            if (!chunk) continue;
-                            if (i === 0) {
-                                await this.utils.sendWebhookMessage(
-                                    message.channel,
-                                    chunk,
-                                    config.mode,
-                                    [{
-                                        attachment: audioFile,
-                                        name: 'response.mp3'
-                                    }]
-                                );
-                            } else {
-                                await this.utils.sendWebhookMessage(message.channel, chunk, config.mode);
-                            }
-                        }
-                        fs.unlinkSync(audioFile);
                     } catch (error) {
-                        console.error('Error sending voice response:', error);
+                        console.error('Error synthesizing voice:', error);
+                    }
+
+                    // Send the text message (with audio if synthesis succeeded)
+                    for (let i = 0; i < chunks.length; i++) {
+                        const chunk = chunks[i];
+                        if (!chunk) continue;
+                        if (i === 0 && audioFile) {
+                            await this.utils.sendWebhookMessage(
+                                message.channel,
+                                chunk,
+                                config.mode,
+                                [{
+                                    attachment: audioFile,
+                                    name: 'response.mp3'
+                                }]
+                            );
+                        } else {
+                            await this.utils.sendWebhookMessage(message.channel, chunk, config.mode);
+                        }
+                    }
+
+                    // Clean up audio file if created, otherwise notify about synthesis failure
+                    if (audioFile) {
+                        fs.unlinkSync(audioFile);
+                    } else {
                         await message.reply(`${SYS_PREFIX}[ERROR] Could not generate voice response.`);
                     }
                 } else {
