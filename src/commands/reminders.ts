@@ -1,21 +1,6 @@
 import { Command, CommandContext, CommandDependencies } from './types';
 import { TIME_MULTIPLIERS, MIN_REMINDER_MS, MAX_REMINDER_MS } from './constants';
-import { commandUtils } from './utils';
-
-/**
- * Format time remaining in human-readable format
- */
-function formatTimeLeft(ms: number): string {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
-}
+import { commandUtils, discordTimestamp } from './utils';
 
 /**
  * !remind - Add a reminder
@@ -73,7 +58,7 @@ Examples:
 
         await commandUtils.reply(
             ctx.message,
-            `⏰ Reminder set for ${triggerTime.toLocaleString()}!\n` +
+            `⏰ Reminder set for ${discordTimestamp(triggerTime, 'f')} (${discordTimestamp(triggerTime, 'R')})\n` +
             `📝 "${reminderContent}"\n` +
             `🆔 ID: \`${reminder.id}\``
         );
@@ -96,12 +81,7 @@ export const remindersCommand: Command = {
         const reminderList = userReminders
             .sort((a, b) => a.triggerTime.getTime() - b.triggerTime.getTime())
             .map(reminder => {
-                const timeLeft = reminder.triggerTime.getTime() - Date.now();
-                const timeStr = timeLeft > 0
-                    ? `in ${formatTimeLeft(timeLeft)}`
-                    : 'overdue';
-
-                return `⏰ ${reminder.triggerTime.toLocaleString()} (${timeStr})\n` +
+                return `⏰ ${discordTimestamp(reminder.triggerTime, 'f')} (${discordTimestamp(reminder.triggerTime, 'R')})\n` +
                     `📝 "${reminder.content}"\n` +
                     `🆔 \`${reminder.id}\``;
             })
@@ -146,7 +126,7 @@ export const cancelReminderCommand: Command = {
                 ctx.message,
                 `✅ Cancelled reminder:\n` +
                 `📝 "${reminder.content}"\n` +
-                `⏰ Was scheduled for: ${reminder.triggerTime.toLocaleString()}`
+                `⏰ Was scheduled for: ${discordTimestamp(reminder.triggerTime, 'f')}`
             );
         } else {
             await commandUtils.reply(ctx.message, 'Failed to cancel reminder.');

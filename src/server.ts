@@ -1,6 +1,7 @@
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState, ScheduledReminder } from './bot';
 import { CommandHandler } from './commands';
+import { discordTimestamp } from './commands/utils';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
@@ -321,7 +322,7 @@ export class BotServer {
                 (completion?.content ?? "") + "\n\n" +
                 `⏰ **Reminder!** <@${reminder.userId}>\n` +
                 `📝 ${reminder.content}\n` +
-                `🕐 Set for: ${reminder.triggerTime.toLocaleString()}`
+                `🕐 Set for: ${discordTimestamp(reminder.triggerTime, 'f')}`
             );
 
             console.log(`✅ Triggered reminder for user ${reminder.userId}: "${reminder.content}"`);

@@ -10,6 +10,16 @@ import { promisify } from 'util';
 const pipeline = promisify(require('stream').pipeline);
 
 /**
+ * Format a Date as a Discord timestamp
+ * Styles: t (short time), T (long time), d (short date), D (long date),
+ *         f (short date/time - default), F (long date/time), R (relative)
+ */
+export function discordTimestamp(date: Date, style: 't' | 'T' | 'd' | 'D' | 'f' | 'F' | 'R' = 'f'): string {
+    const unixSeconds = Math.floor(date.getTime() / 1000);
+    return `<t:${unixSeconds}:${style}>`;
+}
+
+/**
  * Check if a user has admin permissions in a guild
  */
 export function isAdmin(message: Message): boolean {
