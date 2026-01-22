@@ -5,6 +5,9 @@ import chrome from 'selenium-webdriver/chrome';
 const IPA_READER_URL = 'http://ipa-reader.com';
 const IPA_VOICE = 'Cristiano'; // Portuguese voice for eldritch sound
 
+// Valid IPA characters (basic Latin, IPA extensions, and common diacritics)
+const IPA_CHAR_REGEX = /^[\sa-zæçðøħŋœǀǁǂǃɐɑɒɓɔɕɖɗɘəɚɛɜɝɞɟɠɡɢɣɤɥɦɧɨɪɫɬɭɮɯɰɱɲɳɴɵɶɷɸɹɺɻɼɽɾɿʀʁʂʃʄʅʆʇʈʉʊʋʌʍʎʏʐʑʒʓʔʕʖʗʘʙʚʛʜʝʞʟʠʡʢʣʤʥʦʧʨʩʪʫʬʭʮʯˈˌːˑ̀́̂̃̄̆̇̈̊̋̌̏̽͡βθχ]+$/i;
+
 /**
  * Lugso orthography to IPA mapping
  * Lugso uses ASCII-friendly orthography that maps 1:1 to IPA
@@ -61,6 +64,28 @@ export function lugsoToIPA(text: string): string {
 }
 
 /**
+ * Sanitize text to only include valid IPA characters and spaces
+ */
+function sanitizeForIPA(text: string): string {
+    return text
+        .split('')
+        .filter(char => char === ' ' || IPA_CHAR_REGEX.test(char))
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Split text into sentences by punctuation
+ */
+function splitIntoSentences(text: string): string[] {
+    return text
+        .split(/[.!?]+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+}
+
+/**
  * Create a headless Chrome browser instance
  */
 async function createBrowser(): Promise<WebDriver> {
@@ -74,6 +99,67 @@ async function createBrowser(): Promise<WebDriver> {
         .forBrowser('chrome')
         .setChromeOptions(options)
         .build();
+}
+
+/**
+ * Synthesize a single sentence and return the audio as a Buffer
+ */
+async function synthesizeSentence(driver: WebDriver, sentence: string): Promise<Buffer> {
+    // Clear and enter the IPA text
+    const textInput = await driver.findElement(By.css('#ipa-text'));
+    await textInput.clear();
+    await textInput.sendKeys(sentence);
+
+    // Click the speak button
+    const speakButton = await driver.findElement(By.css('button#submit'));
+    await speakButton.click();
+
+    // Wait for the audio element to appear in div.audio
+    const audioElement = await driver.wait(
+        until.elementLocated(By.css('div.audio audio, div.audio source')),
+        30000
+    );
+
+    // Wait a bit for the audio to be fully loaded
+    await driver.sleep(1000);
+
+    // Get the audio source URL
+    let audioUrl = await audioElement.getAttribute('src');
+
+    if (!audioUrl) {
+        const sourceElement = await driver.findElement(By.css('div.audio audio source'));
+        audioUrl = await sourceElement.getAttribute('src');
+    }
+
+    if (!audioUrl) {
+        const audio = await driver.findElement(By.css('div.audio audio'));
+        audioUrl = await audio.getAttribute('src');
+    }
+
+    if (!audioUrl) {
+        throw new Error('Could not find audio URL from ipa-reader.com');
+    }
+
+    // Download the audio through the browser to preserve session/cookies
+    const base64Audio = await driver.executeAsyncScript(`
+        const callback = arguments[arguments.length - 1];
+        fetch('${audioUrl}')
+            .then(response => response.blob())
+            .then(blob => {
+                const reader = new FileReader();
+                reader.onloadend = () => callback(reader.result);
+                reader.readAsDataURL(blob);
+            })
+            .catch(err => callback('ERROR:' + err.message));
+    `) as string;
+
+    if (base64Audio.startsWith('ERROR:')) {
+        throw new Error(`Failed to download audio in browser: ${base64Audio}`);
+    }
+
+    // Strip the data URL prefix (e.g., "data:audio/mpeg;base64,")
+    const base64Data = base64Audio.split(',')[1];
+    return Buffer.from(base64Data, 'base64');
 }
 
 /**
@@ -91,7 +177,16 @@ export async function synthesizeIPA(
     // Convert to IPA if Lugso (toki pona is already IPA-like)
     const ipaText = mode === 'lugso' ? lugsoToIPA(text) : text;
 
-    console.log(`🎤 Synthesizing IPA speech via ipa-reader.com for ${mode} (${text.length} chars)`);
+    // Split into sentences and sanitize each
+    const sentences = splitIntoSentences(ipaText)
+        .map(sanitizeForIPA)
+        .filter(s => s.length > 0);
+
+    if (sentences.length === 0) {
+        throw new Error('No valid IPA text to synthesize');
+    }
+
+    console.log(`🎤 Synthesizing IPA speech via ipa-reader.com for ${mode} (${sentences.length} sentences)`);
     console.log(`   IPA: ${ipaText.substring(0, 100)}${ipaText.length > 100 ? '...' : ''}`);
 
     let driver: WebDriver | null = null;
@@ -102,83 +197,30 @@ export async function synthesizeIPA(
         // Navigate to IPA Reader
         await driver.get(IPA_READER_URL);
 
-        // Wait for the page to load and find the text input
-        const textInput = await driver.wait(
-            until.elementLocated(By.css('#ipa-text')),
-            10000
-        );
+        // Wait for the page to load
+        await driver.wait(until.elementLocated(By.css('#ipa-text')), 10000);
 
-        // Clear and enter the IPA text
-        await textInput.clear();
-        await textInput.sendKeys(ipaText);
+        // Select the voice by clicking the custom dropdown
+        const voiceDropdown = await driver.findElement(By.css('div.select'));
+        await voiceDropdown.click();
 
-        // Select the voice
-        const voiceSelect = await driver.findElement(By.css('#polly-voice'));
-        const options = await voiceSelect.findElements(By.css('option'));
+        // Wait for dropdown to open and click the Cristiano option
+        await driver.sleep(300);
+        const voiceOption = await driver.findElement(By.css(`li[rel="${IPA_VOICE}"]`));
+        await voiceOption.click();
 
-        for (const option of options) {
-            const optionText = await option.getText();
-            if (optionText.startsWith(IPA_VOICE)) {
-                await option.click();
-                break;
-            }
+        // Synthesize each sentence and collect audio buffers
+        const audioBuffers: Buffer[] = [];
+        for (let i = 0; i < sentences.length; i++) {
+            const sentence = sentences[i];
+            console.log(`   Synthesizing sentence ${i + 1}/${sentences.length}: "${sentence.substring(0, 50)}${sentence.length > 50 ? '...' : ''}"`);
+            const buffer = await synthesizeSentence(driver, sentence);
+            audioBuffers.push(buffer);
         }
 
-        // Find and click the speak button
-        const speakButton = await driver.findElement(By.css('button#submit'));
-        await speakButton.click();
-
-        // Wait for the audio element to appear in div.audio
-        const audioElement = await driver.wait(
-            until.elementLocated(By.css('div.audio audio, div.audio source')),
-            30000 // Give it up to 30 seconds for synthesis
-        );
-
-        // Wait a bit for the audio to be fully loaded
-        await driver.sleep(1000);
-
-        // Get the audio source URL
-        let audioUrl = await audioElement.getAttribute('src');
-
-        // If it's a source element, get from parent audio or the source itself
-        if (!audioUrl) {
-            const sourceElement = await driver.findElement(By.css('div.audio audio source'));
-            audioUrl = await sourceElement.getAttribute('src');
-        }
-
-        if (!audioUrl) {
-            // Try getting it from the audio element directly
-            const audio = await driver.findElement(By.css('div.audio audio'));
-            audioUrl = await audio.getAttribute('src');
-        }
-
-        if (!audioUrl) {
-            throw new Error('Could not find audio URL from ipa-reader.com');
-        }
-
-        console.log(`   Audio URL: ${audioUrl.substring(0, 100)}...`);
-
-        // Download the audio through the browser to preserve session/cookies
-        const base64Audio = await driver.executeAsyncScript(`
-            const callback = arguments[arguments.length - 1];
-            fetch('${audioUrl}')
-                .then(response => response.blob())
-                .then(blob => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => callback(reader.result);
-                    reader.readAsDataURL(blob);
-                })
-                .catch(err => callback('ERROR:' + err.message));
-        `) as string;
-
-        if (base64Audio.startsWith('ERROR:')) {
-            throw new Error(`Failed to download audio in browser: ${base64Audio}`);
-        }
-
-        // Strip the data URL prefix (e.g., "data:audio/mpeg;base64,")
-        const base64Data = base64Audio.split(',')[1];
-        const audioBuffer = Buffer.from(base64Data, 'base64');
-        await fs.promises.writeFile(filename, audioBuffer);
+        // Concatenate all audio buffers
+        const combinedAudio = Buffer.concat(audioBuffers);
+        await fs.promises.writeFile(filename, combinedAudio);
 
         console.log(`✅ IPA speech synthesized successfully via ipa-reader.com: ${filename}`);
         return filename;
