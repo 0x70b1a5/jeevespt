@@ -200,14 +200,23 @@ export async function synthesizeIPA(
         // Wait for the page to load
         await driver.wait(until.elementLocated(By.css('#ipa-text')), 10000);
 
-        // Select the voice by manually toggling the dropdown visibility
+        // Select the voice - try to set directly via JS
         await driver.executeScript(`
-            document.querySelector('ul.select-options').style.display = 'inline';
-        `);
-        const voiceOption = await driver.findElement(By.css(`li[rel="${IPA_VOICE}"]`));
-        await voiceOption.click();
-        await driver.executeScript(`
-            document.querySelector('ul.select-options').style.display = 'none';
+            // Try setting the hidden select if it exists
+            const select = document.querySelector('#polly-voice');
+            if (select) {
+                select.value = '${IPA_VOICE}';
+                // Trigger change event
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            // Also try clicking the li if the dropdown exists
+            const opts = document.querySelector('ul.select-options');
+            if (opts) {
+                opts.style.display = 'inline';
+                const li = document.querySelector('li[rel="${IPA_VOICE}"]');
+                if (li) li.click();
+                opts.style.display = 'none';
+            }
         `);
 
         // Synthesize each sentence and collect audio buffers
