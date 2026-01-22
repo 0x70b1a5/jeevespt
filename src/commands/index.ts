@@ -5,7 +5,7 @@
  * command registry pattern internally.
  */
 
-import { Attachment, Message, TextChannel, DMChannel } from 'discord.js';
+import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel } from 'discord.js';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
@@ -43,6 +43,13 @@ import { URL } from 'url';
 import { promisify } from 'util';
 import { LUGSO_NONTHINKING_PROMPT, LUGSO_PROMPT, LUGSO_THINKING_PROMPT } from '../prompts/lugso';
 const pipeline = promisify(require('stream').pipeline);
+
+/**
+ * Type guard to check if a channel supports sending messages
+ */
+function isSendableChannel(channel: any): channel is TextBasedChannel & { send: Function; sendTyping: Function } {
+    return channel && typeof channel.send === 'function' && typeof channel.sendTyping === 'function';
+}
 
 /**
  * CommandHandler - Backwards-compatible class that uses the new registry
@@ -369,9 +376,15 @@ export class CommandHandler {
         const buffer = this.state.getBuffer(id, isDM);
         const log = this.state.getLog(id, isDM);
         const config = this.state.getConfig(id, isDM);
+        const channel = message.channel;
+
+        if (!isSendableChannel(channel)) {
+            console.error('Channel does not support sending messages');
+            return;
+        }
 
         try {
-            await message.channel.sendTyping();
+            await channel.sendTyping();
             const response = await this.generateResponse(id, isDM);
 
             if (response) {
@@ -381,7 +394,7 @@ export class CommandHandler {
                 );
 
                 if (config.useVoiceResponse) {
-                    await message.channel.sendTyping();
+                    await channel.sendTyping();
                     let audioFile: string | null = null;
 
                     // Try to synthesize voice, but don't block message send on failure
@@ -530,7 +543,10 @@ export class CommandHandler {
 
         console.log(`🎙️ Processing audio from ${message.author.tag} (${filename}) with speed scalar ${speedScalar}`);
 
-        await message.channel.sendTyping();
+        const channel = message.channel;
+        if (isSendableChannel(channel)) {
+            await channel.sendTyping();
+        }
 
         try {
             await this.downloadFile(attachment.proxyURL, filename, safePath);
@@ -556,7 +572,7 @@ export class CommandHandler {
             const chunks = this.utils.splitMessageIntoChunks([{ role: 'user', content: result.text }]);
             await message.reply(`${SYS_PREFIX}Transcription:`);
             for (const chunk of chunks) {
-                if (chunk) await message.channel.send(chunk);
+                if (chunk && isSendableChannel(channel)) await channel.send(chunk);
             }
             return result.text;
         } catch (error: any) {
