@@ -3,6 +3,7 @@ import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
+import { LUGSO_PROMPT } from '../prompts/lugso';
 
 /**
  * !reacton - Enable reaction mode
@@ -143,7 +144,7 @@ async function generateEmojiReaction(message: Message, deps: CommandDependencies
 
         const id = message.guild!.id;
         const config = deps.state.getConfig(id, false);
-        
+
         // Get system prompt based on mode
         const systemPrompt = getSystemPromptForMode(id, false, deps);
 
@@ -203,6 +204,8 @@ function getSystemPromptForMode(id: string, isDM: boolean, deps: CommandDependen
             return null;
         case 'customprompt':
             return { role: 'system', content: deps.state.getCustomPrompt(id, isDM) };
+        case 'lugso':
+            return { role: 'system', content: LUGSO_PROMPT };
         case 'jeeves':
         default:
             return { role: 'system', content: JEEVES_PROMPT };

@@ -120,6 +120,22 @@ To skip translation for a specific message, start it with "notr" (e.g., "notr th
 
 `,
 `
+### Admin Mode
+
+Restrict command usage to server administrators only. Non-admins can only run whitelisted commands.
+
+\`!adminmode\`: Toggle admin mode on/off (admin only).
+\`!whitelist <command>\`: Allow non-admins to use a specific command (admin only).
+\`!unwhitelist <command>\`: Remove a command from the non-admin whitelist (admin only).
+\`!showwhitelist\`: Display current admin mode status and whitelisted commands.
+
+Examples:
+- \`!adminmode\` - Enable admin mode (non-admins can only run whitelisted commands)
+- \`!whitelist help\` - Allow non-admins to use !help
+- \`!whitelist muse\` - Allow non-admins to use !muse
+- \`!unwhitelist muse\` - Revoke non-admin access to !muse
+`,
+`
 ## Voice Commands
 
 You can also use voice commands by speaking the word as an audio message. For example: "clear" in a voice message will run !clear, and !parrot bla bla bla will reply with bla bla bla.

@@ -50,7 +50,9 @@ export class BotState {
         channelMemberships: new Map(),
         autotranslateChannels: [],
         autotranslateUsers: [],
-        transcriptionSpeedScalar: 1.0
+        transcriptionSpeedScalar: 1.0,
+        adminMode: false,
+        commandWhitelist: ['help']
     };
 
     constructor() {

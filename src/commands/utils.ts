@@ -1,12 +1,61 @@
-import { Message, TextChannel, Webhook, Collection, Attachment } from 'discord.js';
+import { Message, TextChannel, Webhook, Collection, Attachment, PermissionFlagsBits } from 'discord.js';
 import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS, ALLOWED_DOMAINS, TEMP_DIR } from './constants';
 import { ChunkOptions, CommandUtils } from './types';
+import { BotConfig } from '../state/types';
 import fs from 'fs';
 import https from 'https';
 import path from 'path';
 import { URL } from 'url';
 import { promisify } from 'util';
 const pipeline = promisify(require('stream').pipeline);
+
+/**
+ * Check if a user has admin permissions in a guild
+ */
+export function isAdmin(message: Message): boolean {
+    // DMs are always allowed (no guild permissions to check)
+    if (!message.guild || !message.member) {
+        return true;
+    }
+    return message.member.permissions.has(PermissionFlagsBits.Administrator);
+}
+
+/**
+ * Check if a user can execute a command given current config
+ * Returns { allowed: true } or { allowed: false, reason: string }
+ */
+export function canExecuteCommand(
+    message: Message,
+    commandName: string,
+    config: BotConfig
+): { allowed: true } | { allowed: false; reason: string } {
+    // If admin mode is disabled, everyone can run commands
+    if (!config.adminMode) {
+        return { allowed: true };
+    }
+
+    // DMs bypass admin mode (no guild concept)
+    if (!message.guild) {
+        return { allowed: true };
+    }
+
+    // Admins can always run commands
+    if (isAdmin(message)) {
+        return { allowed: true };
+    }
+
+    // Check if command is whitelisted for non-admins
+    const normalizedCommand = commandName.toLowerCase();
+    if (config.commandWhitelist.some(cmd => cmd.toLowerCase() === normalizedCommand)) {
+        return { allowed: true };
+    }
+
+    return {
+        allowed: false,
+        reason: `Admin mode is enabled. Only administrators can run \`!${commandName}\`. ` +
+            `Whitelisted commands: ${config.commandWhitelist.length > 0 ? config.commandWhitelist.map(c => `\`!${c}\``).join(', ') : 'none'}`
+    };
+}
 
 /**
  * Shared utilities for command handlers

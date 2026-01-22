@@ -62,7 +62,7 @@ export interface ScheduledReminder {
     isDM: boolean;
 }
 
-export type BotMode = 'jeeves' | 'tokipona' | 'whisper' | 'customprompt';
+export type BotMode = 'jeeves' | 'tokipona' | 'whisper' | 'customprompt' | 'lugso';
 
 export interface BotConfig {
     mode: BotMode;
@@ -84,6 +84,10 @@ export interface BotConfig {
     autotranslateChannels: AutotranslateChannel[];
     autotranslateUsers: AutotranslateUser[];
     transcriptionSpeedScalar: number;
+    /** When enabled, only admins can change settings/run commands */
+    adminMode: boolean;
+    /** Commands that non-admins can still run when adminMode is enabled */
+    commandWhitelist: string[];
 }
 
 // Valid Anthropic Claude models

@@ -18,7 +18,7 @@ import whisper from '../whisper';
 
 import { CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { CommandRegistry, registry } from './registry';
-import { commandUtils, CommandUtilsImpl } from './utils';
+import { commandUtils, CommandUtilsImpl, canExecuteCommand } from './utils';
 import {
     SYS_PREFIX, MAX_RETRIES, RETRY_DELAY_MS,
     ALLOWED_DOMAINS, TEMP_DIR
@@ -33,6 +33,7 @@ import { learningCommands, performLearningQuestion } from './learning';
 import { reactionCommands, handleReaction } from './reactions';
 import { translateCommands, handleAutotranslate } from './translate';
 import { channelConfigCommands } from './channel-config';
+import { adminCommands } from './admin';
 
 import fs from 'fs';
 import https from 'https';
@@ -77,7 +78,8 @@ export class CommandHandler {
             ...learningCommands,
             ...reactionCommands,
             ...translateCommands,
-            ...channelConfigCommands
+            ...channelConfigCommands,
+            ...adminCommands
         ]);
     }
 
@@ -94,11 +96,25 @@ export class CommandHandler {
 
         // Handle special commands that need direct access to this class
         if (commandName === 'muse') {
+            // Check admin mode permissions for special commands
+            const config = this.state.getConfig(id, isDM);
+            const permCheck = canExecuteCommand(message, commandName, config);
+            if (!permCheck.allowed) {
+                await message.reply(`${SYS_PREFIX}${permCheck.reason}`);
+                return;
+            }
             await this.museHandler.muse(message, id, isDM, args[0], true);
             return;
         }
 
         if (commandName === 'learn') {
+            // Check admin mode permissions for special commands
+            const config = this.state.getConfig(id, isDM);
+            const permCheck = canExecuteCommand(message, commandName, config);
+            if (!permCheck.allowed) {
+                await message.reply(`${SYS_PREFIX}${permCheck.reason}`);
+                return;
+            }
             await this.triggerLearningQuestion(message, id, isDM);
             return;
         }

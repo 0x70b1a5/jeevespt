@@ -35,6 +35,11 @@ export const tokiponaCommand = createModeCommand('tokipona');
 export const whisperCommand = createModeCommand('whisper');
 
 /**
+ * !lugso - Switch to Lugso mode
+ */
+export const lugsoCommand = createModeCommand('lugso');
+
+/**
  * !prompt - Set custom prompt
  */
 export const promptCommand: Command = {
@@ -83,5 +88,6 @@ export const modeCommands: Command[] = [
     jeevesCommand,
     tokiponaCommand,
     whisperCommand,
-    promptCommand
+    promptCommand,
+    lugsoCommand
 ];

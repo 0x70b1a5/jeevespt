@@ -1,5 +1,6 @@
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX } from './constants';
+import { canExecuteCommand } from './utils';
 
 /**
  * Command registry that maps command names to handlers
@@ -57,6 +58,14 @@ export class CommandRegistry {
         // Check if command requires guild
         if (command.requiresGuild && ctx.isDM) {
             await ctx.message.reply(`${SYS_PREFIX}This command is only available in servers, not in DMs.`);
+            return false;
+        }
+
+        // Check admin mode permissions
+        const config = deps.state.getConfig(ctx.id, ctx.isDM);
+        const permCheck = canExecuteCommand(ctx.message, commandName, config);
+        if (!permCheck.allowed) {
+            await ctx.message.reply(`${SYS_PREFIX}${permCheck.reason}`);
             return false;
         }
 
