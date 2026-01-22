@@ -158,13 +158,26 @@ export async function synthesizeIPA(
 
         console.log(`   Audio URL: ${audioUrl.substring(0, 100)}...`);
 
-        // Download the audio file
-        const response = await fetch(audioUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to download audio: ${response.status}`);
+        // Download the audio through the browser to preserve session/cookies
+        const base64Audio = await driver.executeAsyncScript(`
+            const callback = arguments[arguments.length - 1];
+            fetch('${audioUrl}')
+                .then(response => response.blob())
+                .then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => callback(reader.result);
+                    reader.readAsDataURL(blob);
+                })
+                .catch(err => callback('ERROR:' + err.message));
+        `) as string;
+
+        if (base64Audio.startsWith('ERROR:')) {
+            throw new Error(`Failed to download audio in browser: ${base64Audio}`);
         }
 
-        const audioBuffer = Buffer.from(await response.arrayBuffer());
+        // Strip the data URL prefix (e.g., "data:audio/mpeg;base64,")
+        const base64Data = base64Audio.split(',')[1];
+        const audioBuffer = Buffer.from(base64Data, 'base64');
         await fs.promises.writeFile(filename, audioBuffer);
 
         console.log(`✅ IPA speech synthesized successfully via ipa-reader.com: ${filename}`);
