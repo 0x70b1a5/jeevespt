@@ -1,7 +1,11 @@
-import { Message } from 'discord.js';
+import { Message, TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { commandUtils } from './utils';
 import { getWebpage } from '../getWebpage';
+
+function isSendableChannel(channel: any): channel is TextBasedChannel & { sendTyping: Function } {
+    return channel && typeof channel.sendTyping === 'function';
+}
 
 /**
  * Muse handler - generates commentary on webpages
@@ -24,7 +28,9 @@ export class MuseHandler {
         museWasRequested = false
     ): Promise<void> {
         console.log(`🎯 Initiating muse for ${isDM ? 'user' : 'guild'}: ${id}${url ? ` with URL: ${url}` : ''}`);
-        await message.channel.sendTyping();
+        if (isSendableChannel(message.channel)) {
+            await message.channel.sendTyping();
+        }
 
         let pageText = '';
         try {

@@ -1,8 +1,16 @@
+import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
 import { commandUtils } from './utils';
 import { VALID_ANTHROPIC_MODELS } from '../bot';
 import { help } from '../help';
+
+/**
+ * Type guard to check if a channel supports sending messages
+ */
+function isSendableChannel(channel: any): channel is TextBasedChannel & { send: Function } {
+    return channel && typeof channel.send === 'function';
+}
 
 /**
  * !help - Display help information
@@ -28,8 +36,11 @@ export const helpCommand: Command = {
             ...help
         ];
 
-        for (const text of helpTexts) {
-            await ctx.message.channel.send(text);
+        const channel = ctx.message.channel;
+        if (isSendableChannel(channel)) {
+            for (const text of helpTexts) {
+                await channel.send(text);
+            }
         }
     }
 };
@@ -57,10 +68,13 @@ export const logCommand: Command = {
         const chunks = commandUtils.splitMessageIntoChunks([{ role: 'assistant', content: logAsString }]);
 
         await commandUtils.reply(ctx.message, 'CURRENT MEMORY:\n---');
-        for (const chunk of chunks) {
-            if (chunk) await ctx.message.channel.send(chunk);
+        const channel = ctx.message.channel;
+        if (isSendableChannel(channel)) {
+            for (const chunk of chunks) {
+                if (chunk) await channel.send(chunk);
+            }
+            await channel.send(`${SYS_PREFIX}---`);
         }
-        await ctx.message.channel.send(`${SYS_PREFIX}---`);
     }
 };
 

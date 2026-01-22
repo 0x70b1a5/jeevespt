@@ -1,6 +1,11 @@
+import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { TIME_MULTIPLIERS, MIN_REMINDER_MS, MAX_REMINDER_MS } from './constants';
 import { commandUtils, discordTimestamp } from './utils';
+
+function isSendableChannel(channel: any): channel is TextBasedChannel & { send: Function } {
+    return channel && typeof channel.send === 'function';
+}
 
 /**
  * !remind - Add a reminder
@@ -90,8 +95,11 @@ export const remindersCommand: Command = {
         const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: reminderList }]);
         await commandUtils.reply(ctx.message, 'Your active reminders:');
 
-        for (const chunk of chunks) {
-            if (chunk) await ctx.message.channel.send(chunk);
+        const channel = ctx.message.channel;
+        if (isSendableChannel(channel)) {
+            for (const chunk of chunks) {
+                if (chunk) await channel.send(chunk);
+            }
         }
     }
 };
