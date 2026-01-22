@@ -40,6 +40,7 @@ import https from 'https';
 import path from 'path';
 import { URL } from 'url';
 import { promisify } from 'util';
+import { LUGSO_PROMPT } from '../prompts/lugso';
 const pipeline = promisify(require('stream').pipeline);
 
 /**
@@ -306,6 +307,8 @@ export class CommandHandler {
                 return null;
             case 'customprompt':
                 return { role: 'system', content: this.state.getCustomPrompt(id, isDM) };
+            case 'lugso':
+                return { role: 'system', content: LUGSO_PROMPT };
             case 'jeeves':
             default:
                 return { role: 'system', content: JEEVES_PROMPT };
