@@ -1,38 +1,9 @@
-import dotenv from 'dotenv';
 import fs from 'fs';
-import {
-    PollyClient,
-    SynthesizeSpeechCommand,
-    VoiceId,
-} from '@aws-sdk/client-polly';
-import { fromCognitoIdentityPool } from '@aws-sdk/credential-providers';
-dotenv.config();
+import { Builder, By, until, WebDriver } from 'selenium-webdriver';
+import chrome from 'selenium-webdriver/chrome';
 
-// AWS Polly configuration using Cognito for unauthenticated access
-const POLLY_REGION = process.env.AWS_POLLY_REGION || 'us-west-2';
-const COGNITO_IDENTITY_POOL_ID = process.env.AWS_COGNITO_IDENTITY_POOL_ID || '';
-
-// Voice selection - using a voice that handles IPA well
-const IPA_VOICE: VoiceId = 'Cristiano'; // Portuguese voice for eldritch sound
-
-// Lazy-initialized Polly client
-let pollyClient: PollyClient | null = null;
-
-function getPollyClient(): PollyClient {
-    if (!pollyClient) {
-        if (!COGNITO_IDENTITY_POOL_ID) {
-            throw new Error('AWS_COGNITO_IDENTITY_POOL_ID is required for IPA speech synthesis');
-        }
-        pollyClient = new PollyClient({
-            region: POLLY_REGION,
-            credentials: fromCognitoIdentityPool({
-                clientConfig: { region: POLLY_REGION },
-                identityPoolId: COGNITO_IDENTITY_POOL_ID,
-            }),
-        });
-    }
-    return pollyClient;
-}
+const IPA_READER_URL = 'http://ipa-reader.com';
+const IPA_VOICE = 'Cristiano'; // Portuguese voice for eldritch sound
 
 /**
  * Lugso orthography to IPA mapping
@@ -90,16 +61,23 @@ export function lugsoToIPA(text: string): string {
 }
 
 /**
- * Wrap IPA text in SSML phoneme tags for Polly
+ * Create a headless Chrome browser instance
  */
-function wrapInSSML(ipaText: string): string {
-    // Remove any forward slashes (IPA convention) and wrap in phoneme tags
-    const cleanIPA = ipaText.replace(/\//g, '');
-    return `<speak><phoneme alphabet="ipa" ph="${cleanIPA}"></phoneme></speak>`;
+async function createBrowser(): Promise<WebDriver> {
+    const options = new chrome.Options();
+    options.addArguments('--headless');
+    options.addArguments('--no-sandbox');
+    options.addArguments('--disable-dev-shm-usage');
+    options.addArguments('--disable-gpu');
+
+    return new Builder()
+        .forBrowser('chrome')
+        .setChromeOptions(options)
+        .build();
 }
 
 /**
- * Synthesize speech from IPA text using Amazon Polly
+ * Synthesize speech from IPA text using ipa-reader.com via browser automation
  * Returns the path to the generated audio file
  */
 export async function synthesizeIPA(
@@ -112,40 +90,92 @@ export async function synthesizeIPA(
 
     // Convert to IPA if Lugso (toki pona is already IPA-like)
     const ipaText = mode === 'lugso' ? lugsoToIPA(text) : text;
-    const ssmlText = wrapInSSML(ipaText);
 
-    console.log(`🎤 Synthesizing IPA speech via Polly for ${mode} (${text.length} chars)`);
+    console.log(`🎤 Synthesizing IPA speech via ipa-reader.com for ${mode} (${text.length} chars)`);
     console.log(`   IPA: ${ipaText.substring(0, 100)}${ipaText.length > 100 ? '...' : ''}`);
 
+    let driver: WebDriver | null = null;
+
     try {
-        const command = new SynthesizeSpeechCommand({
-            Engine: 'standard',
-            OutputFormat: 'mp3',
-            SampleRate: '16000',
-            Text: ssmlText,
-            TextType: 'ssml',
-            VoiceId: IPA_VOICE,
-        });
+        driver = await createBrowser();
 
-        const response = await getPollyClient().send(command);
+        // Navigate to IPA Reader
+        await driver.get(IPA_READER_URL);
 
-        if (!response.AudioStream) {
-            throw new Error('No audio stream returned from Polly');
+        // Wait for the page to load and find the text input
+        const textInput = await driver.wait(
+            until.elementLocated(By.css('#ipa-text')),
+            10000
+        );
+
+        // Clear and enter the IPA text
+        await textInput.clear();
+        await textInput.sendKeys(ipaText);
+
+        // Select the voice
+        const voiceSelect = await driver.findElement(By.css('#polly-voice'));
+        const options = await voiceSelect.findElements(By.css('option'));
+
+        for (const option of options) {
+            const optionText = await option.getText();
+            if (optionText.startsWith(IPA_VOICE)) {
+                await option.click();
+                break;
+            }
         }
 
-        // Convert the stream to a buffer and write to file
-        const chunks: Uint8Array[] = [];
-        for await (const chunk of response.AudioStream as AsyncIterable<Uint8Array>) {
-            chunks.push(chunk);
-        }
-        const audioBuffer = Buffer.concat(chunks);
+        // Find and click the speak button
+        const speakButton = await driver.findElement(By.css('button#submit'));
+        await speakButton.click();
 
+        // Wait for the audio element to appear in div.audio
+        const audioElement = await driver.wait(
+            until.elementLocated(By.css('div.audio audio, div.audio source')),
+            30000 // Give it up to 30 seconds for synthesis
+        );
+
+        // Wait a bit for the audio to be fully loaded
+        await driver.sleep(1000);
+
+        // Get the audio source URL
+        let audioUrl = await audioElement.getAttribute('src');
+
+        // If it's a source element, get from parent audio or the source itself
+        if (!audioUrl) {
+            const sourceElement = await driver.findElement(By.css('div.audio audio source'));
+            audioUrl = await sourceElement.getAttribute('src');
+        }
+
+        if (!audioUrl) {
+            // Try getting it from the audio element directly
+            const audio = await driver.findElement(By.css('div.audio audio'));
+            audioUrl = await audio.getAttribute('src');
+        }
+
+        if (!audioUrl) {
+            throw new Error('Could not find audio URL from ipa-reader.com');
+        }
+
+        console.log(`   Audio URL: ${audioUrl.substring(0, 100)}...`);
+
+        // Download the audio file
+        const response = await fetch(audioUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download audio: ${response.status}`);
+        }
+
+        const audioBuffer = Buffer.from(await response.arrayBuffer());
         await fs.promises.writeFile(filename, audioBuffer);
 
-        console.log(`✅ IPA speech synthesized successfully via Polly: ${filename}`);
+        console.log(`✅ IPA speech synthesized successfully via ipa-reader.com: ${filename}`);
         return filename;
+
     } catch (error) {
-        console.error('❌ Error synthesizing IPA speech via Polly:', error);
+        console.error('❌ Error synthesizing IPA speech via ipa-reader.com:', error);
         throw error;
+    } finally {
+        if (driver) {
+            await driver.quit();
+        }
     }
 }
