@@ -48,6 +48,10 @@ export const PERSONAS: Record<string, PersonaConfig> = {
     customprompt: {
         name: 'Custom Bot',
         avatar: 'https://lovecrypt.nyc3.cdn.digitaloceanspaces.com/Grand%20Mask.png'
+    },
+    lugso: {
+        name: '5ub-sot',
+        avatar: 'https://nuga.theologi.ca/processed_images/futnu-voso.d5e2d346e7e6c204.png'
     }
 };
 
@@ -55,5 +59,6 @@ export const PERSONAS: Record<string, PersonaConfig> = {
 export const MODE_RESPONSES: Record<string, string> = {
     jeeves: 'I have switched to Jeeves mode, sir.',
     tokipona: 'mi ante e nasin tawa toki pona.',
-    whisper: 'Switched to transcription mode.'
+    whisper: 'Switched to transcription mode.',
+    lugso: 'rvi zodnyo ugonogl5ix unso rliyo5ix fhtogn xtulhu'
 };
