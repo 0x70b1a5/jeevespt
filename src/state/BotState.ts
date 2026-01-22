@@ -52,7 +52,8 @@ export class BotState {
         autotranslateUsers: [],
         transcriptionSpeedScalar: 1.0,
         adminMode: false,
-        commandWhitelist: ['help']
+        commandWhitelist: ['help'],
+        extendedThinking: false
     };
 
     constructor() {

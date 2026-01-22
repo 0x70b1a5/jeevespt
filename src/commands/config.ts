@@ -21,6 +21,7 @@ export const helpCommand: Command = {
 - Automatic muse: ${config.shouldMuseRegularly ? 'enabled' : 'disabled'}
 - Current mode: \`${config.mode}\`
 - Max response length (tokens): ${config.maxResponseLength}
+- Extended thinking: ${config.extendedThinking ? 'enabled (+3000 tokens)' : 'disabled'}
 - Persist data: ${config.shouldSaveData ? 'enabled' : 'disabled'}
 - Direct messages: ${config.allowDMs ? 'enabled' : 'disabled'}
 - Transcription speed scalar: ${config.transcriptionSpeedScalar}x`,
@@ -294,6 +295,25 @@ export const voiceOffCommand: Command = {
     }
 };
 
+/**
+ * !thinkon/!thinkoff - Toggle extended thinking mode
+ */
+export const thinkOnCommand: Command = {
+    names: ['thinkon'],
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        deps.state.updateConfig(ctx.id, ctx.isDM, { extendedThinking: true });
+        await commandUtils.reply(ctx.message, 'Extended thinking is now ENABLED. (adds 3000 thinking tokens to API calls)');
+    }
+};
+
+export const thinkOffCommand: Command = {
+    names: ['thinkoff'],
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        deps.state.updateConfig(ctx.id, ctx.isDM, { extendedThinking: false });
+        await commandUtils.reply(ctx.message, 'Extended thinking is now DISABLED.');
+    }
+};
+
 // Export all config commands
 export const configCommands: Command[] = [
     helpCommand,
@@ -308,5 +328,7 @@ export const configCommands: Command[] = [
     persistCommand,
     dmsCommand,
     voiceOnCommand,
-    voiceOffCommand
+    voiceOffCommand,
+    thinkOnCommand,
+    thinkOffCommand
 ];

@@ -259,21 +259,36 @@ export class CommandHandler {
                 enhancedSystemPrompt += `\n\nIMPORTANT: You are about to send a reminder to a user. You are part of a system that can set reminders; however, do not break character for this message.`;
             }
 
-            const completion = await this.anthropic.messages.create({
+            // Build API request options
+            const apiOptions: any = {
                 model: config.model,
                 messages: latestMessages.map(msg => ({
                     role: msg?.role === 'assistant' ? 'assistant' : 'user',
                     content: msg?.content
                 })).filter(m => Boolean(m?.content)) as MessageParam[],
-                temperature: config.temperature,
                 max_tokens: config.maxResponseLength,
                 system: enhancedSystemPrompt
-            });
+            };
 
-            const botMsg = completion.content[0];
-            if (botMsg?.type === 'text') {
-                const response = { role: 'assistant', content: botMsg.text };
-                console.log(`✅ Generated response (${response.content.length} chars)`);
+            // Add extended thinking if enabled (requires temperature=1)
+            if (config.extendedThinking) {
+                apiOptions.thinking = {
+                    type: 'enabled',
+                    budget_tokens: 3000
+                };
+                apiOptions.max_tokens = config.maxResponseLength + 3000;
+                // Temperature must be 1 for extended thinking
+            } else {
+                apiOptions.temperature = config.temperature;
+            }
+
+            const completion = await this.anthropic.messages.create(apiOptions);
+
+            // Find the text block (filter out thinking blocks)
+            const textBlock = completion.content.find(block => block.type === 'text');
+            if (textBlock?.type === 'text') {
+                const response = { role: 'assistant', content: textBlock.text };
+                console.log(`✅ Generated response (${response.content.length} chars)${config.extendedThinking ? ' [with thinking]' : ''}`);
                 return response;
             }
             return null;

@@ -31,6 +31,8 @@ export const help: string[] = [
 \`!dms\`: Toggle whether the bot will respond to direct messages.
 \`!voiceon\`: Enable voice output. Currently only uses Jeeves Voice (Jonathan Cecil).
 \`!voiceoff\`: Disable voice output.
+\`!thinkon\`: Enable extended thinking mode (adds 3000 thinking tokens to API calls for improved reasoning).
+\`!thinkoff\`: Disable extended thinking mode.
 \`!config\`: Show current channel configuration.
 \`!config <#channel> <frequency>\`: Configure how the bot responds in a specific channel.
   - Frequencies: \`all\` (respond to every message), \`mentions\` (only when mentioned), \`none\` (ignore messages)

@@ -88,6 +88,8 @@ export interface BotConfig {
     adminMode: boolean;
     /** Commands that non-admins can still run when adminMode is enabled */
     commandWhitelist: string[];
+    /** When enabled, adds 3000 thinking tokens to LLM API calls */
+    extendedThinking: boolean;
 }
 
 // Valid Anthropic Claude models
