@@ -40,7 +40,7 @@ export class BotState {
         responseDelayMs: 10000,
         museInterval: 6 * 60 * 60 * 1000,
         shouldMuseRegularly: true,
-        model: 'claude-3-5-sonnet-latest',
+        model: 'claude-sonnet-4-5-20250929',
         allowDMs: true,
         useVoiceResponse: false,
         reactionModeEnabled: false,
