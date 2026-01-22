@@ -1,3 +1,4 @@
+import dotenv from 'dotenv';
 import fs from 'fs';
 import {
     PollyClient,
@@ -5,6 +6,7 @@ import {
     VoiceId,
 } from '@aws-sdk/client-polly';
 import { fromCognitoIdentityPool } from '@aws-sdk/credential-providers';
+dotenv.config();
 
 // AWS Polly configuration using Cognito for unauthenticated access
 const POLLY_REGION = process.env.AWS_POLLY_REGION || 'us-west-2';
