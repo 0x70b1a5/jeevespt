@@ -1,33 +1,59 @@
 import fs from 'fs';
+import {
+    PollyClient,
+    SynthesizeSpeechCommand,
+    VoiceId,
+} from '@aws-sdk/client-polly';
+import { fromCognitoIdentityPool } from '@aws-sdk/credential-providers';
 
-// IPA Reader API (adapted from http://ipareader.xyz)
-const IPA_API_ENDPOINT = 'https://iawll6of90.execute-api.us-east-1.amazonaws.com/production';
+// AWS Polly configuration using Cognito for unauthenticated access
+const POLLY_REGION = process.env.AWS_POLLY_REGION || 'us-west-2';
+const COGNITO_IDENTITY_POOL_ID = process.env.AWS_COGNITO_IDENTITY_POOL_ID || '';
 
-// Available voices - using Portuguese for a more "eldritch" sound
-const IPA_VOICE = 'Cristiano';
+// Voice selection - using a voice that handles IPA well
+const IPA_VOICE: VoiceId = 'Cristiano'; // Portuguese voice for eldritch sound
+
+// Lazy-initialized Polly client
+let pollyClient: PollyClient | null = null;
+
+function getPollyClient(): PollyClient {
+    if (!pollyClient) {
+        if (!COGNITO_IDENTITY_POOL_ID) {
+            throw new Error('AWS_COGNITO_IDENTITY_POOL_ID is required for IPA speech synthesis');
+        }
+        pollyClient = new PollyClient({
+            region: POLLY_REGION,
+            credentials: fromCognitoIdentityPool({
+                clientConfig: { region: POLLY_REGION },
+                identityPoolId: COGNITO_IDENTITY_POOL_ID,
+            }),
+        });
+    }
+    return pollyClient;
+}
 
 /**
  * Lugso orthography to IPA mapping
  * Lugso uses ASCII-friendly orthography that maps 1:1 to IPA
  */
 const LUGSO_IPA_MAP: Record<string, string> = {
-    'a':'ʌ',
-    'e':'ʌ',
-    'o':'ʌ',
-    'b':'β',
-    'p':'ɸ',
-    't':'θ',
-    'd':'ð',
-    '5':'ʃ',
-    '3':'ʒ',
-    'l':'ɮ',
-    'x':'x',
-    'g':'ɣ',
-    'h':'χ',
-    'y':'j',
-    'r':'ɻ',
-    "'":'ʔ',
-    '\u0323':''
+    'a': 'ʌ',
+    'e': 'ʌ',
+    'o': 'ʌ',
+    'b': 'β',
+    'p': 'ɸ',
+    't': 'θ',
+    'd': 'ð',
+    '5': 'ʃ',
+    '3': 'ʒ',
+    'l': 'ɮ',
+    'x': 'x',
+    'g': 'ɣ',
+    'h': 'χ',
+    'y': 'j',
+    'r': 'ɻ',
+    "'": 'ʔ',
+    '\u0323': ''
 };
 
 /**
@@ -62,7 +88,16 @@ export function lugsoToIPA(text: string): string {
 }
 
 /**
- * Synthesize speech from IPA text using the IPA Reader API
+ * Wrap IPA text in SSML phoneme tags for Polly
+ */
+function wrapInSSML(ipaText: string): string {
+    // Remove any forward slashes (IPA convention) and wrap in phoneme tags
+    const cleanIPA = ipaText.replace(/\//g, '');
+    return `<speak><phoneme alphabet="ipa" ph="${cleanIPA}"></phoneme></speak>`;
+}
+
+/**
+ * Synthesize speech from IPA text using Amazon Polly
  * Returns the path to the generated audio file
  */
 export async function synthesizeIPA(
@@ -75,36 +110,40 @@ export async function synthesizeIPA(
 
     // Convert to IPA if Lugso (toki pona is already IPA-like)
     const ipaText = mode === 'lugso' ? lugsoToIPA(text) : text;
+    const ssmlText = wrapInSSML(ipaText);
 
-    console.log(`🎤 Synthesizing IPA speech for ${mode} (${text.length} chars)`);
+    console.log(`🎤 Synthesizing IPA speech via Polly for ${mode} (${text.length} chars)`);
     console.log(`   IPA: ${ipaText.substring(0, 100)}${ipaText.length > 100 ? '...' : ''}`);
 
     try {
-        const response = await fetch(IPA_API_ENDPOINT, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                text: ipaText,
-                voice: IPA_VOICE,
-            }),
+        const command = new SynthesizeSpeechCommand({
+            Engine: 'standard',
+            OutputFormat: 'mp3',
+            SampleRate: '16000',
+            Text: ssmlText,
+            TextType: 'ssml',
+            VoiceId: IPA_VOICE,
         });
 
-        if (!response.ok) {
-            throw new Error(`IPA API error: ${response.status} ${response.statusText}`);
+        const response = await getPollyClient().send(command);
+
+        if (!response.AudioStream) {
+            throw new Error('No audio stream returned from Polly');
         }
 
-        // API returns base64-encoded MP3
-        const base64Audio = await response.text();
-        const audioBuffer = Buffer.from(base64Audio, 'base64');
+        // Convert the stream to a buffer and write to file
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of response.AudioStream as AsyncIterable<Uint8Array>) {
+            chunks.push(chunk);
+        }
+        const audioBuffer = Buffer.concat(chunks);
 
         await fs.promises.writeFile(filename, audioBuffer);
 
-        console.log(`✅ IPA speech synthesized successfully: ${filename}`);
+        console.log(`✅ IPA speech synthesized successfully via Polly: ${filename}`);
         return filename;
     } catch (error) {
-        console.error('❌ Error synthesizing IPA speech:', error);
+        console.error('❌ Error synthesizing IPA speech via Polly:', error);
         throw error;
     }
 }
