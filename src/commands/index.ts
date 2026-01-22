@@ -12,6 +12,7 @@ import { Anthropic } from '@anthropic-ai/sdk';
 
 import { BotState } from '../bot';
 import { ElevenLabs } from '../elevenlabs';
+import { synthesizeIPA } from '../ipaSpeech';
 import { JEEVES_PROMPT, TOKIPONA_PROMPT } from '../prompts/prompts';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
 import whisper from '../whisper';
@@ -382,10 +383,10 @@ export class CommandHandler {
                 if (config.useVoiceResponse) {
                     await message.channel.sendTyping();
                     try {
-                        const audioFile = await this.elevenLabs.synthesizeSpeech(
-                            response.content,
-                            message.author.id
-                        );
+                        // Use IPA synthesis for tokipona/lugso, ElevenLabs for others
+                        const audioFile = (config.mode === 'tokipona' || config.mode === 'lugso')
+                            ? await synthesizeIPA(response.content, message.author.id, config.mode)
+                            : await this.elevenLabs.synthesizeSpeech(response.content, message.author.id);
                         for (let i = 0; i < chunks.length; i++) {
                             const chunk = chunks[i];
                             if (!chunk) continue;

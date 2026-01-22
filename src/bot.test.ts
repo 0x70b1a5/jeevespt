@@ -20,9 +20,9 @@ describe('isValidAnthropicModel', () => {
   });
 
   it('should return true for valid legacy models', () => {
-    expect(isValidAnthropicModel('claude-3-5-sonnet-latest')).toBe(true);
-    expect(isValidAnthropicModel('claude-3-5-sonnet-20241022')).toBe(true);
-    expect(isValidAnthropicModel('claude-3-opus-20240229')).toBe(true);
+    expect(isValidAnthropicModel('claude-sonnet-4-20250514')).toBe(true);
+    expect(isValidAnthropicModel('claude-3-7-sonnet-latest')).toBe(true);
+    expect(isValidAnthropicModel('claude-opus-4-20250514')).toBe(true);
   });
 
   it('should return false for invalid models', () => {
