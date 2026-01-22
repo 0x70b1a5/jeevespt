@@ -40,7 +40,7 @@ import https from 'https';
 import path from 'path';
 import { URL } from 'url';
 import { promisify } from 'util';
-import { LUGSO_PROMPT } from '../prompts/lugso';
+import { LUGSO_NONTHINKING_PROMPT, LUGSO_PROMPT, LUGSO_THINKING_PROMPT } from '../prompts/lugso';
 const pipeline = promisify(require('stream').pipeline);
 
 /**
@@ -323,7 +323,10 @@ export class CommandHandler {
             case 'customprompt':
                 return { role: 'system', content: this.state.getCustomPrompt(id, isDM) };
             case 'lugso':
-                return { role: 'system', content: LUGSO_PROMPT };
+                return {
+                    role: 'system',
+                    content: LUGSO_PROMPT + (config.extendedThinking ? LUGSO_THINKING_PROMPT : LUGSO_NONTHINKING_PROMPT)
+                };
             case 'jeeves':
             default:
                 return { role: 'system', content: JEEVES_PROMPT };
