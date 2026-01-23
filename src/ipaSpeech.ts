@@ -200,20 +200,23 @@ export async function synthesizeIPA(
         // Wait for the page to load
         await driver.wait(until.elementLocated(By.css('#ipa-text')), 10000);
 
-        // Select the voice - try to set directly via JS
+        // Select the voice - set the hidden select and update the display
         await driver.executeScript(`
-            // Try setting the hidden select if it exists
+            // Set the hidden select value
             const select = document.querySelector('#polly-voice');
             if (select) {
                 select.value = '${IPA_VOICE}';
-                // Trigger change event
-                select.dispatchEvent(new Event('change', { bubbles: true }));
             }
-            // Also try clicking the li if the dropdown exists
-            const opts = document.querySelector('ul.select-options');
+            // Update the visible styled display
+            const styled = document.querySelector('div.select-styled');
+            if (styled) {
+                styled.textContent = 'Cristiano [Portuguese]';
+            }
+            // Also click the li to ensure any JS handlers fire
+            const opts = document.querySelector('div.select ul.select-options');
             if (opts) {
-                opts.style.display = 'inline';
-                const li = document.querySelector('li[rel="${IPA_VOICE}"]');
+                opts.style.display = 'block';
+                const li = opts.querySelector('li[rel="${IPA_VOICE}"]');
                 if (li) li.click();
                 opts.style.display = 'none';
             }
