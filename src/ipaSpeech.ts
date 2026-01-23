@@ -43,6 +43,7 @@ export function lugsoToIPA(text: string): string {
             const chars = word.split('');
             let result = '';
             let firstVowel = false;
+            let previousCharWasVowel = false;
 
             for (const char of chars) {
                 let ipaChar = LUGSO_IPA_MAP[char] ?? char;
@@ -53,7 +54,14 @@ export function lugsoToIPA(text: string): string {
                     ipaChar = 'ə';
                 }
                 if (/[uiʌ]/.test(ipaChar)) {
+                    // Double vowel rule: add ʔ between vowels
+                    if (previousCharWasVowel) {
+                        result += 'ʔ';
+                    }
                     firstVowel = true;
+                    previousCharWasVowel = true;
+                } else {
+                    previousCharWasVowel = false;
                 }
 
                 result += ipaChar;
