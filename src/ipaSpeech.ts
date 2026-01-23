@@ -201,13 +201,10 @@ export async function synthesizeIPA(
         await driver.wait(until.elementLocated(By.css('#ipa-text')), 10000);
 
         // Select the voice - click to open dropdown, then click the option
-        await driver.executeScript(`
-            document.querySelector('div.select-styled').click();
-        `);
-        await driver.wait(until.elementLocated(By.css('li[rel=Cristiano]')), 10000);
-        await driver.executeScript(`
-            document.querySelector('li[rel=Cristiano]').click();
-        `);
+        const dropdown = await driver.wait(until.elementLocated(By.css('div.select-styled')), 10000);
+        await dropdown.click();
+        const voiceOption = await driver.wait(until.elementLocated(By.css('li[rel="Cristiano"]')), 10000);
+        await voiceOption.click();
 
         // Synthesize each sentence and collect audio buffers
         const audioBuffers: Buffer[] = [];
