@@ -3,7 +3,7 @@ import { Builder, By, until, WebDriver } from 'selenium-webdriver';
 import chrome from 'selenium-webdriver/chrome';
 
 const IPA_READER_URL = 'http://ipa-reader.com';
-const IPA_VOICE = 'Cristiano'; // Portuguese voice for eldritch sound
+//const IPA_VOICE = 'Cristiano'; // Portuguese voice for eldritch sound
 
 // Valid IPA characters (basic Latin, IPA extensions, and common diacritics)
 const IPA_CHAR_REGEX = /^[\sa-zæçðøħŋœǀǁǂǃɐɑɒɓɔɕɖɗɘəɚɛɜɝɞɟɠɡɢɣɤɥɦɧɨɪɫɬɭɮɯɰɱɲɳɴɵɶɷɸɹɺɻɼɽɾɿʀʁʂʃʄʅʆʇʈʉʊʋʌʍʎʏʐʑʒʓʔʕʖʗʘʙʚʛʜʝʞʟʠʡʢʣʤʥʦʧʨʩʪʫʬʭʮʯˈˌːˑ̀́̂̃̄̆̇̈̊̋̌̏̽͡βθχ]+$/i;
@@ -204,9 +204,9 @@ export async function synthesizeIPA(
         await driver.executeScript(`
             document.querySelector('div.select-styled').click();
         `);
-        await driver.sleep(100);
+        await driver.wait(until.elementLocated(By.css('li[rel=Cristiano]')), 10000);
         await driver.executeScript(`
-            document.querySelector('li[rel="${IPA_VOICE}"]').click();
+            document.querySelector('li[rel=Cristiano]').click();
         `);
 
         // Synthesize each sentence and collect audio buffers
