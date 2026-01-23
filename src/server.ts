@@ -151,23 +151,23 @@ export class BotServer {
             if (timer.timer) clearTimeout(timer.timer);
         });
 
-        console.log('👋 Sending farewell messages...');
-        // Send offline messages
-        for (const guild of this.client.guilds.cache.values()) {
-            const channel = guild.channels.cache
-                .find(ch =>
-                    ch.type === ChannelType.GuildText &&
-                    ch.name === process.env.TARGET_CHANNEL_NAME
-                ) as TextChannel;
-
-            if (channel) {
-                try {
-                    await channel.send('Your Jeeves is going offline, sir.');
-                } catch (error) {
-                    console.error('Error sending offline message:', error);
-                }
-            }
-        }
+        // Disabled: online/offline messages
+        // console.log('👋 Sending farewell messages...');
+        // for (const guild of this.client.guilds.cache.values()) {
+        //     const channel = guild.channels.cache
+        //         .find(ch =>
+        //             ch.type === ChannelType.GuildText &&
+        //             ch.name === process.env.TARGET_CHANNEL_NAME
+        //         ) as TextChannel;
+        //
+        //     if (channel) {
+        //         try {
+        //             await channel.send('Your Jeeves is going offline, sir.');
+        //         } catch (error) {
+        //             console.error('Error sending offline message:', error);
+        //         }
+        //     }
+        // }
 
         this.client.destroy();
         process.exit(0);
@@ -196,9 +196,10 @@ export class BotServer {
     }
 
     private initializeEventListeners() {
-        this.client.on('ready', async () => {
+        this.client.on('clientReady', async () => {
             console.log(`🎩 Logged in as ${this.client.user?.tag}`);
-            await this.sendWelcomeMessage();
+            // Disabled: online/offline messages
+            // await this.sendWelcomeMessage();
         });
 
         this.client.on('messageCreate', async (message: Message) => {
