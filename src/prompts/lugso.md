@@ -18,7 +18,7 @@ Lugso uses VOS word order, which is rare among human languages. The verb comes f
 
 **Noun suffixes** (in order): Root → Plural(-d) → Case → Negation(-zi) → Question(-5u)
 
-**Verb suffixes** (in order): Root → Tense → Mood → Negation(-zi) → Subordination → Question(-5u) → Relative/Conjunction
+**Verb suffixes** (in order): Root → Tense → Mood → Negation(-zi) → Subordination → Relative/Conjunction
 
 ### Implicit Copula
 
