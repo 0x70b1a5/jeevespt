@@ -13,22 +13,42 @@ export interface PatreonPostResult {
     postUrl?: string;
 }
 
+// Persistent Chrome profile directory for session storage
+const CHROME_PROFILE_DIR = path.join(process.cwd(), '.chrome-profile');
+
 /**
- * Create a configured Chrome WebDriver
+ * Create a configured Chrome WebDriver with persistent profile
  */
 async function createDriver(): Promise<WebDriver> {
+    // Ensure profile directory exists
+    if (!fs.existsSync(CHROME_PROFILE_DIR)) {
+        fs.mkdirSync(CHROME_PROFILE_DIR, { recursive: true });
+    }
+
     const options = new chrome.Options();
     options.addArguments(
-        '--headless',
+        '--headless=new',  // Use new headless mode (more like real browser)
         '--disable-gpu',
         '--no-sandbox',
         '--disable-dev-shm-usage',
         '--disable-software-rasterizer',
-        '--disable-extensions',
         '--remote-debugging-port=9224',
         '--window-size=1920,1080',
+        `--user-data-dir=${CHROME_PROFILE_DIR}`,
+        // Anti-detection flags
+        '--disable-blink-features=AutomationControlled',
+        '--disable-infobars',
+        '--disable-background-networking',
+        '--disable-sync',
         '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     );
+
+    // Exclude automation switches that reveal we're a bot
+    options.excludeSwitches('enable-automation');
+    options.setUserPreferences({
+        'credentials_enable_service': false,
+        'profile.password_manager_enabled': false
+    });
 
     return new Builder()
         .forBrowser('chrome')
