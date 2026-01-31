@@ -171,7 +171,7 @@ const peditCommand: Command = {
             return;
         }
 
-        const instructions = args.trim();
+        const instructions = args.join(' ').trim();
         if (!instructions) {
             await message.reply(`${SYS_PREFIX}Usage: \`!pedit [instructions]\`\nExample: \`!pedit Remove the tweet about bats\``);
             return;
