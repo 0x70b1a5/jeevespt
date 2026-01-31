@@ -17,6 +17,24 @@ export interface PatreonPostResult {
 const CHROME_PROFILE_DIR = path.join(process.cwd(), '.chrome-profile');
 
 /**
+ * Clean up Chrome profile lock files that prevent startup
+ */
+function cleanupProfileLocks(): void {
+    const lockFiles = ['SingletonLock', 'SingletonSocket', 'SingletonCookie'];
+    for (const lockFile of lockFiles) {
+        const lockPath = path.join(CHROME_PROFILE_DIR, lockFile);
+        try {
+            if (fs.existsSync(lockPath)) {
+                fs.unlinkSync(lockPath);
+                console.log(`🧹 Removed stale lock file: ${lockFile}`);
+            }
+        } catch (e) {
+            // Ignore errors - file might not exist or might be a socket
+        }
+    }
+}
+
+/**
  * Create a configured Chrome WebDriver with persistent profile
  */
 async function createDriver(): Promise<WebDriver> {
@@ -24,6 +42,9 @@ async function createDriver(): Promise<WebDriver> {
     if (!fs.existsSync(CHROME_PROFILE_DIR)) {
         fs.mkdirSync(CHROME_PROFILE_DIR, { recursive: true });
     }
+
+    // Clean up any stale lock files from crashed sessions
+    cleanupProfileLocks();
 
     const options = new chrome.Options();
     options.addArguments(
@@ -35,6 +56,12 @@ async function createDriver(): Promise<WebDriver> {
         '--remote-debugging-port=9224',
         '--window-size=1920,1080',
         `--user-data-dir=${CHROME_PROFILE_DIR}`,
+        // Server environment flags
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
         // Anti-detection flags
         '--disable-blink-features=AutomationControlled',
         '--disable-infobars',
@@ -50,10 +77,29 @@ async function createDriver(): Promise<WebDriver> {
         'profile.password_manager_enabled': false
     });
 
-    return new Builder()
-        .forBrowser('chrome')
-        .setChromeOptions(options)
-        .build();
+    try {
+        return await new Builder()
+            .forBrowser('chrome')
+            .setChromeOptions(options)
+            .build();
+    } catch (error) {
+        // If profile causes issues, try without it
+        console.log('⚠️ Failed with profile, retrying without user-data-dir...');
+        const fallbackOptions = new chrome.Options();
+        fallbackOptions.addArguments(
+            '--headless=new',
+            '--disable-gpu',
+            '--no-sandbox',
+            '--disable-dev-shm-usage',
+            '--no-first-run',
+            '--window-size=1920,1080',
+            '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        );
+        return new Builder()
+            .forBrowser('chrome')
+            .setChromeOptions(fallbackOptions)
+            .build();
+    }
 }
 
 /**
