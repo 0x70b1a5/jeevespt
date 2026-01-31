@@ -60,7 +60,6 @@ const patreonCommand: Command = {
 
         try {
             // Step 1: Fetch tweets
-            await message.channel.sendTyping();
             console.log(`📡 Fetching tweets for @${twitterUsername}...`);
 
             const result = await fetchTweets(twitterUsername, 7);
@@ -84,7 +83,6 @@ const patreonCommand: Command = {
             console.log(`📝 Formatted digest: ${digestTitle}`);
 
             // Step 3: Post to Patreon
-            await message.channel.sendTyping();
             await message.reply(`${SYS_PREFIX}Posting digest to Patreon ($5 tier)...`);
 
             const postResult = await postToPatreon(digestTitle, digestContent, 5);
