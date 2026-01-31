@@ -7,3 +7,4 @@ log.txt
 data/
 getModels.sh
 package-lock.json
+debug-output

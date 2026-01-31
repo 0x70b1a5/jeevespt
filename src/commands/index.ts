@@ -35,6 +35,7 @@ import { reactionCommands, handleReaction } from './reactions';
 import { translateCommands, handleAutotranslate } from './translate';
 import { channelConfigCommands } from './channel-config';
 import { adminCommands } from './admin';
+import { patreonCommands } from './patreon';
 
 import fs from 'fs';
 import https from 'https';
@@ -88,7 +89,8 @@ export class CommandHandler {
             ...reactionCommands,
             ...translateCommands,
             ...channelConfigCommands,
-            ...adminCommands
+            ...adminCommands,
+            ...patreonCommands
         ]);
     }
 
