@@ -42,15 +42,16 @@ This is a test post created by the automated system.
     console.log('Content preview:');
     console.log(content.substring(0, 200) + '...\n');
 
-    const result = await postToPatreon(title, content, 5);
+    const result = await postToPatreon(title, content, 5, true); // true = dryRun
 
     if (result.success) {
-        console.log(`\n✅ Successfully posted to Patreon!`);
+        console.log(`\n✅ Successfully created Patreon post in dry run mode!`);
         if (result.postUrl) {
-            console.log(`📍 Post URL: ${result.postUrl}`);
+            console.log(`📍 Post edit URL: ${result.postUrl}`);
         }
+        console.log('🧪 Dry run completed - post was created but not published');
     } else {
-        console.error(`\n❌ Failed to post: ${result.error}`);
+        console.error(`\n❌ Failed to create post: ${result.error}`);
         process.exit(1);
     }
 }

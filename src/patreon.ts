@@ -4,6 +4,8 @@
 
 import { Builder, By, until, WebDriver, Key } from 'selenium-webdriver';
 import chrome from 'selenium-webdriver/chrome';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface PatreonPostResult {
     success: boolean;
@@ -55,33 +57,99 @@ async function safeClick(driver: WebDriver, element: any): Promise<void> {
 }
 
 /**
+ * Take a screenshot for debugging purposes
+ */
+async function takeScreenshot(driver: WebDriver, filename: string): Promise<string> {
+    try {
+        const screenshotDir = path.join(process.cwd(), 'screenshots');
+        if (!fs.existsSync(screenshotDir)) {
+            fs.mkdirSync(screenshotDir, { recursive: true });
+        }
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const screenshotPath = path.join(screenshotDir, `${filename}_${timestamp}.png`);
+        
+        const screenshot = await driver.takeScreenshot();
+        fs.writeFileSync(screenshotPath, screenshot, 'base64');
+        
+        console.log(`📸 Screenshot saved: ${screenshotPath}`);
+        return screenshotPath;
+    } catch (error) {
+        console.error('❌ Failed to take screenshot:', error);
+        return '';
+    }
+}
+
+/**
  * Log in to Patreon (two-step flow: email -> password)
  */
 async function loginToPatreon(driver: WebDriver, email: string, password: string): Promise<boolean> {
     console.log('🔐 Logging in to Patreon...');
 
     try {
+        console.log('🌐 Navigating to Patreon login page...');
         await driver.get('https://www.patreon.com/login');
         await driver.sleep(3000);
+        
+        // Debug: Check where we actually ended up
+        const actualUrl = await driver.getCurrentUrl();
+        const pageTitle = await driver.getTitle();
+        console.log(`📍 Actual URL after navigation: ${actualUrl}`);
+        console.log(`📍 Page title: ${pageTitle}`);
+        
+        if (actualUrl !== 'https://www.patreon.com/login') {
+            console.log('⚠️ Redirected from login page - possible rate limiting or geo-blocking');
+        }
 
         // Step 1: Enter email
         const emailSelectors = [
             'input[name="email"]',
             'input[type="email"]',
-            '#email'
+            '#email',
+            'input[placeholder*="email"]',
+            'input[placeholder*="Email"]',
+            'input[data-testid="email"]',
+            'input[aria-label*="email"]',
+            'input[aria-label*="Email"]'
         ];
 
         let emailField = null;
+        let lastError = null;
+        
         for (const selector of emailSelectors) {
             try {
-                emailField = await waitForElement(driver, selector, 5000);
+                console.log(`🔍 Trying email selector: ${selector}`);
+                emailField = await waitForElement(driver, selector, 3000);
+                console.log(`✅ Found email field with selector: ${selector}`);
                 break;
-            } catch {
+            } catch (error) {
+                console.log(`❌ Selector failed: ${selector} - ${error}`);
+                lastError = error;
                 continue;
             }
         }
 
         if (!emailField) {
+            // Debug: Check page title and URL
+            const currentUrl = await driver.getCurrentUrl();
+            const pageTitle = await driver.getTitle();
+            console.log(`🔍 Debug - Current URL: ${currentUrl}`);
+            console.log(`🔍 Debug - Page title: ${pageTitle}`);
+            
+            // Check for potential CAPTCHA or verification
+            try {
+                const pageSource = await driver.getPageSource();
+                if (pageSource.includes('captcha') || pageSource.includes('CAPTCHA')) {
+                    console.log('🔍 Debug - CAPTCHA detected on page');
+                }
+                if (pageSource.includes('verify') || pageSource.includes('verification')) {
+                    console.log('🔍 Debug - Verification required');
+                }
+            } catch (e) {
+                console.log('🔍 Debug - Could not analyze page source');
+            }
+            
+            await takeScreenshot(driver, 'patreon_login_error_no_email_field');
             throw new Error('Could not find email input field');
         }
 
@@ -169,7 +237,8 @@ async function createPost(
     driver: WebDriver,
     title: string,
     content: string,
-    tierPrice: number = 5
+    tierPrice: number = 5,
+    dryRun: boolean = false
 ): Promise<string | null> {
     console.log('📝 Creating new Patreon post...');
 
@@ -329,6 +398,13 @@ async function createPost(
             throw new Error('Could not find publish button');
         }
 
+        if (dryRun) {
+            console.log('🧪 Dry run mode: Skipping publish button click');
+            console.log('✅ Post created successfully in draft mode');
+            const currentUrl = await driver.getCurrentUrl();
+            return currentUrl; // Return the edit URL for dry runs
+        }
+
         await safeClick(driver, publishButton);
         console.log('🚀 Clicked publish button');
 
@@ -467,7 +543,8 @@ async function setPostTier(driver: WebDriver, tierPrice: number): Promise<void> 
 export async function postToPatreon(
     title: string,
     content: string,
-    tierPrice: number = 5
+    tierPrice: number = 5,
+    dryRun: boolean = false
 ): Promise<PatreonPostResult> {
     const email = process.env.PATREON_EMAIL;
     const password = process.env.PATREON_PASSWORD;
@@ -489,7 +566,7 @@ export async function postToPatreon(
         await loginToPatreon(driver, email, password);
 
         // Create post
-        const postUrl = await createPost(driver, title, content, tierPrice);
+        const postUrl = await createPost(driver, title, content, tierPrice, dryRun);
 
         if (postUrl) {
             return {
@@ -505,6 +582,9 @@ export async function postToPatreon(
 
     } catch (error) {
         console.error('❌ Error posting to Patreon:', error);
+        if (driver) {
+            await takeScreenshot(driver, 'patreon_error');
+        }
         return {
             success: false,
             error: `${error}`
