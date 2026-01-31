@@ -105,7 +105,7 @@ const patreonCommand: Command = {
 
             // Send each chunk
             for (const chunk of chunks) {
-                await message.channel.send(chunk);
+                await message.reply(chunk);
             }
 
             await message.reply(`${SYS_PREFIX}End of preview. To enable actual posting, update the command code.`)
