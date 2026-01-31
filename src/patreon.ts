@@ -358,6 +358,11 @@ async function createPost(
 
         await driver.sleep(2000);
 
+        // Disable email notifications
+        await disableEmailNotifications(driver);
+
+        await driver.sleep(1000);
+
         // Find and click publish button
         const publishSelectors = [
             '//button[contains(text(), "Publish")]',
@@ -423,6 +428,67 @@ async function createPost(
     } catch (error) {
         console.error('❌ Error creating post:', error);
         throw error;
+    }
+}
+
+/**
+ * Disable email notifications for the post
+ */
+async function disableEmailNotifications(driver: WebDriver): Promise<void> {
+    console.log('📧 Disabling email notifications...');
+
+    try {
+        // Click "Emails and notifications" to expand the section
+        const emailSectionSelectors = [
+            '//span[contains(text(), "Emails and notifications")]',
+            '//div[contains(text(), "Emails and notifications")]',
+            '//button[contains(text(), "Emails and notifications")]',
+            '[aria-label*="Emails and notifications"]'
+        ];
+
+        let emailSection = null;
+        for (const selector of emailSectionSelectors) {
+            try {
+                emailSection = await waitForElement(driver, selector, 3000);
+                console.log('✅ Found "Emails and notifications" section');
+                break;
+            } catch {
+                continue;
+            }
+        }
+
+        if (emailSection) {
+            await driver.executeScript('arguments[0].click();', emailSection);
+            await driver.sleep(1000);
+            console.log('📍 Clicked to expand email notifications section');
+
+            // Find the notification toggle button and check its state
+            const toggleButton = await waitForElement(driver, 'button#post-notification-toggle', 5000);
+            const ariaChecked = await toggleButton.getAttribute('aria-checked');
+
+            console.log(`📍 Notification toggle aria-checked: ${ariaChecked}`);
+
+            if (ariaChecked === 'true') {
+                // Toggle is ON, need to click to turn it OFF
+                await driver.executeScript('arguments[0].click();', toggleButton);
+                await driver.sleep(500);
+
+                // Verify it's now off
+                const newState = await toggleButton.getAttribute('aria-checked');
+                if (newState === 'false') {
+                    console.log('✅ Email notifications disabled');
+                } else {
+                    console.log(`⚠️ Toggle may not have changed (now: ${newState})`);
+                }
+            } else {
+                console.log('✅ Email notifications already disabled');
+            }
+        } else {
+            console.log('⚠️ Could not find "Emails and notifications" section');
+        }
+
+    } catch (error) {
+        console.log(`⚠️ Error disabling email notifications: ${error}`);
     }
 }
 
