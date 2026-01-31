@@ -82,20 +82,33 @@ const patreonCommand: Command = {
 
             console.log(`📝 Formatted digest: ${digestTitle}`);
 
-            // Step 3: Post to Patreon
-            await message.reply(`${SYS_PREFIX}Posting digest to Patreon ($5 tier)...`);
+            // Step 3: Send digest to Discord for review (instead of posting to Patreon)
+            await message.reply(`${SYS_PREFIX}**Preview of Patreon post ($5+ tier):**`);
+            await message.reply(`**${digestTitle}**`);
 
-            const postResult = await postToPatreon(digestTitle, digestContent, 5);
+            // Split content into chunks for Discord (max 2000 chars per message)
+            const maxChunkSize = 1900;
+            const chunks: string[] = [];
+            let currentChunk = '';
 
-            if (postResult.success) {
-                let successMsg = `${SYS_PREFIX}Successfully posted digest to Patreon!`;
-                if (postResult.postUrl) {
-                    successMsg += `\n${postResult.postUrl}`;
+            for (const line of digestContent.split('\n')) {
+                if (currentChunk.length + line.length + 1 > maxChunkSize) {
+                    chunks.push(currentChunk);
+                    currentChunk = line;
+                } else {
+                    currentChunk += (currentChunk ? '\n' : '') + line;
                 }
-                await message.reply(successMsg);
-            } else {
-                await message.reply(`${SYS_PREFIX}Error posting to Patreon: ${postResult.error}`);
             }
+            if (currentChunk) {
+                chunks.push(currentChunk);
+            }
+
+            // Send each chunk
+            for (const chunk of chunks) {
+                await message.channel.send(chunk);
+            }
+
+            await message.reply(`${SYS_PREFIX}End of preview. To enable actual posting, update the command code.`)
 
         } catch (error) {
             console.error('❌ Error in patreon command:', error);
