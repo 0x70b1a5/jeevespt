@@ -98,6 +98,11 @@ async function loginToPatreon(driver: WebDriver, email: string, password: string
         console.log(`📍 Page title: ${pageTitle}`);
         
         if (actualUrl !== 'https://www.patreon.com/login') {
+            // Check if we're already logged in (redirected to home or another authenticated page)
+            if (actualUrl.includes('/home') || !actualUrl.includes('login')) {
+                console.log('✅ Already logged in - skipping login process');
+                return true;
+            }
             console.log('⚠️ Redirected from login page - possible rate limiting or geo-blocking');
         }
 
