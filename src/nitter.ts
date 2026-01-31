@@ -148,9 +148,9 @@ async function scrapeNitterInstance(
 
     for (const element of tweetElements) {
         try {
-            // Skip retweets
+            // Skip retweets (look for .retweet-header which indicates "Retweeted by X")
             try {
-                const retweetHeader = await element.findElements(By.css('.retweet-header, .retweet, [class*="retweet"]'));
+                const retweetHeader = await element.findElements(By.css('.retweet-header'));
                 if (retweetHeader.length > 0) {
                     console.log('⏭️ Skipping retweet');
                     continue;
@@ -159,7 +159,7 @@ async function scrapeNitterInstance(
 
             // Skip replies (check for replying-to indicator)
             try {
-                const replyIndicator = await element.findElements(By.css('.replying-to, .reply-to, [class*="replying"]'));
+                const replyIndicator = await element.findElements(By.css('.replying-to'));
                 if (replyIndicator.length > 0) {
                     console.log('⏭️ Skipping reply');
                     continue;
@@ -267,13 +267,13 @@ function parsePageSource(html: string, username: string, cutoffDate: Date, insta
         const windowEnd = Math.min(html.length, statusIndex + 2000);
         const window = html.substring(windowStart, windowEnd);
 
-        // Skip retweets
-        if (window.includes('retweet-header') || window.includes('class="retweet"')) {
+        // Skip retweets (look for retweet-header which indicates "Retweeted by X")
+        if (window.includes('retweet-header')) {
             continue;
         }
 
-        // Skip replies
-        if (window.includes('replying-to') || window.includes('class="reply-to"')) {
+        // Skip replies (look for replying-to indicator)
+        if (window.includes('replying-to')) {
             continue;
         }
 

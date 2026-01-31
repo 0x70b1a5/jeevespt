@@ -1,4 +1,4 @@
-import { Message, TextChannel, Webhook, Collection, Attachment, PermissionFlagsBits } from 'discord.js';
+import { Message, TextChannel, TextBasedChannel, Webhook, Collection, Attachment, PermissionFlagsBits } from 'discord.js';
 import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS, ALLOWED_DOMAINS, TEMP_DIR } from './constants';
 import { ChunkOptions, CommandUtils } from './types';
 import { BotConfig } from '../state/types';
@@ -8,6 +8,13 @@ import path from 'path';
 import { URL } from 'url';
 import { promisify } from 'util';
 const pipeline = promisify(require('stream').pipeline);
+
+/**
+ * Type guard to check if a channel supports sending messages and typing indicators
+ */
+export function isSendableChannel(channel: any): channel is TextBasedChannel & { send: Function; sendTyping: Function } {
+    return channel && typeof channel.send === 'function' && typeof channel.sendTyping === 'function';
+}
 
 /**
  * Format a Date as a Discord timestamp

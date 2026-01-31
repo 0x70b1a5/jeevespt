@@ -1,11 +1,7 @@
-import { Message, TextBasedChannel } from 'discord.js';
+import { Message } from 'discord.js';
 import { Command, CommandContext, CommandDependencies, GeneratedResponse } from './types';
-import { commandUtils } from './utils';
+import { commandUtils, isSendableChannel } from './utils';
 import { getWebpage } from '../getWebpage';
-
-function isSendableChannel(channel: any): channel is TextBasedChannel & { sendTyping: Function } {
-    return channel && typeof channel.sendTyping === 'function';
-}
 
 /**
  * Muse handler - generates commentary on webpages

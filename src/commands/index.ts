@@ -19,7 +19,7 @@ import whisper from '../whisper';
 
 import { CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { CommandRegistry, registry } from './registry';
-import { commandUtils, CommandUtilsImpl, canExecuteCommand } from './utils';
+import { commandUtils, CommandUtilsImpl, canExecuteCommand, isSendableChannel } from './utils';
 import {
     SYS_PREFIX, MAX_RETRIES, RETRY_DELAY_MS,
     ALLOWED_DOMAINS, TEMP_DIR
@@ -44,13 +44,6 @@ import { URL } from 'url';
 import { promisify } from 'util';
 import { LUGSO_NONTHINKING_PROMPT, LUGSO_PROMPT, LUGSO_THINKING_PROMPT } from '../prompts/lugso';
 const pipeline = promisify(require('stream').pipeline);
-
-/**
- * Type guard to check if a channel supports sending messages
- */
-function isSendableChannel(channel: any): channel is TextBasedChannel & { send: Function; sendTyping: Function } {
-    return channel && typeof channel.send === 'function' && typeof channel.sendTyping === 'function';
-}
 
 /**
  * CommandHandler - Backwards-compatible class that uses the new registry
