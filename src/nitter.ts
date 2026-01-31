@@ -148,6 +148,24 @@ async function scrapeNitterInstance(
 
     for (const element of tweetElements) {
         try {
+            // Skip retweets
+            try {
+                const retweetHeader = await element.findElements(By.css('.retweet-header, .retweet, [class*="retweet"]'));
+                if (retweetHeader.length > 0) {
+                    console.log('⏭️ Skipping retweet');
+                    continue;
+                }
+            } catch {}
+
+            // Skip replies (check for replying-to indicator)
+            try {
+                const replyIndicator = await element.findElements(By.css('.replying-to, .reply-to, [class*="replying"]'));
+                if (replyIndicator.length > 0) {
+                    console.log('⏭️ Skipping reply');
+                    continue;
+                }
+            } catch {}
+
             // Get tweet text
             let text = '';
             try {
@@ -158,6 +176,18 @@ async function scrapeNitterInstance(
             }
 
             if (!text || text.length < 5) continue;
+
+            // Skip if text starts with "RT @" (retweet indicator in text)
+            if (text.startsWith('RT @')) {
+                console.log('⏭️ Skipping retweet (RT @ prefix)');
+                continue;
+            }
+
+            // Skip if text starts with "@" (likely a reply)
+            if (text.startsWith('@')) {
+                console.log('⏭️ Skipping reply (@ prefix)');
+                continue;
+            }
 
             // Get date from title attribute or link
             let dateStr = '';
@@ -237,11 +267,26 @@ function parsePageSource(html: string, username: string, cutoffDate: Date, insta
         const windowEnd = Math.min(html.length, statusIndex + 2000);
         const window = html.substring(windowStart, windowEnd);
 
+        // Skip retweets
+        if (window.includes('retweet-header') || window.includes('class="retweet"')) {
+            continue;
+        }
+
+        // Skip replies
+        if (window.includes('replying-to') || window.includes('class="reply-to"')) {
+            continue;
+        }
+
         // Try to find tweet content in this window
         const contentMatch = window.match(/class="[^"]*tweet-content[^"]*"[^>]*>([^<]+)/);
         const text = contentMatch ? contentMatch[1].trim() : '';
 
         if (!text || text.length < 5) continue;
+
+        // Skip if text starts with "RT @" (retweet) or "@" (reply)
+        if (text.startsWith('RT @') || text.startsWith('@')) {
+            continue;
+        }
 
         // Try to find date
         const dateMatch = window.match(/title="([^"]*UTC[^"]*)"/);
