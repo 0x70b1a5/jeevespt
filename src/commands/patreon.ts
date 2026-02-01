@@ -289,7 +289,15 @@ const ppostCommand: Command = {
                 // Optionally delete the draft file after successful post
                 // fs.unlinkSync(PATREON_POST_FILE);
             } else {
-                await message.reply(`${SYS_PREFIX}Failed to post to Patreon: ${result.error}`);
+                // Attach screenshot if available
+                if (result.screenshotPath && fs.existsSync(result.screenshotPath)) {
+                    await message.reply({
+                        content: `${SYS_PREFIX}Failed to post to Patreon: ${result.error}`,
+                        files: [result.screenshotPath]
+                    });
+                } else {
+                    await message.reply(`${SYS_PREFIX}Failed to post to Patreon: ${result.error}`);
+                }
             }
 
         } catch (error) {

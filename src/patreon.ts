@@ -11,6 +11,7 @@ export interface PatreonPostResult {
     success: boolean;
     error?: string;
     postUrl?: string;
+    screenshotPath?: string;
 }
 
 // Persistent Chrome profile directory for session storage
@@ -719,12 +720,14 @@ export async function postToPatreon(
 
     } catch (error) {
         console.error('❌ Error posting to Patreon:', error);
+        let screenshotPath: string | undefined;
         if (driver) {
-            await takeScreenshot(driver, 'patreon_error');
+            screenshotPath = await takeScreenshot(driver, 'patreon_error');
         }
         return {
             success: false,
-            error: `${error}`
+            error: `${error}`,
+            screenshotPath
         };
     } finally {
         if (driver) {
