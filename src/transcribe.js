@@ -8,15 +8,9 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const { OpenAI } = require('openai');
 
-/**
- * Speeds up an audio file using ffmpeg's atempo filter.
- * @param {string} inputPath Path to the input audio file
- * @param {string} outputPath Path where the sped-up audio will be saved
- * @param {number} speedScalar Speed multiplier (e.g., 2.0 = 2x speed)
- */
+const MAX_HALVING_DEPTH = 8;
+
 function speedUpAudio(inputPath, outputPath, speedScalar) {
-    // atempo filter supports values between 0.5 and 100.0
-    // For values > 2.0, we need to chain multiple atempo filters
     const atempoFilters = [];
     let remaining = speedScalar;
 
@@ -30,8 +24,62 @@ function speedUpAudio(inputPath, outputPath, speedScalar) {
 
     const filterChain = atempoFilters.join(',');
     const command = `ffmpeg -y -i "${inputPath}" -filter:a "${filterChain}" "${outputPath}"`;
-
     execSync(command, { stdio: 'pipe' });
+}
+
+function getAudioDuration(filePath) {
+    const output = execSync(
+        `ffprobe -v error -show_entries format=duration -of csv=p=0 "${filePath}"`,
+        { encoding: 'utf-8' }
+    );
+    return parseFloat(output.trim());
+}
+
+function extractSegment(inputPath, startTime, duration, outputPath) {
+    execSync(
+        `ffmpeg -y -ss ${startTime} -i "${inputPath}" -t ${duration} -c copy "${outputPath}"`,
+        { stdio: 'pipe' }
+    );
+}
+
+function cleanupFile(filePath) {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
+async function transcribeWithHalving(openai, originalPath, startTime, endTime, depth) {
+    const ext = (originalPath.match(/(\.[^.]+)$/) || [, '.mp3'])[1];
+    const base = originalPath.replace(/(\.[^.]+)$/, '');
+    const tag = `_seg${startTime.toFixed(1)}_${endTime.toFixed(1)}`;
+    const segPath = `${base}${tag}${ext}`;
+    const speedPath = `${base}${tag}_2x${ext}`;
+
+    try {
+        extractSegment(originalPath, startTime, endTime - startTime, segPath);
+        speedUpAudio(segPath, speedPath, 2.0);
+        cleanupFile(segPath);
+
+        const transcription = await openai.audio.transcriptions.create({
+            file: fs.createReadStream(speedPath),
+            model: "whisper-1",
+        });
+
+        cleanupFile(speedPath);
+        return transcription.text;
+    } catch (error) {
+        cleanupFile(segPath);
+        cleanupFile(speedPath);
+
+        if (depth >= MAX_HALVING_DEPTH) {
+            throw error;
+        }
+
+        const mid = (startTime + endTime) / 2;
+        console.log(`Segment ${startTime.toFixed(1)}s-${endTime.toFixed(1)}s failed, halving (depth ${depth + 1})...`);
+
+        const leftText = await transcribeWithHalving(openai, originalPath, startTime, mid, depth + 1);
+        const rightText = await transcribeWithHalving(openai, originalPath, mid, endTime, depth + 1);
+        return leftText + ' ' + rightText;
+    }
 }
 
 async function transcribe(filePath, speedScalar = 1.0) {
@@ -53,7 +101,7 @@ async function transcribe(filePath, speedScalar = 1.0) {
     let audioPath = filePath;
     let usedScalar = speedScalar;
 
-    // If speed scalar is not 1.0, process the audio with ffmpeg first
+    // Speed up if requested
     if (speedScalar !== 1.0) {
         const speedUpPath = filePath.replace(/(\.[^.]+)$/, `_speed${speedScalar}$1`);
         try {
@@ -68,64 +116,50 @@ async function transcribe(filePath, speedScalar = 1.0) {
         }
     }
 
+    // First attempt
     try {
         console.log(`Transcribing: ${audioPath}${usedScalar !== 1.0 ? ` (at ${usedScalar}x speed)` : ''}`);
-
         const transcription = await openai.audio.transcriptions.create({
             file: fs.createReadStream(audioPath),
             model: "whisper-1",
         });
-
-        // Clean up temporary sped-up file if created
-        if (audioPath !== filePath && fs.existsSync(audioPath)) {
-            fs.unlinkSync(audioPath);
-        }
-
+        if (audioPath !== filePath) cleanupFile(audioPath);
         console.log('\n--- Transcript ---');
         console.log(transcription.text);
+        return;
+    } catch {
+        if (audioPath !== filePath) cleanupFile(audioPath);
+    }
 
-    } catch (error) {
-        // Clean up temporary file on error too
-        if (audioPath !== filePath && fs.existsSync(audioPath)) {
-            fs.unlinkSync(audioPath);
-        }
-
-        // If already at 2.0+ speed, don't retry
-        if (speedScalar >= 2.0) {
-            console.error('Error during transcription:', error.message);
-            process.exit(1);
-        }
-
-        // Retry with 2.0 speed scalar
+    // Retry at 2x (skip if already 2x+)
+    if (speedScalar < 2.0) {
+        const retryPath = filePath.replace(/(\.[^.]+)$/, `_speed2$1`);
         console.log(`Transcription failed, retrying with 2.0x speed...`);
-        const retryScalar = 2.0;
-        const retryPath = filePath.replace(/(\.[^.]+)$/, `_speed${retryScalar}$1`);
-
         try {
-            speedUpAudio(filePath, retryPath, retryScalar);
-
-            const retryTranscription = await openai.audio.transcriptions.create({
+            speedUpAudio(filePath, retryPath, 2.0);
+            const transcription = await openai.audio.transcriptions.create({
                 file: fs.createReadStream(retryPath),
                 model: "whisper-1",
             });
-
-            // Clean up retry file
-            if (fs.existsSync(retryPath)) {
-                fs.unlinkSync(retryPath);
-            }
-
+            cleanupFile(retryPath);
             console.log('\n--- Transcript (succeeded on retry at 2x speed) ---');
-            console.log(retryTranscription.text);
-
-        } catch (retryError) {
-            // Clean up retry file on error
-            if (fs.existsSync(retryPath)) {
-                fs.unlinkSync(retryPath);
-            }
-
-            console.error('Error during transcription (after retry):', retryError.message);
-            process.exit(1);
+            console.log(transcription.text);
+            return;
+        } catch {
+            cleanupFile(retryPath);
         }
+    }
+
+    // Binary halving
+    console.log(`Retries exhausted, entering binary halving mode...`);
+    try {
+        const duration = getAudioDuration(filePath);
+        const text = await transcribeWithHalving(openai, filePath, 0, duration, 0);
+        console.log('\n--- Transcript (via binary halving) ---');
+        console.log(text);
+    } catch (error) {
+        console.error('Error during transcription (after halving):', error.message);
+        process.exit(1);
     }
 }
 
