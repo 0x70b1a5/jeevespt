@@ -4,6 +4,7 @@ node_modules
 .DS_Store
 *.mp3
 log.txt
+hotkey-transcribe.sh
 data/
 getModels.sh
 package-lock.json

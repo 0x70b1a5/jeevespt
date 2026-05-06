@@ -74,11 +74,20 @@ async function transcribeWithHalving(openai, originalPath, startTime, endTime, d
         }
 
         const mid = (startTime + endTime) / 2;
-        console.log(`Segment ${startTime.toFixed(1)}s-${endTime.toFixed(1)}s failed, halving (depth ${depth + 1})...`);
+        console.error(`Segment ${startTime.toFixed(1)}s-${endTime.toFixed(1)}s failed, halving (depth ${depth + 1})...`);
 
         const leftText = await transcribeWithHalving(openai, originalPath, startTime, mid, depth + 1);
         const rightText = await transcribeWithHalving(openai, originalPath, mid, endTime, depth + 1);
         return leftText + ' ' + rightText;
+    }
+}
+
+function printTranscript(text, label) {
+    if (rawMode) {
+        process.stdout.write(text);
+    } else {
+        console.log(`\n--- ${label} ---`);
+        console.log(text);
     }
 }
 
@@ -95,7 +104,8 @@ async function transcribe(filePath, speedScalar = 1.0) {
     }
 
     const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY
+        apiKey: process.env.OPENAI_API_KEY,
+        timeout: 30000,
     });
 
     let audioPath = filePath;
@@ -105,7 +115,7 @@ async function transcribe(filePath, speedScalar = 1.0) {
     if (speedScalar !== 1.0) {
         const speedUpPath = filePath.replace(/(\.[^.]+)$/, `_speed${speedScalar}$1`);
         try {
-            console.log(`Speeding up audio by ${speedScalar}x...`);
+            console.error(`Speeding up audio by ${speedScalar}x...`);
             speedUpAudio(filePath, speedUpPath, speedScalar);
             audioPath = speedUpPath;
         } catch (ffmpegError) {
@@ -118,14 +128,13 @@ async function transcribe(filePath, speedScalar = 1.0) {
 
     // First attempt
     try {
-        console.log(`Transcribing: ${audioPath}${usedScalar !== 1.0 ? ` (at ${usedScalar}x speed)` : ''}`);
+        console.error(`Transcribing: ${audioPath}${usedScalar !== 1.0 ? ` (at ${usedScalar}x speed)` : ''}`);
         const transcription = await openai.audio.transcriptions.create({
             file: fs.createReadStream(audioPath),
             model: "whisper-1",
         });
         if (audioPath !== filePath) cleanupFile(audioPath);
-        console.log('\n--- Transcript ---');
-        console.log(transcription.text);
+        printTranscript(transcription.text, 'Transcript');
         return;
     } catch {
         if (audioPath !== filePath) cleanupFile(audioPath);
@@ -134,7 +143,7 @@ async function transcribe(filePath, speedScalar = 1.0) {
     // Retry at 2x (skip if already 2x+)
     if (speedScalar < 2.0) {
         const retryPath = filePath.replace(/(\.[^.]+)$/, `_speed2$1`);
-        console.log(`Transcription failed, retrying with 2.0x speed...`);
+        console.error(`Transcription failed, retrying with 2.0x speed...`);
         try {
             speedUpAudio(filePath, retryPath, 2.0);
             const transcription = await openai.audio.transcriptions.create({
@@ -142,8 +151,7 @@ async function transcribe(filePath, speedScalar = 1.0) {
                 model: "whisper-1",
             });
             cleanupFile(retryPath);
-            console.log('\n--- Transcript (succeeded on retry at 2x speed) ---');
-            console.log(transcription.text);
+            printTranscript(transcription.text, 'Transcript (succeeded on retry at 2x speed)');
             return;
         } catch {
             cleanupFile(retryPath);
@@ -151,12 +159,11 @@ async function transcribe(filePath, speedScalar = 1.0) {
     }
 
     // Binary halving
-    console.log(`Retries exhausted, entering binary halving mode...`);
+    console.error(`Retries exhausted, entering binary halving mode...`);
     try {
         const duration = getAudioDuration(filePath);
         const text = await transcribeWithHalving(openai, filePath, 0, duration, 0);
-        console.log('\n--- Transcript (via binary halving) ---');
-        console.log(text);
+        printTranscript(text, 'Transcript (via binary halving)');
     } catch (error) {
         console.error('Error during transcription (after halving):', error.message);
         process.exit(1);
@@ -164,8 +171,10 @@ async function transcribe(filePath, speedScalar = 1.0) {
 }
 
 // Get file path and optional speed scalar from command line arguments
-const filePath = process.argv[2];
-const speedScalar = process.argv[3] ? parseFloat(process.argv[3]) : 1.0;
+const args = process.argv.slice(2).filter(a => a !== '--raw');
+const rawMode = process.argv.includes('--raw');
+const filePath = args[0];
+const speedScalar = args[1] ? parseFloat(args[1]) : 1.0;
 
 if (speedScalar < 0.5 || speedScalar > 4.0) {
     console.error('Error: Speed scalar must be between 0.5 and 4.0');
