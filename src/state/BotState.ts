@@ -53,7 +53,9 @@ export class BotState {
         transcriptionSpeedScalar: 1.0,
         adminMode: false,
         commandWhitelist: ['help'],
-        extendedThinking: false
+        extendedThinking: false,
+        webSearchEnabled: true,
+        webSearchMaxUses: 5
     };
 
     constructor() {

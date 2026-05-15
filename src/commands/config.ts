@@ -30,6 +30,7 @@ export const helpCommand: Command = {
 - Current mode: \`${config.mode}\`
 - Max response length (tokens): ${config.maxResponseLength}
 - Extended thinking: ${config.extendedThinking ? 'enabled (+3000 tokens)' : 'disabled'}
+- Web search: ${config.webSearchEnabled ? `enabled (max ${config.webSearchMaxUses} per response)` : 'disabled'}
 - Persist data: ${config.shouldSaveData ? 'enabled' : 'disabled'}
 - Direct messages: ${config.allowDMs ? 'enabled' : 'disabled'}
 - Transcription speed scalar: ${config.transcriptionSpeedScalar}x`,
@@ -328,6 +329,44 @@ export const thinkOffCommand: Command = {
     }
 };
 
+/**
+ * !websearchon/!websearchoff - Toggle web search tool
+ */
+export const webSearchOnCommand: Command = {
+    names: ['websearchon', 'searchon'],
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchEnabled: true });
+        await commandUtils.reply(ctx.message, 'Web search is now ENABLED. The bot may consult the internet when answering.');
+    }
+};
+
+export const webSearchOffCommand: Command = {
+    names: ['websearchoff', 'searchoff'],
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchEnabled: false });
+        await commandUtils.reply(ctx.message, 'Web search is now DISABLED.');
+    }
+};
+
+/**
+ * !websearchmax N - Cap maximum web searches per response
+ */
+export const webSearchMaxCommand: Command = {
+    names: ['websearchmax', 'searchmax'],
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        const n = Number(ctx.args[0]);
+        if (!Number.isInteger(n) || n < 1 || n > 20) {
+            await commandUtils.reply(
+                ctx.message,
+                'Failed to parse value. Format: `!websearchmax N` where N is an integer between 1 and 20.'
+            );
+            return;
+        }
+        deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchMaxUses: n });
+        await commandUtils.reply(ctx.message, `Max web searches per response set to ${n}.`);
+    }
+};
+
 // Export all config commands
 export const configCommands: Command[] = [
     helpCommand,
@@ -344,5 +383,8 @@ export const configCommands: Command[] = [
     voiceOnCommand,
     voiceOffCommand,
     thinkOnCommand,
-    thinkOffCommand
+    thinkOffCommand,
+    webSearchOnCommand,
+    webSearchOffCommand,
+    webSearchMaxCommand
 ];

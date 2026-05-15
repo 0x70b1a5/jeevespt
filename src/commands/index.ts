@@ -287,13 +287,61 @@ export class CommandHandler {
                 apiOptions.temperature = config.temperature;
             }
 
+            // Grant the model the server-side web search tool when enabled.
+            // This is a "server tool" — Anthropic executes the search and
+            // returns results inline, so no client-side tool loop is needed.
+            if (config.webSearchEnabled) {
+                apiOptions.tools = [
+                    ...(apiOptions.tools ?? []),
+                    {
+                        type: 'web_search_20250305',
+                        name: 'web_search',
+                        max_uses: config.webSearchMaxUses
+                    }
+                ];
+            }
+
             const completion = await this.anthropic.messages.create(apiOptions);
 
-            // Find the text block (filter out thinking blocks)
-            const textBlock = completion.content.find(block => block.type === 'text');
-            if (textBlock?.type === 'text') {
-                const response = { role: 'assistant', content: textBlock.text };
-                console.log(`✅ Generated response (${response.content.length} chars)${config.extendedThinking ? ' [with thinking]' : ''}`);
+            // With web search, the response may contain multiple text blocks
+            // interleaved with server_tool_use / web_search_tool_result blocks.
+            // Concatenate every text block, and append a Sources list from any
+            // web_search citations the model attached.
+            const blocks = completion.content as any[];
+            const textParts: string[] = [];
+            const sources = new Map<string, string>(); // url -> title
+            let searchesPerformed = 0;
+
+            for (const block of blocks) {
+                if (block.type === 'text') {
+                    textParts.push(block.text);
+                    if (Array.isArray(block.citations)) {
+                        for (const citation of block.citations) {
+                            if (citation.type === 'web_search_result_location' && citation.url) {
+                                sources.set(citation.url, citation.title || citation.url);
+                            }
+                        }
+                    }
+                } else if (block.type === 'server_tool_use' && block.name === 'web_search') {
+                    searchesPerformed++;
+                }
+            }
+
+            const text = textParts.join('\n\n').trim();
+            if (text) {
+                let finalContent = text;
+                if (sources.size > 0) {
+                    const sourceLines = Array.from(sources.entries())
+                        .map(([url, title]) => `- [${title}](${url})`)
+                        .join('\n');
+                    finalContent += `\n\n**Sources:**\n${sourceLines}`;
+                }
+                const response = { role: 'assistant', content: finalContent };
+                const meta: string[] = [];
+                if (config.extendedThinking) meta.push('thinking');
+                if (searchesPerformed > 0) meta.push(`${searchesPerformed} web search${searchesPerformed === 1 ? '' : 'es'}`);
+                const metaStr = meta.length ? ` [${meta.join(', ')}]` : '';
+                console.log(`✅ Generated response (${response.content.length} chars)${metaStr}`);
                 return response;
             }
             return null;

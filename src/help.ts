@@ -33,6 +33,8 @@ export const help: string[] = [
 \`!voiceoff\`: Disable voice output.
 \`!thinkon\`: Enable extended thinking mode (adds 3000 thinking tokens to API calls for improved reasoning).
 \`!thinkoff\`: Disable extended thinking mode.
+\`!websearchon\` / \`!websearchoff\`: Toggle the web search tool. When enabled, the bot may consult the internet to answer questions, citing its sources at the end of the reply.
+\`!websearchmax N\`: Cap the maximum number of searches per response (1–20, default 5).
 \`!config\`: Show current channel configuration.
 \`!config <#channel> <frequency>\`: Configure how the bot responds in a specific channel.
   - Frequencies: \`all\` (respond to every message), \`mentions\` (only when mentioned), \`none\` (ignore messages)

@@ -90,6 +90,10 @@ export interface BotConfig {
     commandWhitelist: string[];
     /** When enabled, adds 3000 thinking tokens to LLM API calls */
     extendedThinking: boolean;
+    /** When enabled, grants the model the server-side web_search tool */
+    webSearchEnabled: boolean;
+    /** Maximum web searches the model may perform per response */
+    webSearchMaxUses: number;
 }
 
 // Valid Anthropic Claude models
