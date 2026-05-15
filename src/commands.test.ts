@@ -143,7 +143,7 @@ describe('CommandHandler', () => {
       const message = createMockMessage({ content: '!help' });
       await handler.handleCommand(message, false);
       
-      expect(message.channel.send).toHaveBeenCalled();
+      expect((message.channel as TextChannel).send).toHaveBeenCalled();
     });
 
     it('should handle !clear command', async () => {
@@ -512,7 +512,7 @@ describe('CommandHandler', () => {
       await handler.handleCommand(message, false);
 
       // Should have called send multiple times for chunks
-      expect((message.channel.send as jest.Mock).mock.calls.length).toBeGreaterThan(1);
+      expect(((message.channel as TextChannel).send as jest.Mock).mock.calls.length).toBeGreaterThan(1);
     });
   });
 
