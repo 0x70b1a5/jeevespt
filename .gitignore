@@ -3,7 +3,7 @@ node_modules
 .vscode
 .DS_Store
 *.mp3
-log.txt
+*.txt
 hotkey-transcribe.sh
 data/
 getModels.sh
