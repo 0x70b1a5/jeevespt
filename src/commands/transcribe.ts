@@ -22,15 +22,19 @@ export const transcribeCommand: Command = {
         const outputTemplate = path.join(TEMP_DIR, `${tag}.%(ext)s`);
         const audioFile = path.join(TEMP_DIR, `${tag}.mp3`);
 
-        await commandUtils.reply(ctx.message, 'Downloading audio from YouTube...');
+        await commandUtils.reply(ctx.message, 'Downloading audio...');
         await channel.sendTyping();
 
         try {
-            execFileSync('yt-dlp', [
-                '-x', '--audio-format', 'mp3',
-                '-o', outputTemplate,
-                '--', url
-            ], { stdio: 'pipe', timeout: 300000 });
+            const args = ['-x', '--audio-format', 'mp3'];
+
+            if (process.env.YTDLP_PROXY) {
+                args.push('--proxy', process.env.YTDLP_PROXY);
+            }
+
+            args.push('-o', outputTemplate, '--', url);
+
+            execFileSync('yt-dlp', args, { stdio: 'pipe', timeout: 300000 });
 
             if (!fs.existsSync(audioFile)) {
                 await commandUtils.replyError(ctx.message, 'Failed to download audio.');
