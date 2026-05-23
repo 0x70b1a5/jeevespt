@@ -1,6 +1,6 @@
+import { toFile } from 'openai';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, isSendableChannel } from './utils';
-import { SYS_PREFIX } from './constants';
 import { renderSitelenPng } from '../assets/sitelen-wasm';
 
 interface GlamPlan {
@@ -16,13 +16,15 @@ async function planGlam(
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
         system:
-            'You translate Toki Pona into English and write whimsical, evocative prompts for an image generator. ' +
+            'You translate Toki Pona into English and write embellishment instructions for an image editor ' +
+            'that will transform a black-and-white sitelen sitelen (Toki Pona hieroglyphic) image into a richly illustrated artifact. ' +
             'Given a Toki Pona sentence, respond with strict JSON containing two fields: ' +
             '`translation` (a literal English translation, one short sentence) and ' +
-            '`prompt` (a vivid one-to-two-sentence art prompt that riffs on the translation\'s meaning — ' +
-            'lean into the most evocative interpretation, suggest a concrete style and setting). ' +
+            '`prompt` (a one-to-two-sentence instruction telling the editor to keep the existing glyph shapes intact and recognizable, ' +
+            'but to embellish them with colors, textures, and thematic decoration drawn from the translation\'s meaning — ' +
+            'specify a concrete style/setting that frames the glyphs as an illuminated, decorated artifact). ' +
             'Example: input "mi o lawa e soweli mani" → translation: "I must govern the cows." → ' +
-            'prompt: "A weathered cowboy at golden hour leading a herd across an open Texan prairie, painterly Western illustration with warm dusty light." ' +
+            'prompt: "Keep the hieroglyphs intact and recognizable, but embellish them as an illuminated Western frontier manuscript — sun-bleached leather and golden lasso filigree winding around the glyphs, dusty prairie palette." ' +
             'Output JSON only, no preamble.',
         messages: [{ role: 'user', content: text }]
     });
@@ -42,14 +44,18 @@ async function planGlam(
 }
 
 async function generateGlam(
+    sitelenPng: Buffer,
     prompt: string,
     deps: CommandDependencies
 ): Promise<Buffer | null> {
-    const result = await deps.openai.images.generate({
+    const image = await toFile(sitelenPng, 'sitelen.png', { type: 'image/png' });
+    const result = await deps.openai.images.edit({
         model: 'gpt-image-1',
+        image,
         prompt,
         n: 1,
-        size: '1024x1024'
+        size: '1024x1024',
+        input_fidelity: 'high'
     });
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) return null;
@@ -71,54 +77,52 @@ export const sitelenCommand: Command = {
         const channel = ctx.message.channel;
         if (!isSendableChannel(channel)) return;
 
-        let sitelenPng: Buffer;
-        try {
-            sitelenPng = renderSitelenPng(text);
-        } catch (error: any) {
-            console.error('sitelen render error:', error);
-            await commandUtils.replyError(ctx.message, `Renderer failed: ${error.message ?? error}`);
-            return;
-        }
-
-        await ctx.message.reply({
-            files: [{ attachment: sitelenPng, name: 'sitelen.png' }]
-        });
-
         await channel.sendTyping();
+        const typingInterval = setInterval(() => {
+            channel.sendTyping().catch(() => {});
+        }, 8000);
 
-        let plan: GlamPlan | null = null;
         try {
-            plan = await planGlam(text, deps);
-        } catch (error) {
-            console.error('sitelen glam plan error:', error);
-        }
-        if (!plan) {
-            await channel.send(`${SYS_PREFIX}Couldn't dream up a glam prompt; skipping.`);
-            return;
-        }
+            let sitelenPng: Buffer;
+            try {
+                sitelenPng = renderSitelenPng(text);
+            } catch (error: any) {
+                console.error('sitelen render error:', error);
+                await commandUtils.replyError(ctx.message, `Renderer failed: ${error.message ?? error}`);
+                return;
+            }
 
-        await channel.send(
-            `${SYS_PREFIX}*"${plan.translation}"* — glamming up...`
-        );
-        await channel.sendTyping();
+            let plan: GlamPlan | null = null;
+            try {
+                plan = await planGlam(text, deps);
+            } catch (error) {
+                console.error('sitelen glam plan error:', error);
+            }
+            if (!plan) {
+                await commandUtils.replyError(ctx.message, "Couldn't dream up a glam prompt.");
+                return;
+            }
 
-        let glamPng: Buffer | null = null;
-        try {
-            glamPng = await generateGlam(plan.prompt, deps);
-        } catch (error: any) {
-            console.error('sitelen glam generation error:', error);
-            await commandUtils.replyError(ctx.message, `Glam image failed: ${error.message ?? error}`);
-            return;
-        }
-        if (!glamPng) {
-            await commandUtils.replyError(ctx.message, 'Image generator returned no data.');
-            return;
-        }
+            let glamPng: Buffer | null = null;
+            try {
+                glamPng = await generateGlam(sitelenPng, plan.prompt, deps);
+            } catch (error: any) {
+                console.error('sitelen glam generation error:', error);
+                await commandUtils.replyError(ctx.message, `Glam image failed: ${error.message ?? error}`);
+                return;
+            }
+            if (!glamPng) {
+                await commandUtils.replyError(ctx.message, 'Image generator returned no data.');
+                return;
+            }
 
-        await channel.send({
-            content: `> ${plan.prompt}`,
-            files: [{ attachment: glamPng, name: 'glam.png' }]
-        });
+            await ctx.message.reply({
+                content: `> ${plan.prompt}`,
+                files: [{ attachment: glamPng, name: 'glam.png' }]
+            });
+        } finally {
+            clearInterval(typingInterval);
+        }
     }
 };
 
