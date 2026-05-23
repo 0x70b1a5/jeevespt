@@ -1,7 +1,25 @@
 import { toFile } from 'openai';
+import { PNG } from 'pngjs';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, isSendableChannel } from './utils';
 import { renderSitelenPng } from '../assets/sitelen-wasm';
+
+function padPngToSquare(input: Buffer): Buffer {
+    const src = PNG.sync.read(input);
+    const { width, height, data } = src;
+    if (width === height) return input;
+    const size = Math.max(width, height);
+    const offX = (size - width) >> 1;
+    const offY = (size - height) >> 1;
+    const dst = new PNG({ width: size, height: size });
+    dst.data.fill(0xff);
+    for (let y = 0; y < height; y++) {
+        const srcStart = y * width * 4;
+        const dstStart = ((y + offY) * size + offX) * 4;
+        data.copy(dst.data, dstStart, srcStart, srcStart + width * 4);
+    }
+    return PNG.sync.write(dst);
+}
 
 interface GlamPlan {
     translation: string;
@@ -85,7 +103,7 @@ export const sitelenCommand: Command = {
         try {
             let sitelenPng: Buffer;
             try {
-                sitelenPng = renderSitelenPng(text);
+                sitelenPng = padPngToSquare(renderSitelenPng(text));
             } catch (error: any) {
                 console.error('sitelen render error:', error);
                 await commandUtils.replyError(ctx.message, `Renderer failed: ${error.message ?? error}`);
@@ -117,7 +135,6 @@ export const sitelenCommand: Command = {
             }
 
             await ctx.message.reply({
-                content: `> ${plan.prompt}`,
                 files: [{ attachment: glamPng, name: 'glam.png' }]
             });
         } finally {

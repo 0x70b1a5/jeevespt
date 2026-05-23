@@ -22,11 +22,13 @@
     "dotenv": "^16.0.3",
     "node-fetch": "^3.3.2",
     "openai": "^6.39.0",
+    "pngjs": "^7.0.0",
     "selenium-webdriver": "^4.23.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^24.10.1",
+    "@types/pngjs": "^6.0.5",
     "@types/selenium-webdriver": "^4.1.25",
     "jest": "^30.2.0",
     "ts-jest": "^29.4.6",
