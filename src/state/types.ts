@@ -62,6 +62,35 @@ export interface ScheduledReminder {
     isDM: boolean;
 }
 
+/**
+ * Structured recurrence rule produced by the natural-language task parser.
+ * Absent on one-shot tasks.
+ */
+export type TaskRecurrence =
+    | { type: 'interval'; intervalMs: number }
+    | { type: 'daily'; hour: number; minute: number }
+    | { type: 'weekly'; dayOfWeek: number; hour: number; minute: number }
+    | { type: 'monthly'; dayOfMonth: number; hour: number; minute: number };
+
+export interface ScheduledTask {
+    id: string;
+    userId: string;
+    channelId: string;
+    isDM: boolean;
+    /** What the agent should actually do when fired. */
+    instructions: string;
+    /** Original schedule phrase the user typed, for display. */
+    rawScheduleText: string;
+    nextRun: Date;
+    recurrence?: TaskRecurrence;
+    createdAt: Date;
+    lastRun?: Date;
+    /** Consecutive failed agent runs; resets on success. */
+    consecutiveFailures: number;
+    /** True after MAX_TASK_FAILURES consecutive failures; no further runs until manually cancelled. */
+    paused: boolean;
+}
+
 export type BotMode = 'jeeves' | 'tokipona' | 'whisper' | 'customprompt' | 'lugso';
 
 export interface BotConfig {

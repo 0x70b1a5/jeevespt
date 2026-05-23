@@ -12,6 +12,11 @@ export const MAX_CHUNK_SIZE = 1800;
 export const MIN_REMINDER_MS = 10000; // 10 seconds
 export const MAX_REMINDER_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 
+// Task agent settings
+export const MAX_TASK_FAILURES = 2; // pause + notify after this many consecutive failed runs
+export const TASK_PARSER_MODEL = 'claude-haiku-4-5-20251001';
+export const TASK_AGENT_WEB_SEARCH_MAX_USES = 8;
+
 // Model cache
 export const MODEL_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 

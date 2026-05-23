@@ -88,6 +88,23 @@ Examples:
 - \`!remind 1d Review the proposal\`
 `,
 `
+### Tasks
+
+Schedule an agent to do something for you at a future time — one-shot or recurring. The agent has web search and replies in character; no boilerplate framing is added.
+
+\`!task <when + what to do>\`: Schedule a task. The schedule and the instructions live in the same blob.
+\`!tasks\`: List your active tasks.
+\`!canceltask <id>\`: Cancel a task.
+
+Examples:
+- \`!task every Saturday at 8am check example.com and let me know if it has an elephant on it\`
+- \`!task this Saturday check whether a retreat is happening at https://example-church.org\`
+- \`!task every other day find the lowest gas prices in 90210\`
+- \`!task tomorrow at noon summarize the top stories on Hacker News\`
+
+A task that fails twice in a row is paused and you'll be notified. Cancel and recreate it once you've fixed the underlying issue.
+`,
+`
 ### Learning System
 
 The bot can ask you educational questions on subjects you specify, spaced throughout the day.

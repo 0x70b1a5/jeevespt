@@ -3,9 +3,10 @@ import { JEEVES_PROMPT } from '../prompts/prompts';
 import {
     BotConfig, BotMode, MessageBuffer, MessageLog,
     ChannelMembershipConfig, AutotranslateChannel, AutotranslateUser,
-    ScheduledReminder, LearningTracker, ReactionHistory
+    ScheduledReminder, ScheduledTask, LearningTracker, ReactionHistory
 } from './types';
 import { ReminderStore } from './ReminderStore';
+import { TaskStore } from './TaskStore';
 import { LearningStore } from './LearningStore';
 import { ReactionStore } from './ReactionStore';
 import { AutotranslateStore } from './AutotranslateStore';
@@ -28,6 +29,7 @@ export class BotState {
 
     // Extracted stores
     private reminderStore: ReminderStore;
+    private taskStore: TaskStore;
     private learningStore: LearningStore;
     private reactionStore: ReactionStore;
 
@@ -60,6 +62,7 @@ export class BotState {
 
     constructor() {
         this.reminderStore = new ReminderStore();
+        this.taskStore = new TaskStore();
         this.learningStore = new LearningStore();
         this.reactionStore = new ReactionStore();
         this.loadPersistedData();
@@ -169,6 +172,32 @@ export class BotState {
 
     getRemindersForUser(userId: string): ScheduledReminder[] {
         return this.reminderStore.getForUser(userId);
+    }
+
+    // ==================== Task Delegation ====================
+
+    addTask(task: ScheduledTask): void {
+        this.taskStore.add(task);
+    }
+
+    updateTask(task: ScheduledTask): void {
+        this.taskStore.update(task);
+    }
+
+    removeTask(id: string): boolean {
+        return this.taskStore.remove(id);
+    }
+
+    getTask(id: string): ScheduledTask | undefined {
+        return this.taskStore.get(id);
+    }
+
+    getAllTasks(): ScheduledTask[] {
+        return this.taskStore.getAll();
+    }
+
+    getTasksForUser(userId: string): ScheduledTask[] {
+        return this.taskStore.getForUser(userId);
     }
 
     // ==================== Learning Delegation ====================
@@ -304,7 +333,7 @@ export class BotState {
             const files = await fs.promises.readdir('data');
 
             for (const file of files) {
-                if (!file.endsWith('.json') || file === 'reminders.json') continue;
+                if (!file.endsWith('.json') || file === 'reminders.json' || file === 'tasks.json') continue;
 
                 const data = JSON.parse(
                     await fs.promises.readFile(`data/${file}`, 'utf8')

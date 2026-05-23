@@ -12,6 +12,8 @@ export {
     AutotranslateChannel,
     AutotranslateUser,
     ScheduledReminder,
+    ScheduledTask,
+    TaskRecurrence,
     LearningTracker,
     ReactionHistory,
     ReactionTracker,

@@ -1,7 +1,9 @@
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
-import { BotState, ScheduledReminder } from './bot';
+import { BotState, ScheduledReminder, ScheduledTask } from './bot';
 import { CommandHandler } from './commands';
 import { discordTimestamp } from './commands/utils';
+import { computeNextRun } from './commands/tasks';
+import { MAX_TASK_FAILURES, SYS_PREFIX } from './commands/constants';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
@@ -55,6 +57,7 @@ export class BotServer {
         setInterval(() => {
             this.checkAllMuseTimers();
             this.checkReminders();
+            this.checkTasks();
             this.checkLearningQuestions();
         }, 60000);
     }
@@ -330,6 +333,121 @@ export class BotServer {
         } catch (error) {
             console.error(`❌ Error triggering reminder ${reminder.id}:`, error);
         }
+    }
+
+    private async checkTasks() {
+        const now = Date.now();
+        const allTasks = this.state.getAllTasks();
+
+        for (const task of allTasks) {
+            if (task.paused) continue;
+            if (task.nextRun.getTime() > now) continue;
+            await this.triggerTask(task);
+        }
+    }
+
+    private async triggerTask(task: ScheduledTask) {
+        // For task execution we need the (id, isDM) pair that the command handler uses
+        // for persona lookup. DM tasks use userId; guild tasks derive the guildId from
+        // the channel (we don't store guildId on the task directly).
+        let stateId: string = task.userId;
+        let resolvedChannel: any = null;
+        try {
+            if (task.isDM) {
+                const user = await this.client.users.fetch(task.userId);
+                resolvedChannel = await user.createDM();
+                stateId = task.userId;
+            } else {
+                resolvedChannel = await this.client.channels.fetch(task.channelId);
+                stateId = (resolvedChannel as TextChannel)?.guild?.id || task.userId;
+            }
+        } catch (err) {
+            console.error(`❌ Could not resolve channel for task ${task.id}:`, err);
+            await this.recordTaskFailure(task);
+            return;
+        }
+
+        if (!resolvedChannel || !('send' in resolvedChannel)) {
+            console.error(`❌ Channel for task ${task.id} is not sendable.`);
+            await this.recordTaskFailure(task);
+            return;
+        }
+
+        console.log(`🚀 Running task ${task.id}: "${task.instructions.slice(0, 80)}"`);
+
+        let response;
+        try {
+            if ('sendTyping' in resolvedChannel) {
+                try { await resolvedChannel.sendTyping(); } catch { /* non-fatal */ }
+            }
+            response = await this.commands.runTask(stateId, task.isDM, task.instructions);
+        } catch (err) {
+            console.error(`❌ Task agent threw for ${task.id}:`, err);
+            await this.recordTaskFailure(task, resolvedChannel);
+            return;
+        }
+
+        if (!response) {
+            await this.recordTaskFailure(task, resolvedChannel);
+            return;
+        }
+
+        try {
+            await resolvedChannel.send(response.content);
+        } catch (err) {
+            console.error(`❌ Failed to send task response for ${task.id}:`, err);
+            await this.recordTaskFailure(task, resolvedChannel);
+            return;
+        }
+
+        await this.recordTaskSuccess(task);
+    }
+
+    private async recordTaskSuccess(task: ScheduledTask) {
+        const now = new Date();
+        task.lastRun = now;
+        task.consecutiveFailures = 0;
+
+        if (!task.recurrence) {
+            this.state.removeTask(task.id);
+            console.log(`✅ Completed one-shot task ${task.id}`);
+            return;
+        }
+
+        task.nextRun = computeNextRun(task.recurrence, now);
+        this.state.updateTask(task);
+        console.log(`✅ Recurring task ${task.id} re-armed for ${task.nextRun.toISOString()}`);
+    }
+
+    private async recordTaskFailure(task: ScheduledTask, channel?: any) {
+        task.consecutiveFailures += 1;
+        task.lastRun = new Date();
+
+        if (task.consecutiveFailures >= MAX_TASK_FAILURES) {
+            task.paused = true;
+            this.state.updateTask(task);
+            console.warn(`⏸️ Task ${task.id} paused after ${task.consecutiveFailures} failures`);
+            if (channel && 'send' in channel) {
+                try {
+                    await channel.send(
+                        `${SYS_PREFIX}⏸️ Task paused after ${task.consecutiveFailures} consecutive failures.\n` +
+                        `📝 ${task.instructions}\n` +
+                        `🆔 \`${task.id}\`\n` +
+                        `Use \`!canceltask ${task.id}\` to remove it, or recreate it with \`!task\`.`
+                    );
+                } catch { /* best effort */ }
+            }
+            return;
+        }
+
+        // Re-arm: recurring → next scheduled slot; one-shot → retry in 5 min.
+        if (task.recurrence) {
+            task.nextRun = computeNextRun(task.recurrence, new Date());
+        } else {
+            task.nextRun = new Date(Date.now() + 5 * 60 * 1000);
+        }
+        this.state.updateTask(task);
+        console.warn(`⚠️ Task ${task.id} failed (${task.consecutiveFailures}/${MAX_TASK_FAILURES}); next attempt ${task.nextRun.toISOString()}`);
     }
 
     private async checkLearningQuestions() {

@@ -22,7 +22,7 @@ import { CommandRegistry, registry } from './registry';
 import { commandUtils, CommandUtilsImpl, canExecuteCommand, isSendableChannel } from './utils';
 import {
     SYS_PREFIX, MAX_RETRIES, RETRY_DELAY_MS,
-    ALLOWED_DOMAINS, TEMP_DIR
+    ALLOWED_DOMAINS, TEMP_DIR, TASK_AGENT_WEB_SEARCH_MAX_USES
 } from './constants';
 
 // Import command modules
@@ -30,6 +30,7 @@ import { configCommands } from './config';
 import { modeCommands } from './modes';
 import { museCommands, MuseHandler } from './muse';
 import { reminderCommands } from './reminders';
+import { taskCommands } from './tasks';
 import { learningCommands, performLearningQuestion } from './learning';
 import { reactionCommands, handleReaction } from './reactions';
 import { translateCommands, handleAutotranslate } from './translate';
@@ -80,6 +81,7 @@ export class CommandHandler {
             ...modeCommands,
             ...museCommands,
             ...reminderCommands,
+            ...taskCommands,
             ...learningCommands,
             ...reactionCommands,
             ...translateCommands,
@@ -362,6 +364,67 @@ export class CommandHandler {
             console.error('❌ Error generating response:', error);
             throw error;
         }
+    }
+
+    /**
+     * Run a scheduled task as a one-shot agent.
+     *
+     * Uses the channel's persona system prompt (so output stays in character)
+     * but deliberately does NOT include chat history or buffer — the agent
+     * gets a clean slate with just the task instructions. Web search is
+     * forced on regardless of channel config, since tasks almost always
+     * need fresh info.
+     *
+     * Throws on API failure so the caller can implement retry / pause logic.
+     */
+    async runTask(id: string, isDM: boolean, instructions: string): Promise<GeneratedResponse | null> {
+        const config = this.state.getConfig(id, isDM);
+        const systemPrompt = this.getSystemPrompt(id, isDM);
+
+        const taskFraming = `[SYSTEM] You are being invoked as a scheduled task. The user set this task in advance; they are not present to clarify. Carry out the following task and respond with your findings, in character. Do not break character to discuss the task framing.\n\n<task>\n${instructions}\n</task>`;
+
+        const apiOptions: any = {
+            model: config.model,
+            messages: [{ role: 'user', content: taskFraming }],
+            max_tokens: config.maxResponseLength,
+            system: systemPrompt?.content || '',
+            temperature: config.temperature,
+            tools: [{
+                type: 'web_search_20250305',
+                name: 'web_search',
+                max_uses: TASK_AGENT_WEB_SEARCH_MAX_USES
+            }]
+        };
+
+        const completion = await this.anthropic.messages.create(apiOptions);
+
+        const blocks = completion.content as any[];
+        const textParts: string[] = [];
+        const sources = new Map<string, string>();
+        for (const block of blocks) {
+            if (block.type === 'text') {
+                textParts.push(block.text);
+                if (Array.isArray(block.citations)) {
+                    for (const citation of block.citations) {
+                        if (citation.type === 'web_search_result_location' && citation.url) {
+                            sources.set(citation.url, citation.title || citation.url);
+                        }
+                    }
+                }
+            }
+        }
+
+        const text = textParts.join('\n\n').trim();
+        if (!text) return null;
+
+        let finalContent = text;
+        if (sources.size > 0) {
+            const sourceLines = Array.from(sources.entries())
+                .map(([url, title]) => `- [${title}](${url})`)
+                .join('\n');
+            finalContent += `\n\n**Sources:**\n${sourceLines}`;
+        }
+        return { role: 'assistant', content: finalContent };
     }
 
     /**

@@ -6,6 +6,7 @@
 
 export { BotState } from './BotState';
 export { ReminderStore } from './ReminderStore';
+export { TaskStore } from './TaskStore';
 export { LearningStore } from './LearningStore';
 export { ReactionStore } from './ReactionStore';
 export { AutotranslateStore } from './AutotranslateStore';
@@ -19,6 +20,8 @@ export {
     AutotranslateChannel,
     AutotranslateUser,
     ScheduledReminder,
+    ScheduledTask,
+    TaskRecurrence,
     LearningTracker,
     ReactionHistory,
     ReactionTracker,
