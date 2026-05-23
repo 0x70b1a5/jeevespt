@@ -37,6 +37,7 @@ import { channelConfigCommands } from './channel-config';
 import { adminCommands } from './admin';
 import { patreonCommands } from './patreon';
 import { transcribeCommands } from './transcribe';
+import { sitelenCommands } from './sitelen';
 
 import fs from 'fs';
 import https from 'https';
@@ -85,7 +86,8 @@ export class CommandHandler {
             ...channelConfigCommands,
             ...adminCommands,
             ...patreonCommands,
-            ...transcribeCommands
+            ...transcribeCommands,
+            ...sitelenCommands
         ]);
     }
 

@@ -47,6 +47,11 @@ export const help: string[] = [
 \`!empty\`: Treat your message as an empty message. This is sometimes useful if you want the bot to continue speaking about its previous subject.
 `,
     `
+### Sitelen Sitelen
+
+\`!sitelen <toki pona text>\`: Render the text as sitelen sitelen (Jonathan Gabel's non-linear toki pona script), then conjure a "glammed-up" companion image inspired by the meaning of the sentence.
+`,
+    `
 
 ### Musing
 
