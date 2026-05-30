@@ -22,7 +22,8 @@ import { CommandRegistry, registry } from './registry';
 import { commandUtils, CommandUtilsImpl, canExecuteCommand, isSendableChannel } from './utils';
 import {
     SYS_PREFIX, MAX_RETRIES, RETRY_DELAY_MS,
-    ALLOWED_DOMAINS, TEMP_DIR, TASK_AGENT_WEB_SEARCH_MAX_USES
+    ALLOWED_DOMAINS, TEMP_DIR, TASK_AGENT_WEB_SEARCH_MAX_USES,
+    modelSupportsTemperature
 } from './constants';
 
 // Import command modules
@@ -287,7 +288,7 @@ export class CommandHandler {
                 };
                 apiOptions.max_tokens = config.maxResponseLength + 3000;
                 // Temperature must be 1 for extended thinking
-            } else {
+            } else if (modelSupportsTemperature(config.model)) {
                 apiOptions.temperature = config.temperature;
             }
 
@@ -388,13 +389,15 @@ export class CommandHandler {
             messages: [{ role: 'user', content: taskFraming }],
             max_tokens: config.maxResponseLength,
             system: systemPrompt?.content || '',
-            temperature: config.temperature,
             tools: [{
                 type: 'web_search_20250305',
                 name: 'web_search',
                 max_uses: TASK_AGENT_WEB_SEARCH_MAX_USES
             }]
         };
+        if (modelSupportsTemperature(config.model)) {
+            apiOptions.temperature = config.temperature;
+        }
 
         const completion = await this.anthropic.messages.create(apiOptions);
 

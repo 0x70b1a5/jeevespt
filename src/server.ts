@@ -440,12 +440,11 @@ export class BotServer {
             return;
         }
 
-        // Re-arm: recurring → next scheduled slot; one-shot → retry in 5 min.
-        if (task.recurrence) {
-            task.nextRun = computeNextRun(task.recurrence, new Date());
-        } else {
-            task.nextRun = new Date(Date.now() + 5 * 60 * 1000);
-        }
+        // Retry shortly — consecutiveFailures tracks immediate retries, not
+        // skipped scheduled slots. Jumping a weekly task to next week on a
+        // single failure would silently swallow that week's run entirely.
+        // On success, recordTaskSuccess re-arms to the next scheduled slot.
+        task.nextRun = new Date(Date.now() + 5 * 60 * 1000);
         this.state.updateTask(task);
         console.warn(`⚠️ Task ${task.id} failed (${task.consecutiveFailures}/${MAX_TASK_FAILURES}); next attempt ${task.nextRun.toISOString()}`);
     }

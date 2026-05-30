@@ -1,6 +1,7 @@
 import { Message, TextChannel, DMChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils } from './utils';
+import { modelSupportsTemperature } from './constants';
 import { LEARNING_PROMPT_TEMPLATE } from '../prompts/prompts';
 
 /**
@@ -171,7 +172,7 @@ export async function performLearningQuestion(
         const response = await deps.anthropic.messages.create({
             model: config.model,
             max_tokens: 300,
-            temperature: config.temperature,
+            ...(modelSupportsTemperature(config.model) && { temperature: config.temperature }),
             messages: [{
                 role: 'user',
                 content: `Create a question for the following subject: ${subject}`

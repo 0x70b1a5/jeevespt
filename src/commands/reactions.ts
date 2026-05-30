@@ -2,6 +2,7 @@ import { Message } from 'discord.js';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
+import { modelSupportsTemperature } from './constants';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
 import { LUGSO_PROMPT } from '../prompts/lugso';
 
@@ -167,7 +168,7 @@ async function generateEmojiReaction(message: Message, deps: CommandDependencies
         const response = await deps.anthropic.messages.create({
             model: config.model,
             max_tokens: 30,
-            temperature: config.temperature,
+            ...(modelSupportsTemperature(config.model) && { temperature: config.temperature }),
             messages,
             system: systemPrompt?.content || ''
         });

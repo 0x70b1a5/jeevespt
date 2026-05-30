@@ -1,6 +1,7 @@
 import { Message } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
+import { modelSupportsTemperature } from './constants';
 import { extractTranslatableEmbedContent } from '../formatMessage';
 
 /**
@@ -375,7 +376,7 @@ async function detectLanguage(
         const response = await deps.anthropic.messages.create({
             model: config.model,
             max_tokens: 10,
-            temperature: 0.1,
+            ...(modelSupportsTemperature(config.model) && { temperature: 0.1 }),
             messages: [{
                 role: 'user',
                 content: `Is the following text written in ${targetLanguage}? Respond with only "yes" or "no":\n\n${text}`
@@ -409,7 +410,7 @@ async function generateTranslation(
         const response = await deps.anthropic.messages.create({
             model: config.model,
             max_tokens: 1000,
-            temperature: 0.3,
+            ...(modelSupportsTemperature(config.model) && { temperature: 0.3 }),
             messages: [{
                 role: 'user',
                 content: `Translate the following text to ${targetLanguage}. Only respond with the translation, nothing else:\n\n${text}`

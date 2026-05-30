@@ -20,6 +20,22 @@ export const TASK_AGENT_WEB_SEARCH_MAX_USES = 8;
 // Model cache
 export const MODEL_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+/**
+ * Whether the given Anthropic model accepts the `temperature` parameter.
+ * Newer Opus models (4.8+) deprecated it; sending it returns 400.
+ * Add patterns here as Anthropic ships further models that drop temperature.
+ *
+ * Model IDs look like `claude-opus-4-8` or `claude-opus-4-8-20260101`, where
+ * the segment after `4-` is the minor version (not a date). The regex anchors
+ * the minor version to end-of-string or `-` to avoid mistaking a date suffix
+ * (e.g. `claude-opus-4-20250514`, which is v4.0 with a date) for v4.20.
+ */
+export function modelSupportsTemperature(model: string): boolean {
+    if (/^claude-opus-4-(?:[89]|[1-9]\d)(?:$|-)/.test(model)) return false;
+    if (/^claude-opus-(?:[5-9]|[1-9]\d)(?:$|-)/.test(model)) return false;
+    return true;
+}
+
 // System message prefix
 export const SYS_PREFIX = '[SYSTEM] ';
 
