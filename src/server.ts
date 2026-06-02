@@ -1,3 +1,6 @@
+import { installTimestampedLogging } from './logger';
+installTimestampedLogging();
+
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState, ScheduledReminder, ScheduledTask } from './bot';
 import { CommandHandler } from './commands';
