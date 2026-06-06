@@ -4,7 +4,7 @@ installTimestampedLogging();
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState, ScheduledReminder, ScheduledTask } from './bot';
 import { CommandHandler } from './commands';
-import { discordTimestamp } from './commands/utils';
+import { commandUtils, discordTimestamp } from './commands/utils';
 import { computeNextRun } from './commands/tasks';
 import { MAX_TASK_FAILURES, SYS_PREFIX } from './commands/constants';
 import OpenAI from 'openai';
@@ -325,12 +325,17 @@ export class BotServer {
                 true
             );
 
-            await channel.send(
+            const reminderMessage =
                 (completion?.content ?? "") + "\n\n" +
                 `⏰ **Reminder!** <@${reminder.userId}>\n` +
                 `📝 ${reminder.content}\n` +
-                `🕐 Set for: ${discordTimestamp(reminder.triggerTime, 'f')}`
-            );
+                `🕐 Set for: ${discordTimestamp(reminder.triggerTime, 'f')}`;
+            // Same 2000-char chunking guard as task responses, in case the
+            // generated preface runs long.
+            const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: reminderMessage }]);
+            for (const chunk of chunks) {
+                if (chunk) await channel.send(chunk);
+            }
 
             console.log(`✅ Triggered reminder for user ${reminder.userId}: "${reminder.content}"`);
         } catch (error) {
@@ -396,7 +401,13 @@ export class BotServer {
         }
 
         try {
-            await resolvedChannel.send(response.content);
+            // Discord caps messages at 2000 chars; task agent replies (web-search
+            // findings + persona prose + sources) routinely exceed that, so chunk
+            // like every other send path does rather than letting send() throw.
+            const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: response.content }]);
+            for (const chunk of chunks) {
+                if (chunk) await resolvedChannel.send(chunk);
+            }
         } catch (err) {
             console.error(`❌ Failed to send task response for ${task.id}:`, err);
             await this.recordTaskFailure(task, resolvedChannel);
