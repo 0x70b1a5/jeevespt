@@ -54,6 +54,7 @@ export const clearCommand: Command = {
     names: ['clear'],
     description: 'Forget everything from the present conversation.',
     category: 'Chat History',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const log = deps.state.getLog(ctx.id, ctx.isDM);
         log.messages = [];
@@ -91,6 +92,7 @@ export const temperatureCommand: Command = {
     names: ['temperature'],
     description: 'Set sampling temperature (0–2).',
     category: 'Configuration',
+    ephemeral: true,
     options: [{ name: 'value', description: 'Temperature between 0 and 2', type: 'number', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const value = ctx.args[0];
@@ -151,6 +153,7 @@ export const modelCommand: Command = {
     names: ['model'],
     description: 'Set the Claude model, or list available models.',
     category: 'Configuration',
+    ephemeral: true,
     options: [{ name: 'model', description: 'Model id; omit to list models', type: 'string', required: false }],
     deferred: true, // fetches the model list from the Anthropic API
     async execute(ctx: CommandContext, deps: CommandDependencies) {
@@ -197,6 +200,7 @@ export const delayCommand: Command = {
     names: ['delay'],
     description: 'Set the response delay in seconds (lets the bot wait for follow-up messages).',
     category: 'Configuration',
+    ephemeral: true,
     options: [{ name: 'seconds', description: 'Delay in seconds (greater than 0)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const delay = Math.round(Number(ctx.args[0]));
@@ -220,6 +224,7 @@ export const tokensCommand: Command = {
     names: ['tokens'],
     description: 'Set the maximum number of tokens to generate.',
     category: 'Configuration',
+    ephemeral: true,
     options: [{ name: 'tokens', description: 'Max tokens (greater than 0)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const tokens = Number(ctx.args[0]);
@@ -243,6 +248,7 @@ export const speedScalarCommand: Command = {
     names: ['speedscalar'],
     description: 'Set the transcription speed scalar (0.5–4.0); audio is sped up before Whisper.',
     category: 'Configuration',
+    ephemeral: true,
     options: [{ name: 'scalar', description: 'Speed scalar between 0.5 and 4.0', type: 'number', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const scalar = Number(ctx.args[0]);
@@ -273,6 +279,7 @@ export const limitCommand: Command = {
     names: ['limit'],
     description: 'Set how many past messages the bot remembers.',
     category: 'Chat History',
+    ephemeral: true,
     options: [{ name: 'count', description: 'Number of messages to remember (greater than 0)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const limit = Number(ctx.args[0]);
@@ -296,6 +303,7 @@ export const persistCommand: Command = {
     names: ['persist'],
     description: 'Toggle whether data is saved between sessions.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
         const newValue = !config.shouldSaveData;
@@ -311,6 +319,7 @@ export const dmsCommand: Command = {
     names: ['dms'],
     description: 'Toggle whether the bot responds to direct messages.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
         const newValue = !config.allowDMs;
@@ -326,6 +335,7 @@ export const voiceOnCommand: Command = {
     names: ['voiceon'],
     description: 'Enable voice (text-to-speech) responses.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { useVoiceResponse: true });
         await commandUtils.reply(ctx.message, 'Voice responses are now ENABLED.');
@@ -336,6 +346,7 @@ export const voiceOffCommand: Command = {
     names: ['voiceoff'],
     description: 'Disable voice responses.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { useVoiceResponse: false });
         await commandUtils.reply(ctx.message, 'Voice responses are now DISABLED.');
@@ -349,6 +360,7 @@ export const thinkOnCommand: Command = {
     names: ['thinkon'],
     description: 'Enable extended thinking mode (+3000 thinking tokens).',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { extendedThinking: true });
         await commandUtils.reply(ctx.message, 'Extended thinking is now ENABLED. (adds 3000 thinking tokens to API calls)');
@@ -359,6 +371,7 @@ export const thinkOffCommand: Command = {
     names: ['thinkoff'],
     description: 'Disable extended thinking mode.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { extendedThinking: false });
         await commandUtils.reply(ctx.message, 'Extended thinking is now DISABLED.');
@@ -372,6 +385,7 @@ export const webSearchOnCommand: Command = {
     names: ['websearchon', 'searchon'],
     description: 'Enable the web search tool; the bot may consult the internet.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchEnabled: true });
         await commandUtils.reply(ctx.message, 'Web search is now ENABLED. The bot may consult the internet when answering.');
@@ -382,6 +396,7 @@ export const webSearchOffCommand: Command = {
     names: ['websearchoff', 'searchoff'],
     description: 'Disable the web search tool.',
     category: 'Configuration',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchEnabled: false });
         await commandUtils.reply(ctx.message, 'Web search is now DISABLED.');
@@ -395,6 +410,7 @@ export const webSearchMaxCommand: Command = {
     names: ['websearchmax', 'searchmax'],
     description: 'Cap the maximum web searches per response (1–20).',
     category: 'Configuration',
+    ephemeral: true,
     options: [{ name: 'count', description: 'Max searches per response (1–20)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const n = Number(ctx.args[0]);

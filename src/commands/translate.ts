@@ -12,6 +12,7 @@ export const translateAddCommand: Command = {
     requiresGuild: true,
     description: 'Auto-translate all messages in a channel to a language.',
     category: 'Autotranslate',
+    ephemeral: true,
     options: [
         { name: 'channel', description: 'Channel to auto-translate', type: 'channel', required: true },
         { name: 'language', description: 'Target language (e.g. Spanish, toki pona)', type: 'string', required: true, rest: true }
@@ -57,6 +58,7 @@ export const translateRemoveCommand: Command = {
     requiresGuild: true,
     description: 'Stop auto-translating a channel.',
     category: 'Autotranslate',
+    ephemeral: true,
     options: [{ name: 'channel', description: 'Channel to stop translating', type: 'channel', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channelName = ctx.args[0];
@@ -123,6 +125,7 @@ export const translateAddUserCommand: Command = {
     requiresGuild: true,
     description: "Auto-translate a specific user's messages to a language (can add several).",
     category: 'Autotranslate',
+    ephemeral: true,
     options: [
         { name: 'user', description: 'User whose messages to translate', type: 'user', required: true },
         { name: 'language', description: 'Target language', type: 'string', required: true, rest: true }
@@ -164,6 +167,7 @@ export const translateRemoveUserCommand: Command = {
     requiresGuild: true,
     description: 'Remove one or all translation languages for a user.',
     category: 'Autotranslate',
+    ephemeral: true,
     options: [
         { name: 'user', description: 'User to update', type: 'user', required: true },
         { name: 'language', description: 'Language to remove; omit to remove all', type: 'string', required: false, rest: true }

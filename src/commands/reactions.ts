@@ -14,6 +14,7 @@ export const reactOnCommand: Command = {
     requiresGuild: true,
     description: 'Enable AI emoji reactions in monitored channels.',
     category: 'Reactions',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { reactionModeEnabled: true });
         await commandUtils.reply(ctx.message, 'Reaction mode enabled.');
@@ -28,6 +29,7 @@ export const reactOffCommand: Command = {
     requiresGuild: true,
     description: 'Disable reaction mode.',
     category: 'Reactions',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { reactionModeEnabled: false });
         await commandUtils.reply(ctx.message, 'Reaction mode disabled.');
@@ -42,6 +44,7 @@ export const reactAddCommand: Command = {
     requiresGuild: true,
     description: 'Add a channel to reaction monitoring.',
     category: 'Reactions',
+    ephemeral: true,
     options: [{ name: 'channel', description: 'Channel to monitor', type: 'channel', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channelName = ctx.args[0];
@@ -78,6 +81,7 @@ export const reactRemoveCommand: Command = {
     requiresGuild: true,
     description: 'Remove a channel from reaction monitoring.',
     category: 'Reactions',
+    ephemeral: true,
     options: [{ name: 'channel', description: 'Channel to stop monitoring', type: 'channel', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channelName = ctx.args[0];

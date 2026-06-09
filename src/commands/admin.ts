@@ -11,6 +11,7 @@ export const adminModeCommand: Command = {
     requiresGuild: true,
     description: 'Toggle admin-only command mode (admin only).',
     category: 'Admin',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         // This command always requires admin, regardless of adminMode setting
         if (!isAdmin(ctx.message)) {
@@ -45,6 +46,7 @@ export const whitelistCommand: Command = {
     requiresGuild: true,
     description: 'Allow non-admins to use a specific command (admin only).',
     category: 'Admin',
+    ephemeral: true,
     options: [{ name: 'command', description: 'Command name to whitelist', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (!isAdmin(ctx.message)) {
@@ -91,6 +93,7 @@ export const unwhitelistCommand: Command = {
     requiresGuild: true,
     description: 'Revoke non-admin access to a command (admin only).',
     category: 'Admin',
+    ephemeral: true,
     options: [{ name: 'command', description: 'Command name to unwhitelist', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (!isAdmin(ctx.message)) {

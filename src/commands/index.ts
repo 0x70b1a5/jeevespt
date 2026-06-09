@@ -156,11 +156,14 @@ export class CommandHandler {
         console.log(`🔌 Handling slash command: ${commandName} from ${isDM ? 'DM' : 'guild'} (${interaction.user.tag})`);
 
         const command = registry.get(commandName);
+        // Config/toggle/mode confirmations reply ephemerally so they don't
+        // clutter the channel (slash only — the !text path can't be ephemeral).
+        const ephemeral = !!command?.ephemeral;
 
         // Defer up front for slow commands so we never miss Discord's 3s ack deadline.
         if (command?.deferred) {
             try {
-                await interaction.deferReply();
+                await interaction.deferReply({ ephemeral });
             } catch (error) {
                 console.error('Failed to defer reply:', error);
             }
@@ -169,7 +172,7 @@ export class CommandHandler {
         const tracker = { consumed: false };
         const args = command ? interactionToArgs(command, interaction) : [];
         const reconstructed = `!${commandName}${args.length ? ' ' + args.join(' ') : ''}`;
-        const message = createInteractionMessage(interaction, tracker, reconstructed);
+        const message = createInteractionMessage(interaction, tracker, reconstructed, ephemeral);
         const ctx: CommandContext = { message, id, isDM, args };
 
         try {

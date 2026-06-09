@@ -92,6 +92,13 @@ export interface Command {
     /** Omit from the `!help` listing (operator-only / internal commands). */
     hidden?: boolean;
     /**
+     * Reply ephemerally on the slash path (only the invoker sees it, and it
+     * auto-dismisses) — used for config/toggle confirmations that would
+     * otherwise clutter the channel. No effect on the legacy `!text` path,
+     * where ephemeral replies don't exist.
+     */
+    ephemeral?: boolean;
+    /**
      * Set for commands that call the AI / do slow I/O. The slash handler defers
      * the interaction reply so it doesn't blow Discord's 3-second ack deadline.
      */

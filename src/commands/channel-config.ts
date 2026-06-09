@@ -24,6 +24,7 @@ export const configCommand: Command = {
     requiresGuild: true,
     description: 'Show channel config, or set how the bot responds in a channel.',
     category: 'Configuration',
+    ephemeral: true,
     options: [
         { name: 'channel', description: 'Channel to configure', type: 'channel', required: false },
         {

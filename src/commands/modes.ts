@@ -11,6 +11,7 @@ function createModeCommand(mode: BotMode, description: string, category = 'Modes
         names: [mode],
         description,
         category,
+        ephemeral: true,
         async execute(ctx: CommandContext, deps: CommandDependencies) {
             deps.state.getLog(ctx.id, ctx.isDM).messages = [];
             deps.state.updateConfig(ctx.id, ctx.isDM, { mode });
@@ -48,6 +49,7 @@ export const promptCommand: Command = {
     names: ['prompt'],
     description: 'Set a custom system prompt (the AI\'s personality). Clears memory. Accepts text or a text-file attachment.',
     category: 'Modes',
+    ephemeral: true,
     options: [{ name: 'text', description: 'The system prompt text', type: 'string', required: false, rest: true }],
     examples: ['!prompt You are a laconic noir detective.'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {

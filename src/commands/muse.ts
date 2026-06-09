@@ -108,6 +108,7 @@ export const museOnCommand: Command = {
     names: ['museon'],
     description: 'Enable automatic periodic musing.',
     category: 'Musing',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { shouldMuseRegularly: true });
         await commandUtils.reply(ctx.message, 'Muse will now happen automatically.');
@@ -121,6 +122,7 @@ export const museOffCommand: Command = {
     names: ['museoff'],
     description: 'Disable automatic musing.',
     category: 'Musing',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { shouldMuseRegularly: false });
         await commandUtils.reply(ctx.message, 'Muse will no longer happen automatically.');
@@ -134,6 +136,7 @@ export const museIntervalCommand: Command = {
     names: ['museinterval'],
     description: 'Set the automatic muse interval in hours.',
     category: 'Musing',
+    ephemeral: true,
     options: [{ name: 'hours', description: 'Hours between automatic muses', type: 'number', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const hours = Number(ctx.args[0]);

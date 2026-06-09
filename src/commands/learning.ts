@@ -11,6 +11,7 @@ export const learnOnCommand: Command = {
     names: ['learnon'],
     description: 'Enable spaced-repetition learning questions.',
     category: 'Learning',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { learningEnabled: true });
         await commandUtils.reply(
@@ -27,6 +28,7 @@ export const learnOffCommand: Command = {
     names: ['learnoff'],
     description: 'Disable learning questions.',
     category: 'Learning',
+    ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { learningEnabled: false });
         await commandUtils.reply(
@@ -43,6 +45,7 @@ export const learnAddCommand: Command = {
     names: ['learnadd'],
     description: 'Add a subject to the learning rotation.',
     category: 'Learning',
+    ephemeral: true,
     options: [{ name: 'subject', description: 'Subject to learn about (e.g. Latin)', type: 'string', required: true, rest: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const subject = ctx.args.join(' ');
@@ -79,6 +82,7 @@ export const learnRemoveCommand: Command = {
     names: ['learnremove'],
     description: 'Remove a subject from the learning rotation.',
     category: 'Learning',
+    ephemeral: true,
     options: [{ name: 'subject', description: 'Subject to remove', type: 'string', required: true, rest: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const subject = ctx.args.join(' ');
