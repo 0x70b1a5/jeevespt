@@ -79,6 +79,10 @@ function chunkContent(content: string, maxSize: number = 1900): string[] {
  */
 const patreonCommand: Command = {
     names: ['patreon'],
+    description: 'Build the weekly Twitter digest draft (operator only).',
+    category: 'Patreon',
+    slashExclude: true,
+    hidden: true,
     async execute(ctx: CommandContext, deps: CommandDependencies): Promise<void> {
         const { message } = ctx;
 
@@ -158,6 +162,10 @@ const patreonCommand: Command = {
  */
 const peditCommand: Command = {
     names: ['pedit'],
+    description: 'Edit the Patreon draft via LLM (operator only).',
+    category: 'Patreon',
+    slashExclude: true,
+    hidden: true,
     async execute(ctx: CommandContext, deps: CommandDependencies): Promise<void> {
         const { message, args } = ctx;
 
@@ -245,6 +253,10 @@ Return the edited draft:`
  */
 const ppostCommand: Command = {
     names: ['ppost'],
+    description: 'Post the Patreon draft to Patreon (operator only).',
+    category: 'Patreon',
+    slashExclude: true,
+    hidden: true,
     async execute(ctx: CommandContext, deps: CommandDependencies): Promise<void> {
         const { message } = ctx;
 

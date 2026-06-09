@@ -22,6 +22,20 @@ const FREQUENCY_DESCRIPTIONS: Record<string, string> = {
 export const configCommand: Command = {
     names: ['config'],
     requiresGuild: true,
+    description: 'Show channel config, or set how the bot responds in a channel.',
+    category: 'Configuration',
+    options: [
+        { name: 'channel', description: 'Channel to configure', type: 'channel', required: false },
+        {
+            name: 'frequency', description: 'How often to respond', type: 'string', required: false,
+            choices: [
+                { name: 'all (every message)', value: 'all' },
+                { name: 'mentions (only when mentioned)', value: 'mentions' },
+                { name: 'none (ignore)', value: 'none' }
+            ]
+        }
+    ],
+    examples: ['!config', '!config #general all', '!config #random mentions'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         // Show current configuration if no args
         if (ctx.args.length === 0) {

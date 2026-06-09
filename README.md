@@ -52,6 +52,8 @@ With apologies to P. G. Wodehouse.
 - **Message Batching** — Configurable delay to wait for multiple messages before responding
 
 ### Technical
+- **Dual Command Interface** — Every command works both as `!prefix` text and as a native Discord slash command (registered via the API, with autocomplete and argument validation). Voice commands ("command clear") still drive the text path.
+- **Self-Documenting Help** — `!help` / `/help` generate a single categorized embed from command metadata; `!help <command>` shows usage, arguments, and examples. The listing can never drift from the actual commands.
 - **Multi-Model Support** — Switch between Claude models on the fly with validation
 - **Conversation Persistence** — Message history and configuration saved to disk
 - **Webhook Personas** — Each mode uses distinct bot name and avatar
@@ -69,4 +71,6 @@ With apologies to P. G. Wodehouse.
     - `npm install`
 3. Run the bot
     - `npm start` or `npm run dev` (with logging)
-4. Approve the bot in the server
+4. Invite the bot to your server with both the `bot` and `applications.commands` scopes (the latter is required for slash commands)
+    - Optionally set `DISCORD_GUILD_ID` in `.env` to register slash commands to that one guild instantly; otherwise they register globally (works in DMs and every guild, but the first sync can take up to an hour)
+    - Slash commands are (re)registered automatically on startup from the same metadata that powers `!help`

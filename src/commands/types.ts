@@ -25,6 +25,43 @@ export interface CommandDependencies {
 }
 
 /**
+ * Discord slash-command option types we support. Maps to a subset of
+ * ApplicationCommandOptionType; the bridge in commands/slash.ts converts these
+ * to discord.js builders and back into the `string[]` args legacy handlers expect.
+ */
+export type CommandOptionType =
+    | 'string'
+    | 'integer'
+    | 'number'
+    | 'boolean'
+    | 'channel'
+    | 'user';
+
+/**
+ * Declarative description of one command argument. Drives BOTH the generated
+ * help text and the Discord slash-command registration, so the two can never
+ * drift apart again.
+ */
+export interface CommandOption {
+    /** Option name (slash requires lowercase, no spaces, 1-32 chars). */
+    name: string;
+    /** Shown in the slash UI and in `!help <cmd>`. */
+    description: string;
+    type: CommandOptionType;
+    /** Defaults to false (optional). */
+    required?: boolean;
+    /** Fixed set of allowed values (string/integer/number options only). */
+    choices?: { name: string; value: string }[];
+    /**
+     * When true, the legacy `!cmd ...` parser splits this option's value on
+     * whitespace into multiple arg tokens, so handlers that read
+     * `args.slice(n).join(' ')` reconstruct the full phrase. Only valid on the
+     * final option. In the slash path it is just a normal single string option.
+     */
+    rest?: boolean;
+}
+
+/**
  * Interface for a command handler
  */
 export interface Command {
@@ -34,6 +71,31 @@ export interface Command {
     execute(ctx: CommandContext, deps: CommandDependencies): Promise<void>;
     /** Optional: Whether command requires guild (not DM) */
     requiresGuild?: boolean;
+
+    // ── Metadata (single source of truth for help + slash registration) ──
+
+    /** One-line summary. Shown in `!help` and as the slash-command description. */
+    description?: string;
+    /** Help section grouping, e.g. 'Modes', 'Configuration', 'Tasks'. */
+    category?: string;
+    /** Argument schema. Generates slash options and (unless `usage` is set) the usage string. */
+    options?: CommandOption[];
+    /** Explicit usage string for help; if omitted it is derived from `options`. */
+    usage?: string;
+    /** Example invocations, shown in the per-command help detail view. */
+    examples?: string[];
+    /**
+     * Exclude from Discord slash registration (e.g. operator-only or
+     * voice-only commands). May still appear in `!help`. Default: included.
+     */
+    slashExclude?: boolean;
+    /** Omit from the `!help` listing (operator-only / internal commands). */
+    hidden?: boolean;
+    /**
+     * Set for commands that call the AI / do slow I/O. The slash handler defers
+     * the interaction reply so it doesn't blow Discord's 3-second ack deadline.
+     */
+    deferred?: boolean;
 }
 
 /**

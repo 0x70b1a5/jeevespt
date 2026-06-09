@@ -9,6 +9,8 @@ import { registry } from './registry';
 export const adminModeCommand: Command = {
     names: ['adminmode'],
     requiresGuild: true,
+    description: 'Toggle admin-only command mode (admin only).',
+    category: 'Admin',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         // This command always requires admin, regardless of adminMode setting
         if (!isAdmin(ctx.message)) {
@@ -41,6 +43,9 @@ export const adminModeCommand: Command = {
 export const whitelistCommand: Command = {
     names: ['whitelist'],
     requiresGuild: true,
+    description: 'Allow non-admins to use a specific command (admin only).',
+    category: 'Admin',
+    options: [{ name: 'command', description: 'Command name to whitelist', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (!isAdmin(ctx.message)) {
             await commandUtils.reply(ctx.message, 'You must be a server administrator to use this command.');
@@ -84,6 +89,9 @@ export const whitelistCommand: Command = {
 export const unwhitelistCommand: Command = {
     names: ['unwhitelist'],
     requiresGuild: true,
+    description: 'Revoke non-admin access to a command (admin only).',
+    category: 'Admin',
+    options: [{ name: 'command', description: 'Command name to unwhitelist', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (!isAdmin(ctx.message)) {
             await commandUtils.reply(ctx.message, 'You must be a server administrator to use this command.');
@@ -122,6 +130,8 @@ export const unwhitelistCommand: Command = {
 export const showWhitelistCommand: Command = {
     names: ['showwhitelist'],
     requiresGuild: true,
+    description: 'Show admin mode status and the whitelist.',
+    category: 'Admin',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
 

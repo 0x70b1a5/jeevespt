@@ -79,6 +79,22 @@ export class CommandRegistry {
     getCommandNames(): string[] {
         return Array.from(this.commands.keys());
     }
+
+    /**
+     * Get the unique registered commands (deduped across aliases), in
+     * registration order. Used by help generation and slash registration.
+     */
+    getCommands(): Command[] {
+        const seen = new Set<Command>();
+        const unique: Command[] = [];
+        for (const command of this.commands.values()) {
+            if (!seen.has(command)) {
+                seen.add(command);
+                unique.push(command);
+            }
+        }
+        return unique;
+    }
 }
 
 // Singleton registry instance

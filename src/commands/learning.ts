@@ -9,6 +9,8 @@ import { LEARNING_PROMPT_TEMPLATE } from '../prompts/prompts';
  */
 export const learnOnCommand: Command = {
     names: ['learnon'],
+    description: 'Enable spaced-repetition learning questions.',
+    category: 'Learning',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { learningEnabled: true });
         await commandUtils.reply(
@@ -23,6 +25,8 @@ export const learnOnCommand: Command = {
  */
 export const learnOffCommand: Command = {
     names: ['learnoff'],
+    description: 'Disable learning questions.',
+    category: 'Learning',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { learningEnabled: false });
         await commandUtils.reply(
@@ -37,6 +41,9 @@ export const learnOffCommand: Command = {
  */
 export const learnAddCommand: Command = {
     names: ['learnadd'],
+    description: 'Add a subject to the learning rotation.',
+    category: 'Learning',
+    options: [{ name: 'subject', description: 'Subject to learn about (e.g. Latin)', type: 'string', required: true, rest: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const subject = ctx.args.join(' ');
 
@@ -70,6 +77,9 @@ export const learnAddCommand: Command = {
  */
 export const learnRemoveCommand: Command = {
     names: ['learnremove'],
+    description: 'Remove a subject from the learning rotation.',
+    category: 'Learning',
+    options: [{ name: 'subject', description: 'Subject to remove', type: 'string', required: true, rest: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const subject = ctx.args.join(' ');
 
@@ -107,6 +117,8 @@ export const learnRemoveCommand: Command = {
  */
 export const learnStatusCommand: Command = {
     names: ['learnstatus'],
+    description: 'Show learning configuration and progress.',
+    category: 'Learning',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
         const tracker = deps.state.getLearningTracker(ctx.id, ctx.isDM);
@@ -147,6 +159,9 @@ export const learnStatusCommand: Command = {
  */
 export const learnCommand: Command = {
     names: ['learn'],
+    description: 'Ask a learning question right now from your subjects.',
+    category: 'Learning',
+    deferred: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         // This will be handled by CommandHandler directly
         throw new Error('Learn command must be handled by CommandHandler directly');

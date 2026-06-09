@@ -12,6 +12,8 @@ import { LUGSO_PROMPT } from '../prompts/lugso';
 export const reactOnCommand: Command = {
     names: ['reacton'],
     requiresGuild: true,
+    description: 'Enable AI emoji reactions in monitored channels.',
+    category: 'Reactions',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { reactionModeEnabled: true });
         await commandUtils.reply(ctx.message, 'Reaction mode enabled.');
@@ -24,6 +26,8 @@ export const reactOnCommand: Command = {
 export const reactOffCommand: Command = {
     names: ['reactoff'],
     requiresGuild: true,
+    description: 'Disable reaction mode.',
+    category: 'Reactions',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { reactionModeEnabled: false });
         await commandUtils.reply(ctx.message, 'Reaction mode disabled.');
@@ -36,6 +40,9 @@ export const reactOffCommand: Command = {
 export const reactAddCommand: Command = {
     names: ['reactadd'],
     requiresGuild: true,
+    description: 'Add a channel to reaction monitoring.',
+    category: 'Reactions',
+    options: [{ name: 'channel', description: 'Channel to monitor', type: 'channel', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channelName = ctx.args[0];
 
@@ -69,6 +76,9 @@ export const reactAddCommand: Command = {
 export const reactRemoveCommand: Command = {
     names: ['reactremove'],
     requiresGuild: true,
+    description: 'Remove a channel from reaction monitoring.',
+    category: 'Reactions',
+    options: [{ name: 'channel', description: 'Channel to stop monitoring', type: 'channel', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channelName = ctx.args[0];
 

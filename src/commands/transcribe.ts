@@ -8,6 +8,10 @@ import { execFileSync } from 'child_process';
 
 export const transcribeCommand: Command = {
     names: ['transcribe'],
+    description: 'Transcribe the audio from a YouTube (or other yt-dlp) URL.',
+    category: 'Transcription',
+    options: [{ name: 'url', description: 'Video/audio URL to transcribe', type: 'string', required: true }],
+    deferred: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const url = ctx.args[0];
         if (!url) {

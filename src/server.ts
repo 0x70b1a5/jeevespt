@@ -4,6 +4,8 @@ installTimestampedLogging();
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState, ScheduledReminder, ScheduledTask } from './bot';
 import { CommandHandler } from './commands';
+import { registry } from './commands/registry';
+import { registerSlashCommands } from './commands/slash';
 import { commandUtils, discordTimestamp } from './commands/utils';
 import { computeNextRun } from './commands/tasks';
 import { MAX_TASK_FAILURES, SYS_PREFIX } from './commands/constants';
@@ -204,8 +206,19 @@ export class BotServer {
     private initializeEventListeners() {
         this.client.on('clientReady', async () => {
             console.log(`🎩 Logged in as ${this.client.user?.tag}`);
+            // Sync Discord slash commands from the same metadata that drives !help.
+            await registerSlashCommands(this.client, registry.getCommands());
             // Disabled: online/offline messages
             // await this.sendWelcomeMessage();
+        });
+
+        this.client.on('interactionCreate', async (interaction) => {
+            if (!interaction.isChatInputCommand()) return;
+            try {
+                await this.commands.handleInteraction(interaction);
+            } catch (error) {
+                console.error('Error handling interaction:', error);
+            }
         });
 
         this.client.on('messageCreate', async (message: Message) => {

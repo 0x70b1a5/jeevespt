@@ -89,6 +89,11 @@ If there was an error fetching the webpage, please mention this, as the develope
  */
 export const museCommand: Command = {
     names: ['muse'],
+    description: 'Muse on a random Wikipedia page, or a specific webpage URL.',
+    category: 'Musing',
+    options: [{ name: 'url', description: 'Webpage to muse on; omit for a random Wikipedia page', type: 'string', required: false }],
+    examples: ['!muse', '!muse https://en.wikipedia.org/wiki/Toki_Pona'],
+    deferred: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         // This will be wired up in the main handler
         // The actual muse logic requires generateResponse which is defined there
@@ -101,6 +106,8 @@ export const museCommand: Command = {
  */
 export const museOnCommand: Command = {
     names: ['museon'],
+    description: 'Enable automatic periodic musing.',
+    category: 'Musing',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { shouldMuseRegularly: true });
         await commandUtils.reply(ctx.message, 'Muse will now happen automatically.');
@@ -112,6 +119,8 @@ export const museOnCommand: Command = {
  */
 export const museOffCommand: Command = {
     names: ['museoff'],
+    description: 'Disable automatic musing.',
+    category: 'Musing',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { shouldMuseRegularly: false });
         await commandUtils.reply(ctx.message, 'Muse will no longer happen automatically.');
@@ -123,6 +132,9 @@ export const museOffCommand: Command = {
  */
 export const museIntervalCommand: Command = {
     names: ['museinterval'],
+    description: 'Set the automatic muse interval in hours.',
+    category: 'Musing',
+    options: [{ name: 'hours', description: 'Hours between automatic muses', type: 'number', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const hours = Number(ctx.args[0]);
 

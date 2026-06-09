@@ -6,9 +6,11 @@ import { BotMode } from '../bot';
 /**
  * Create a mode switch command
  */
-function createModeCommand(mode: BotMode): Command {
+function createModeCommand(mode: BotMode, description: string, category = 'Modes'): Command {
     return {
         names: [mode],
+        description,
+        category,
         async execute(ctx: CommandContext, deps: CommandDependencies) {
             deps.state.getLog(ctx.id, ctx.isDM).messages = [];
             deps.state.updateConfig(ctx.id, ctx.isDM, { mode });
@@ -22,28 +24,32 @@ function createModeCommand(mode: BotMode): Command {
 /**
  * !jeeves - Switch to Jeeves mode
  */
-export const jeevesCommand = createModeCommand('jeeves');
+export const jeevesCommand = createModeCommand('jeeves', 'Act like Jeeves, the cultured butler. Clears memory.');
 
 /**
  * !tokipona - Switch to toki pona mode
  */
-export const tokiponaCommand = createModeCommand('tokipona');
+export const tokiponaCommand = createModeCommand('tokipona', 'Speak only toki pona, for language immersion. Clears memory.');
 
 /**
  * !whisper - Switch to transcription mode
  */
-export const whisperCommand = createModeCommand('whisper');
+export const whisperCommand = createModeCommand('whisper', 'Transcription-only mode: reply to audio with text, no AI chat.', 'Transcription');
 
 /**
  * !lugso - Switch to Lugso mode
  */
-export const lugsoCommand = createModeCommand('lugso');
+export const lugsoCommand = createModeCommand('lugso', 'Switch to the Lugso persona. Clears memory.');
 
 /**
  * !prompt - Set custom prompt
  */
 export const promptCommand: Command = {
     names: ['prompt'],
+    description: 'Set a custom system prompt (the AI\'s personality). Clears memory. Accepts text or a text-file attachment.',
+    category: 'Modes',
+    options: [{ name: 'text', description: 'The system prompt text', type: 'string', required: false, rest: true }],
+    examples: ['!prompt You are a laconic noir detective.'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         let prompt = ctx.args.join(' ');
 

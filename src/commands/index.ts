@@ -5,7 +5,7 @@
  * command registry pattern internally.
  */
 
-import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel } from 'discord.js';
+import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel, ChatInputCommandInteraction } from 'discord.js';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
@@ -29,10 +29,11 @@ import {
 // Import command modules
 import { configCommands } from './config';
 import { modeCommands } from './modes';
-import { museCommands, MuseHandler } from './muse';
+import { museCommands, MuseHandler, museCommand } from './muse';
 import { reminderCommands } from './reminders';
 import { taskCommands } from './tasks';
-import { learningCommands, performLearningQuestion } from './learning';
+import { learningCommands, performLearningQuestion, learnCommand } from './learning';
+import { interactionToArgs, createInteractionMessage } from './slash';
 import { reactionCommands, handleReaction } from './reactions';
 import { translateCommands, handleAutotranslate } from './translate';
 import { channelConfigCommands } from './channel-config';
@@ -81,6 +82,11 @@ export class CommandHandler {
             ...configCommands,
             ...modeCommands,
             ...museCommands,
+            // muse and learn are dispatched specially (they need handler
+            // internals), but they're registered so they appear in !help, get
+            // registered as slash commands, and can be whitelisted.
+            museCommand,
+            learnCommand,
             ...reminderCommands,
             ...taskCommands,
             ...learningCommands,
@@ -132,6 +138,74 @@ export class CommandHandler {
 
         // Use registry for all other commands
         await registry.execute(commandName, ctx, this.deps);
+    }
+
+    /**
+     * Handle a Discord slash-command interaction.
+     *
+     * Slash commands and the legacy `!` text path share one registry and the
+     * same handlers. This adapts the interaction into the CommandContext those
+     * handlers expect (see commands/slash.ts) and mirrors handleCommand's
+     * muse/learn special-casing. The `!` path is untouched, so voice commands
+     * keep working.
+     */
+    async handleInteraction(interaction: ChatInputCommandInteraction): Promise<void> {
+        const commandName = interaction.commandName.toLowerCase();
+        const isDM = !interaction.guild;
+        const id = isDM ? interaction.user.id : interaction.guild!.id;
+        console.log(`🔌 Handling slash command: ${commandName} from ${isDM ? 'DM' : 'guild'} (${interaction.user.tag})`);
+
+        const command = registry.get(commandName);
+
+        // Defer up front for slow commands so we never miss Discord's 3s ack deadline.
+        if (command?.deferred) {
+            try {
+                await interaction.deferReply();
+            } catch (error) {
+                console.error('Failed to defer reply:', error);
+            }
+        }
+
+        const tracker = { consumed: false };
+        const args = command ? interactionToArgs(command, interaction) : [];
+        const reconstructed = `!${commandName}${args.length ? ' ' + args.join(' ') : ''}`;
+        const message = createInteractionMessage(interaction, tracker, reconstructed);
+        const ctx: CommandContext = { message, id, isDM, args };
+
+        try {
+            // muse and learn need handler internals (generateResponse), so they
+            // bypass the registry here exactly as they do in handleCommand.
+            if (commandName === 'muse' || commandName === 'learn') {
+                const config = this.state.getConfig(id, isDM);
+                const permCheck = canExecuteCommand(message, commandName, config);
+                if (!permCheck.allowed) {
+                    await message.reply(`${SYS_PREFIX}${permCheck.reason}`);
+                } else if (commandName === 'muse') {
+                    await this.museHandler.muse(message, id, isDM, args[0], true);
+                } else {
+                    await this.triggerLearningQuestion(message, id, isDM);
+                }
+            } else {
+                await registry.execute(commandName, ctx, this.deps);
+            }
+        } catch (error) {
+            console.error(`❌ Error handling slash command ${commandName}:`, error);
+            try {
+                await message.reply(`${SYS_PREFIX}[ERROR] Something went wrong running that command.`);
+            } catch { /* best effort */ }
+        } finally {
+            // If the command produced all its output through the channel/webhook
+            // (e.g. muse) and never replied, clear the lingering deferred reply.
+            if (!tracker.consumed) {
+                try {
+                    if (interaction.deferred) {
+                        await interaction.deleteReply();
+                    } else {
+                        await interaction.reply({ content: '✓ Done, sir.', ephemeral: true });
+                    }
+                } catch { /* best effort */ }
+            }
+        }
     }
 
     /**

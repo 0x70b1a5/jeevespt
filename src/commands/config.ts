@@ -3,7 +3,8 @@ import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
 import { commandUtils } from './utils';
 import { VALID_ANTHROPIC_MODELS } from '../bot';
-import { help } from '../help';
+import { registry } from './registry';
+import { buildHelpEmbed, buildCommandDetailEmbed } from './helpText';
 
 /**
  * Type guard to check if a channel supports sending messages
@@ -17,32 +18,32 @@ function isSendableChannel(channel: any): channel is TextBasedChannel & { send: 
  */
 export const helpCommand: Command = {
     names: ['help'],
+    description: 'Show the command list, or detailed help for one command.',
+    category: 'General',
+    options: [{ name: 'command', description: 'Command to get detailed help for', type: 'string', required: false }],
+    examples: ['!help', '!help task'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
-        const helpTexts = [
-            `# JEEVESPT
-- Remembers the last ${config.messageLimit} messages
-- Temperature: ${config.temperature}
-- Model: ${config.model}
-- Response delay: ${config.responseDelayMs / 1000} seconds
-- Muse interval: ${config.museInterval / 60 / 60 / 1000} hours
-- Automatic muse: ${config.shouldMuseRegularly ? 'enabled' : 'disabled'}
-- Current mode: \`${config.mode}\`
-- Max response length (tokens): ${config.maxResponseLength}
-- Extended thinking: ${config.extendedThinking ? 'enabled (+3000 tokens)' : 'disabled'}
-- Web search: ${config.webSearchEnabled ? `enabled (max ${config.webSearchMaxUses} per response)` : 'disabled'}
-- Persist data: ${config.shouldSaveData ? 'enabled' : 'disabled'}
-- Direct messages: ${config.allowDMs ? 'enabled' : 'disabled'}
-- Transcription speed scalar: ${config.transcriptionSpeedScalar}x`,
-            ...help
-        ];
 
-        const channel = ctx.message.channel;
-        if (isSendableChannel(channel)) {
-            for (const text of helpTexts) {
-                await channel.send(text);
+        // !help <command> → detailed help for that single command.
+        const query = ctx.args[0]?.replace(/^!/, '').toLowerCase();
+        if (query) {
+            const cmd = registry.get(query);
+            if (!cmd || cmd.hidden) {
+                await commandUtils.reply(ctx.message, `No such command: \`${query}\`. Use \`!help\` to list commands.`);
+                return;
             }
+            await ctx.message.reply({ embeds: [buildCommandDetailEmbed(cmd)] });
+            return;
         }
+
+        // !help → one compact, generated listing of every command.
+        const statusLines = [
+            `**Mode:** \`${config.mode}\`  •  **Model:** \`${config.model}\``,
+            `**Memory:** ${config.messageLimit} msgs  •  **Temp:** ${config.temperature}  •  **Max tokens:** ${config.maxResponseLength}`,
+            `**Web search:** ${config.webSearchEnabled ? `on (≤${config.webSearchMaxUses})` : 'off'}  •  **Thinking:** ${config.extendedThinking ? 'on' : 'off'}  •  **Voice:** ${config.useVoiceResponse ? 'on' : 'off'}  •  **Persist:** ${config.shouldSaveData ? 'on' : 'off'}`
+        ];
+        await ctx.message.reply({ embeds: [buildHelpEmbed(registry.getCommands(), statusLines)] });
     }
 };
 
@@ -51,6 +52,8 @@ export const helpCommand: Command = {
  */
 export const clearCommand: Command = {
     names: ['clear'],
+    description: 'Forget everything from the present conversation.',
+    category: 'Chat History',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const log = deps.state.getLog(ctx.id, ctx.isDM);
         log.messages = [];
@@ -63,6 +66,8 @@ export const clearCommand: Command = {
  */
 export const logCommand: Command = {
     names: ['log'],
+    description: 'Print the current message history.',
+    category: 'Chat History',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const log = deps.state.getLog(ctx.id, ctx.isDM);
         const logAsString = JSON.stringify(log.messages, null, 2);
@@ -84,6 +89,9 @@ export const logCommand: Command = {
  */
 export const temperatureCommand: Command = {
     names: ['temperature'],
+    description: 'Set sampling temperature (0–2).',
+    category: 'Configuration',
+    options: [{ name: 'value', description: 'Temperature between 0 and 2', type: 'number', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const value = ctx.args[0];
         const temp = Number(value);
@@ -141,6 +149,10 @@ async function getValidModels(): Promise<string[]> {
  */
 export const modelCommand: Command = {
     names: ['model'],
+    description: 'Set the Claude model, or list available models.',
+    category: 'Configuration',
+    options: [{ name: 'model', description: 'Model id; omit to list models', type: 'string', required: false }],
+    deferred: true, // fetches the model list from the Anthropic API
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const modelName = ctx.args[0];
 
@@ -183,6 +195,9 @@ export const modelCommand: Command = {
  */
 export const delayCommand: Command = {
     names: ['delay'],
+    description: 'Set the response delay in seconds (lets the bot wait for follow-up messages).',
+    category: 'Configuration',
+    options: [{ name: 'seconds', description: 'Delay in seconds (greater than 0)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const delay = Math.round(Number(ctx.args[0]));
 
@@ -203,6 +218,9 @@ export const delayCommand: Command = {
  */
 export const tokensCommand: Command = {
     names: ['tokens'],
+    description: 'Set the maximum number of tokens to generate.',
+    category: 'Configuration',
+    options: [{ name: 'tokens', description: 'Max tokens (greater than 0)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const tokens = Number(ctx.args[0]);
 
@@ -223,6 +241,9 @@ export const tokensCommand: Command = {
  */
 export const speedScalarCommand: Command = {
     names: ['speedscalar'],
+    description: 'Set the transcription speed scalar (0.5–4.0); audio is sped up before Whisper.',
+    category: 'Configuration',
+    options: [{ name: 'scalar', description: 'Speed scalar between 0.5 and 4.0', type: 'number', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const scalar = Number(ctx.args[0]);
 
@@ -250,6 +271,9 @@ export const speedScalarCommand: Command = {
  */
 export const limitCommand: Command = {
     names: ['limit'],
+    description: 'Set how many past messages the bot remembers.',
+    category: 'Chat History',
+    options: [{ name: 'count', description: 'Number of messages to remember (greater than 0)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const limit = Number(ctx.args[0]);
 
@@ -270,6 +294,8 @@ export const limitCommand: Command = {
  */
 export const persistCommand: Command = {
     names: ['persist'],
+    description: 'Toggle whether data is saved between sessions.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
         const newValue = !config.shouldSaveData;
@@ -283,6 +309,8 @@ export const persistCommand: Command = {
  */
 export const dmsCommand: Command = {
     names: ['dms'],
+    description: 'Toggle whether the bot responds to direct messages.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const config = deps.state.getConfig(ctx.id, ctx.isDM);
         const newValue = !config.allowDMs;
@@ -296,6 +324,8 @@ export const dmsCommand: Command = {
  */
 export const voiceOnCommand: Command = {
     names: ['voiceon'],
+    description: 'Enable voice (text-to-speech) responses.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { useVoiceResponse: true });
         await commandUtils.reply(ctx.message, 'Voice responses are now ENABLED.');
@@ -304,6 +334,8 @@ export const voiceOnCommand: Command = {
 
 export const voiceOffCommand: Command = {
     names: ['voiceoff'],
+    description: 'Disable voice responses.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { useVoiceResponse: false });
         await commandUtils.reply(ctx.message, 'Voice responses are now DISABLED.');
@@ -315,6 +347,8 @@ export const voiceOffCommand: Command = {
  */
 export const thinkOnCommand: Command = {
     names: ['thinkon'],
+    description: 'Enable extended thinking mode (+3000 thinking tokens).',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { extendedThinking: true });
         await commandUtils.reply(ctx.message, 'Extended thinking is now ENABLED. (adds 3000 thinking tokens to API calls)');
@@ -323,6 +357,8 @@ export const thinkOnCommand: Command = {
 
 export const thinkOffCommand: Command = {
     names: ['thinkoff'],
+    description: 'Disable extended thinking mode.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { extendedThinking: false });
         await commandUtils.reply(ctx.message, 'Extended thinking is now DISABLED.');
@@ -334,6 +370,8 @@ export const thinkOffCommand: Command = {
  */
 export const webSearchOnCommand: Command = {
     names: ['websearchon', 'searchon'],
+    description: 'Enable the web search tool; the bot may consult the internet.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchEnabled: true });
         await commandUtils.reply(ctx.message, 'Web search is now ENABLED. The bot may consult the internet when answering.');
@@ -342,6 +380,8 @@ export const webSearchOnCommand: Command = {
 
 export const webSearchOffCommand: Command = {
     names: ['websearchoff', 'searchoff'],
+    description: 'Disable the web search tool.',
+    category: 'Configuration',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         deps.state.updateConfig(ctx.id, ctx.isDM, { webSearchEnabled: false });
         await commandUtils.reply(ctx.message, 'Web search is now DISABLED.');
@@ -353,6 +393,9 @@ export const webSearchOffCommand: Command = {
  */
 export const webSearchMaxCommand: Command = {
     names: ['websearchmax', 'searchmax'],
+    description: 'Cap the maximum web searches per response (1–20).',
+    category: 'Configuration',
+    options: [{ name: 'count', description: 'Max searches per response (1–20)', type: 'integer', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const n = Number(ctx.args[0]);
         if (!Number.isInteger(n) || n < 1 || n > 20) {

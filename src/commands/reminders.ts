@@ -12,6 +12,13 @@ function isSendableChannel(channel: any): channel is TextBasedChannel & { send: 
  */
 export const remindCommand: Command = {
     names: ['remind'],
+    description: 'Set a personal reminder delivered after a delay.',
+    category: 'Reminders',
+    options: [
+        { name: 'time', description: 'Delay: 30s, 5m, 2h, 1d', type: 'string', required: true },
+        { name: 'message', description: 'What to remind you about', type: 'string', required: true, rest: true }
+    ],
+    examples: ['!remind 5m Take a break', '!remind 2h Check the laundry', '!remind 1d Review the proposal'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (ctx.args.length < 2) {
             await commandUtils.reply(
@@ -75,6 +82,8 @@ Examples:
  */
 export const remindersCommand: Command = {
     names: ['reminders'],
+    description: 'List your active reminders.',
+    category: 'Reminders',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const userReminders = deps.state.getRemindersForUser(ctx.message.author.id);
 
@@ -109,6 +118,9 @@ export const remindersCommand: Command = {
  */
 export const cancelReminderCommand: Command = {
     names: ['cancelreminder'],
+    description: 'Cancel a reminder by its ID.',
+    category: 'Reminders',
+    options: [{ name: 'id', description: 'The reminder ID (from !reminders)', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const reminderId = ctx.args[0];
 

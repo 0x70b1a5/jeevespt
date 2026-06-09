@@ -205,6 +205,15 @@ function describeRecurrence(t: ScheduledTask): string {
  */
 export const taskCommand: Command = {
     names: ['task'],
+    description: 'Schedule an agent to do something at a future time (one-shot or recurring).',
+    category: 'Tasks',
+    options: [{ name: 'instructions', description: 'When + what to do, in one phrase', type: 'string', required: true, rest: true }],
+    examples: [
+        '!task every Saturday at 8am check example.com and let me know if it has an elephant on it',
+        '!task tomorrow at noon summarize the top stories on Hacker News',
+        '!task every other day find the lowest gas prices in 90210'
+    ],
+    deferred: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const raw = ctx.args.join(' ').trim();
         if (!raw) {
@@ -260,6 +269,8 @@ Examples:
  */
 export const tasksCommand: Command = {
     names: ['tasks'],
+    description: 'List your active scheduled tasks.',
+    category: 'Tasks',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const userTasks = deps.state.getTasksForUser(ctx.message.author.id);
         if (userTasks.length === 0) {
@@ -297,6 +308,9 @@ export const tasksCommand: Command = {
  */
 export const cancelTaskCommand: Command = {
     names: ['canceltask'],
+    description: 'Cancel a scheduled task by its ID.',
+    category: 'Tasks',
+    options: [{ name: 'id', description: 'The task ID (from !tasks)', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const id = ctx.args[0];
         if (!id) {

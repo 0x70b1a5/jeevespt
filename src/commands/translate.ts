@@ -10,6 +10,13 @@ import { extractTranslatableEmbedContent } from '../formatMessage';
 export const translateAddCommand: Command = {
     names: ['translateadd'],
     requiresGuild: true,
+    description: 'Auto-translate all messages in a channel to a language.',
+    category: 'Autotranslate',
+    options: [
+        { name: 'channel', description: 'Channel to auto-translate', type: 'channel', required: true },
+        { name: 'language', description: 'Target language (e.g. Spanish, toki pona)', type: 'string', required: true, rest: true }
+    ],
+    examples: ['!translateadd #spanish-practice Spanish'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (ctx.args.length < 2) {
             await commandUtils.reply(
@@ -48,6 +55,9 @@ export const translateAddCommand: Command = {
 export const translateRemoveCommand: Command = {
     names: ['translateremove'],
     requiresGuild: true,
+    description: 'Stop auto-translating a channel.',
+    category: 'Autotranslate',
+    options: [{ name: 'channel', description: 'Channel to stop translating', type: 'channel', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channelName = ctx.args[0];
 
@@ -80,6 +90,8 @@ export const translateRemoveCommand: Command = {
 export const translateListCommand: Command = {
     names: ['translatelist'],
     requiresGuild: true,
+    description: 'List channels configured for auto-translation.',
+    category: 'Autotranslate',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const channels = deps.state.getAllAutotranslateChannels(ctx.id, ctx.isDM);
 
@@ -109,6 +121,13 @@ export const translateListCommand: Command = {
 export const translateAddUserCommand: Command = {
     names: ['translateadduser'],
     requiresGuild: true,
+    description: "Auto-translate a specific user's messages to a language (can add several).",
+    category: 'Autotranslate',
+    options: [
+        { name: 'user', description: 'User whose messages to translate', type: 'user', required: true },
+        { name: 'language', description: 'Target language', type: 'string', required: true, rest: true }
+    ],
+    examples: ['!translateadduser @Alice Quenya'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (ctx.args.length < 2) {
             await commandUtils.reply(
@@ -143,6 +162,13 @@ export const translateAddUserCommand: Command = {
 export const translateRemoveUserCommand: Command = {
     names: ['translateremoveuser'],
     requiresGuild: true,
+    description: 'Remove one or all translation languages for a user.',
+    category: 'Autotranslate',
+    options: [
+        { name: 'user', description: 'User to update', type: 'user', required: true },
+        { name: 'language', description: 'Language to remove; omit to remove all', type: 'string', required: false, rest: true }
+    ],
+    examples: ['!translateremoveuser @Alice Latin', '!translateremoveuser @Alice'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         if (ctx.args.length < 1) {
             await commandUtils.reply(
@@ -187,6 +213,8 @@ export const translateRemoveUserCommand: Command = {
 export const translateListUsersCommand: Command = {
     names: ['translatelistusers'],
     requiresGuild: true,
+    description: 'List users configured for auto-translation.',
+    category: 'Autotranslate',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const users = deps.state.getAllAutotranslateUsers(ctx.id, ctx.isDM);
 

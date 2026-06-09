@@ -142,8 +142,11 @@ describe('CommandHandler', () => {
     it('should handle !help command', async () => {
       const message = createMockMessage({ content: '!help' });
       await handler.handleCommand(message, false);
-      
-      expect((message.channel as TextChannel).send).toHaveBeenCalled();
+
+      // Help is now a single generated embed reply, not a 13-message dump.
+      expect(message.reply).toHaveBeenCalledWith(
+        expect.objectContaining({ embeds: expect.any(Array) })
+      );
     });
 
     it('should handle !clear command', async () => {

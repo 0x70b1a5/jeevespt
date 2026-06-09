@@ -82,6 +82,11 @@ async function generateGlam(
 
 export const sitelenCommand: Command = {
     names: ['sitelen'],
+    description: 'Render toki pona as sitelen sitelen with a glammed-up companion image.',
+    category: 'Sitelen Sitelen',
+    options: [{ name: 'text', description: 'Toki pona text to render', type: 'string', required: true, rest: true }],
+    examples: ['!sitelen toki pona li pona'],
+    deferred: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const text = ctx.args.join(' ').trim();
         if (!text) {
