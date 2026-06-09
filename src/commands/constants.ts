@@ -22,17 +22,37 @@ export const MODEL_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Whether the given Anthropic model accepts the `temperature` parameter.
- * Newer Opus models (4.8+) deprecated it; sending it returns 400.
- * Add patterns here as Anthropic ships further models that drop temperature.
  *
- * Model IDs look like `claude-opus-4-8` or `claude-opus-4-8-20260101`, where
- * the segment after `4-` is the minor version (not a date). The regex anchors
- * the minor version to end-of-string or `-` to avoid mistaking a date suffix
- * (e.g. `claude-opus-4-20250514`, which is v4.0 with a date) for v4.20.
+ * Anthropic removed the sampling parameters (`temperature`, `top_p`, `top_k`)
+ * on its frontier models; sending `temperature` to one that dropped it returns
+ * a 400. The models that do NOT accept it:
+ *   • Fable 5 and any later Fable tier  (`claude-fable-*`)
+ *   • Opus 4.7 and later                (`claude-opus-4-7`, `-4-8`, … and Opus 5+)
+ * Everything else still accepts it: Opus 4.6 and earlier, every Sonnet, every
+ * Haiku. New Sonnet/Haiku releases are assumed to keep it — revisit this when a
+ * new top-tier family launches.
+ *
+ * (The Models API capability tree doesn't expose sampling support, so this
+ * can't be derived from `GET /v1/models` — it has to be encoded here.)
+ *
+ * Parsing note: an Opus id is `claude-opus-<major>-<minor>`, optionally with a
+ * `-<date>` snapshot suffix (e.g. `claude-opus-4-8-20260101`). The bare
+ * `claude-opus-4-20250514` is Opus *4.0* with a date suffix — `20250514` is the
+ * date, not minor version 20250514 — so the minor is constrained to one or two
+ * digits and a long date segment is correctly read as "no minor" (i.e. 4.0).
  */
 export function modelSupportsTemperature(model: string): boolean {
-    if (/^claude-opus-4-(?:[89]|[1-9]\d)(?:$|-)/.test(model)) return false;
-    if (/^claude-opus-(?:[5-9]|[1-9]\d)(?:$|-)/.test(model)) return false;
+    // Fable tier (current and future) removed the sampling params.
+    if (/^claude-fable-/.test(model)) return false;
+
+    // Opus removed them at 4.7; applies to 4.7+ and any future Opus 5+.
+    const opus = /^claude-opus-(\d{1,2})(?:-(\d{1,2}))?(?:$|-)/.exec(model);
+    if (opus) {
+        const major = Number(opus[1]);
+        const minor = opus[2] === undefined ? 0 : Number(opus[2]);
+        if (major > 4 || (major === 4 && minor >= 7)) return false;
+    }
+
     return true;
 }
 
