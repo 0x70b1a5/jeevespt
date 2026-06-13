@@ -13,7 +13,8 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { BotState } from '../bot';
 import { ElevenLabs } from '../elevenlabs';
 import { synthesizeIPA } from '../ipaSpeech';
-import { JEEVES_PROMPT, TOKIPONA_PROMPT } from '../prompts/prompts';
+import dayjs from 'dayjs';
+import { JEEVES_PROMPT, TOKIPONA_PROMPT, WEB_SEARCH_ADDENDUM } from '../prompts/prompts';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
 import whisper from '../whisper';
 
@@ -457,7 +458,9 @@ export class CommandHandler {
      */
     async runTask(id: string, isDM: boolean, instructions: string): Promise<GeneratedResponse | null> {
         const config = this.state.getConfig(id, isDM);
-        const systemPrompt = this.getSystemPrompt(id, isDM);
+        // Web search is forced on for tasks (tools below), so force the
+        // matching prompt addendum regardless of the channel's chat setting.
+        const systemPrompt = this.getSystemPrompt(id, isDM, { webSearch: true });
 
         const taskFraming = `[SYSTEM] You are being invoked as a scheduled task. The user set this task in advance; they are not present to clarify. Carry out the following task and respond with your findings, in character. Do not break character to discuss the task framing.\n\n<task>\n${instructions}\n</task>`;
 
@@ -508,9 +511,13 @@ export class CommandHandler {
     }
 
     /**
-     * Get system prompt for current mode
+     * Get system prompt for current mode.
+     *
+     * `opts.webSearch` overrides the channel's webSearchEnabled config for the
+     * web-search addendum — runTask attaches the tool unconditionally, so it
+     * must force the addendum on even when chat search is disabled.
      */
-    getSystemPrompt(id: string, isDM: boolean): { role: string; content: string } | null {
+    getSystemPrompt(id: string, isDM: boolean, opts?: { webSearch?: boolean }): { role: string; content: string } | null {
         const config = this.state.getConfig(id, isDM);
 
         switch (config.mode) {
@@ -526,8 +533,14 @@ export class CommandHandler {
                     content: LUGSO_PROMPT + (config.extendedThinking ? LUGSO_THINKING_PROMPT : LUGSO_NONTHINKING_PROMPT)
                 };
             case 'jeeves':
-            default:
-                return { role: 'system', content: JEEVES_PROMPT };
+            default: {
+                const webSearch = opts?.webSearch ?? config.webSearchEnabled;
+                const dateLine = `\nThe current date and time is ${dayjs().format('dddd, MMMM D, YYYY, HH:mm')}.\n`;
+                return {
+                    role: 'system',
+                    content: JEEVES_PROMPT + (webSearch ? WEB_SEARCH_ADDENDUM : '') + dateLine
+                };
+            }
         }
     }
 

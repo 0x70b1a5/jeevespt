@@ -45,6 +45,7 @@ jest.mock('fs', () => ({
 // Mock the prompts module
 jest.mock('./prompts/prompts', () => ({
   JEEVES_PROMPT: 'You are Jeeves, a butler.',
+  WEB_SEARCH_ADDENDUM: ' You may use the web_search tool.',
   TOKIPONA_PROMPT: 'sina jan pi toki pona.',
   LEARNING_PROMPT_TEMPLATE: 'Create questions about {SUBJECT}.'
 }));
