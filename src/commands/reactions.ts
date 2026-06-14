@@ -111,6 +111,23 @@ export const reactRemoveCommand: Command = {
 };
 
 /**
+ * Detect messages whose only content is image attachment(s) — no text and no
+ * other attachment types. The reaction prompt only sends message text to the
+ * model (the image itself isn't included), so reacting to these would just burn
+ * API tokens on an empty prompt. We skip them.
+ */
+function isImageOnlyMessage(message: Message): boolean {
+    if (message.content.trim().length > 0) return false;
+
+    const attachments = [...message.attachments.values()];
+    if (attachments.length === 0) return false;
+
+    return attachments.every(a =>
+        a.contentType?.startsWith('image/') ?? (a.width != null && a.height != null)
+    );
+}
+
+/**
  * Handle generating and adding a reaction to a message
  */
 export async function handleReaction(message: Message, deps: CommandDependencies): Promise<void> {
@@ -122,6 +139,7 @@ export async function handleReaction(message: Message, deps: CommandDependencies
 
     if (!config.reactionModeEnabled || config.reactionChannels.length === 0) return;
     if (!config.reactionChannels.includes(message.channel.id)) return;
+    if (isImageOnlyMessage(message)) return;
 
     // Wait for embeds if message contains URLs
     const utils = new CommandUtilsImpl();
