@@ -38,8 +38,11 @@ function getAudioDuration(filePath: string): number {
 }
 
 function extractSegment(inputPath: string, startTime: number, duration: number, outputPath: string): void {
+  // NOTE: do not use `-c copy` here. Discord voice messages are Ogg/Opus
+  // (even though we save them as .mp3), and Opus packets cannot be stream-copied
+  // into an .mp3 container. Re-encode so the segment is always a valid file.
   execSync(
-    `ffmpeg -y -ss ${startTime} -i "${inputPath}" -t ${duration} -c copy "${outputPath}"`,
+    `ffmpeg -y -ss ${startTime} -i "${inputPath}" -t ${duration} "${outputPath}"`,
     { stdio: 'pipe' }
   );
 }
@@ -147,7 +150,10 @@ export default async function whisper(
     const text = await transcribeWithHalving(openai, path, 0, duration, 0);
     return { text, speedScalarUsed: 2.0, wasRetry: true };
   } catch (error: any) {
-    const errorMessage = error?.error?.message || error?.message || 'Unknown transcription error';
+    const rawMessage = error?.error?.message || error?.message || 'Unknown transcription error';
+    // ffmpeg dumps its full stderr into the message; keep it short so callers
+    // (e.g. Discord, max 2000 chars) can always relay it without erroring.
+    const errorMessage = rawMessage.length > 300 ? `${rawMessage.slice(0, 300)}…` : rawMessage;
     return {
       text: '',
       speedScalarUsed: 2.0,

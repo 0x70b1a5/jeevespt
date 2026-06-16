@@ -37,7 +37,9 @@ function getAudioDuration(filePath) {
 
 function extractSegment(inputPath, startTime, duration, outputPath) {
     execSync(
-        `ffmpeg -y -ss ${startTime} -i "${inputPath}" -t ${duration} -c copy "${outputPath}"`,
+        // No `-c copy`: Opus packets can't be stream-copied into an .mp3
+        // container. Re-encode so the segment is always a valid file.
+        `ffmpeg -y -ss ${startTime} -i "${inputPath}" -t ${duration} "${outputPath}"`,
         { stdio: 'pipe' }
     );
 }

@@ -759,7 +759,8 @@ export class CommandHandler {
 
             if (result.error) {
                 console.error(`❌ Transcription error: ${result.error}`);
-                await message.reply(SYS_PREFIX + `[ERROR] ${result.error}`);
+                const replyText = SYS_PREFIX + `[ERROR] ${result.error}`;
+                await message.reply(replyText.length > 1900 ? replyText.slice(0, 1900) + '…' : replyText);
                 return '';
             }
 
