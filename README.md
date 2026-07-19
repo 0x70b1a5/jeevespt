@@ -3,10 +3,11 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript)
 ![Discord.js](https://img.shields.io/badge/discord.js-v14-5865F2?logo=discord&logoColor=white)
 ![Claude](https://img.shields.io/badge/Claude-Anthropic-d4a27f?logo=anthropic)
+![Grok](https://img.shields.io/badge/Grok-xAI-000000)
 ![License](https://img.shields.io/badge/license-ISC-green)
 ![Satisfaction](https://img.shields.io/badge/satisfaction-given,%20sir-success)
 
-A sophisticated Discord bot powered by Claude (Anthropic) with multiple personas, voice capabilities, spaced-repetition learning, auto-translation, and more.
+A sophisticated Discord bot powered by Claude (Anthropic) and Grok (xAI) with multiple personas, voice capabilities, spaced-repetition learning, auto-translation, and more.
 
 With apologies to P. G. Wodehouse.
 
@@ -54,7 +55,7 @@ With apologies to P. G. Wodehouse.
 ### Technical
 - **Dual Command Interface** — Every command works both as `!prefix` text and as a native Discord slash command (registered via the API, with autocomplete and argument validation). Voice commands ("command clear") still drive the text path.
 - **Self-Documenting Help** — `!help` / `/help` generate a single categorized embed from command metadata; `!help <command>` shows usage, arguments, and examples. The listing can never drift from the actual commands.
-- **Multi-Model Support** — Switch between Claude models on the fly with validation
+- **Multi-Model Support** — Switch between Claude (Anthropic) and Grok (xAI) models on the fly with validation (`!model grok-4.5`)
 - **Conversation Persistence** — Message history and configuration saved to disk
 - **Webhook Personas** — Each mode uses distinct bot name and avatar
 - **Graceful Shutdown** — State persistence and farewell messages on SIGINT

@@ -27,5 +27,10 @@ export {
     ReactionTracker,
     ResponseFrequency,
     VALID_ANTHROPIC_MODELS,
-    isValidAnthropicModel
+    isValidAnthropicModel,
+    VALID_XAI_MODELS,
+    isValidXaiModel,
+    isXaiModel,
+    VALID_MODELS,
+    isValidModel
 } from './types';

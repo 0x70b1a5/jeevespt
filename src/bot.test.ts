@@ -1,4 +1,14 @@
-import { BotState, BotConfig, isValidAnthropicModel, VALID_ANTHROPIC_MODELS, ResponseFrequency } from './bot';
+import {
+  BotState,
+  BotConfig,
+  isValidAnthropicModel,
+  VALID_ANTHROPIC_MODELS,
+  isValidXaiModel,
+  isXaiModel,
+  VALID_XAI_MODELS,
+  isValidModel,
+  ResponseFrequency
+} from './bot';
 
 // Mock fs to avoid actual file operations
 jest.mock('fs', () => ({
@@ -36,6 +46,37 @@ describe('isValidAnthropicModel', () => {
     VALID_ANTHROPIC_MODELS.forEach(model => {
       expect(isValidAnthropicModel(model)).toBe(true);
     });
+  });
+});
+
+describe('isXaiModel / isValidXaiModel', () => {
+  it('should detect grok-* model ids as xAI', () => {
+    expect(isXaiModel('grok-4.5')).toBe(true);
+    expect(isXaiModel('grok-3-mini')).toBe(true);
+    expect(isXaiModel('claude-sonnet-4-5')).toBe(false);
+    expect(isXaiModel('gpt-4')).toBe(false);
+  });
+
+  it('should accept known and future grok model ids', () => {
+    expect(isValidXaiModel('grok-4.5')).toBe(true);
+    expect(isValidXaiModel('grok-4.3')).toBe(true);
+    expect(isValidXaiModel('grok-future-99')).toBe(true); // prefix match for new releases
+    expect(isValidXaiModel('claude-sonnet-4-5')).toBe(false);
+  });
+
+  it('should validate all models in VALID_XAI_MODELS', () => {
+    VALID_XAI_MODELS.forEach(model => {
+      expect(isValidXaiModel(model)).toBe(true);
+      expect(isXaiModel(model)).toBe(true);
+    });
+  });
+});
+
+describe('isValidModel', () => {
+  it('should accept both Claude and Grok models', () => {
+    expect(isValidModel('claude-sonnet-4-5')).toBe(true);
+    expect(isValidModel('grok-4.5')).toBe(true);
+    expect(isValidModel('not-a-model')).toBe(false);
   });
 });
 

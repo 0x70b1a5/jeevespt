@@ -20,6 +20,8 @@ export interface CommandContext {
 export interface CommandDependencies {
     state: BotState;
     openai: OpenAI;
+    /** xAI / Grok client (OpenAI-compatible, baseURL api.x.ai) */
+    xai: OpenAI;
     anthropic: Anthropic;
     elevenLabs: ElevenLabs;
 }

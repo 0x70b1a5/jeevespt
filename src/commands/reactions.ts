@@ -2,7 +2,7 @@ import { Message } from 'discord.js';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
-import { modelSupportsTemperature } from './constants';
+import { generateText } from '../llm/generate';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
 import { LUGSO_PROMPT } from '../prompts/lugso';
 
@@ -197,17 +197,21 @@ async function generateEmojiReaction(message: Message, deps: CommandDependencies
             }
         ] as MessageParam[];
 
-        const response = await deps.anthropic.messages.create({
-            model: config.model,
-            max_tokens: 30,
-            ...(modelSupportsTemperature(config.model) && { temperature: config.temperature }),
-            messages,
-            system: systemPrompt?.content || ''
-        });
+        const result = await generateText(
+            { anthropic: deps.anthropic, xai: deps.xai },
+            {
+                model: config.model,
+                maxTokens: 30,
+                temperature: config.temperature,
+                messages: messages.map(m => ({
+                    role: typeof m.role === 'string' ? m.role : 'user',
+                    content: typeof m.content === 'string' ? m.content : String(m.content ?? '')
+                })),
+                system: systemPrompt?.content || ''
+            }
+        );
 
-        const responseText = response.content[0].type === 'text'
-            ? response.content[0].text
-            : '';
+        const responseText = result.content || '';
 
         const emojiMatch = responseText.trim().match(/^(\p{Emoji}|:\w+:)$/u);
         if (emojiMatch) {

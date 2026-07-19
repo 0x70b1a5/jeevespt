@@ -59,6 +59,12 @@ const mockOpenAI = {
   }
 } as any;
 
+const mockXai = {
+  responses: {
+    create: jest.fn()
+  }
+} as any;
+
 const mockAnthropic = {
   messages: {
     create: jest.fn()
@@ -136,7 +142,7 @@ describe('CommandHandler', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     state = new BotState();
-    handler = new CommandHandler(state, mockOpenAI, mockAnthropic, mockElevenLabs);
+    handler = new CommandHandler(state, mockOpenAI, mockXai, mockAnthropic, mockElevenLabs);
   });
 
   describe('handleCommand', () => {
@@ -456,8 +462,55 @@ describe('CommandHandler', () => {
       const response = await handler.generateResponse('guild123', false);
       
       expect(mockAnthropic.messages.create).toHaveBeenCalled();
+      expect(mockXai.responses.create).not.toHaveBeenCalled();
       expect(response?.content).toBe('Hello, sir.');
       expect(response?.role).toBe('assistant');
+    });
+
+    it('should call xAI Responses API when model is a Grok model', async () => {
+      state.updateConfig('guild123', false, { model: 'grok-4.5' });
+      mockXai.responses.create.mockResolvedValueOnce({
+        output_text: 'Very good, sir. Grok reporting for duty.',
+        output: []
+      });
+
+      const buffer = state.getBuffer('guild123', false);
+      buffer.messages.push({ role: 'user', content: 'Hello Jeeves' });
+
+      const response = await handler.generateResponse('guild123', false);
+
+      expect(mockXai.responses.create).toHaveBeenCalled();
+      expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
+      const call = mockXai.responses.create.mock.calls[0][0];
+      expect(call.model).toBe('grok-4.5');
+      expect(call.store).toBe(false);
+      expect(call.input.some((m: any) => m.role === 'system')).toBe(true);
+      expect(call.input.some((m: any) => m.role === 'user' && m.content.includes('Hello Jeeves'))).toBe(true);
+      expect(response?.content).toBe('Very good, sir. Grok reporting for duty.');
+      expect(response?.role).toBe('assistant');
+    });
+
+    it('should pass web_search tool to xAI when web search is enabled', async () => {
+      state.updateConfig('guild123', false, {
+        model: 'grok-4.5',
+        webSearchEnabled: true
+      });
+      mockXai.responses.create.mockResolvedValueOnce({
+        output_text: 'According to the papers, sir…',
+        output: [{ type: 'web_search_call' }],
+        citations: ['https://example.com']
+      });
+
+      const buffer = state.getBuffer('guild123', false);
+      buffer.messages.push({ role: 'user', content: 'What is the news?' });
+
+      const response = await handler.generateResponse('guild123', false);
+
+      const call = mockXai.responses.create.mock.calls[0][0];
+      expect(call.tools).toEqual([{ type: 'web_search' }]);
+      expect(response?.content).toContain('According to the papers');
+      expect(response?.content).toContain('**Sources:**');
+      expect(response?.content).toContain('https://example.com');
     });
 
     it('should return null when API returns non-text content', async () => {

@@ -6,7 +6,6 @@
  */
 
 import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel, ChatInputCommandInteraction } from 'discord.js';
-import { MessageParam } from '@anthropic-ai/sdk/resources';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 
@@ -17,14 +16,14 @@ import dayjs from 'dayjs';
 import { JEEVES_PROMPT, TOKIPONA_PROMPT, WEB_SEARCH_ADDENDUM } from '../prompts/prompts';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
 import whisper from '../whisper';
+import { generateText, withSourcesFooter } from '../llm/generate';
 
 import { CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { CommandRegistry, registry } from './registry';
 import { commandUtils, CommandUtilsImpl, canExecuteCommand, isSendableChannel } from './utils';
 import {
     SYS_PREFIX, MAX_RETRIES, RETRY_DELAY_MS,
-    ALLOWED_DOMAINS, TEMP_DIR, TASK_AGENT_WEB_SEARCH_MAX_USES,
-    modelSupportsTemperature
+    ALLOWED_DOMAINS, TEMP_DIR, TASK_AGENT_WEB_SEARCH_MAX_USES
 } from './constants';
 
 // Import command modules
@@ -62,10 +61,11 @@ export class CommandHandler {
     constructor(
         private state: BotState,
         private openai: OpenAI,
+        private xai: OpenAI,
         private anthropic: Anthropic,
         private elevenLabs: ElevenLabs
     ) {
-        this.deps = { state, openai, anthropic, elevenLabs };
+        this.deps = { state, openai, xai, anthropic, elevenLabs };
         this.utils = new CommandUtilsImpl();
 
         // Initialize muse handler with generateResponse bound to this instance
@@ -347,84 +347,35 @@ export class CommandHandler {
                 enhancedSystemPrompt += `\n\nIMPORTANT: You are about to send a reminder to a user. You are part of a system that can set reminders; however, do not break character for this message.`;
             }
 
-            // Build API request options
-            const apiOptions: any = {
-                model: config.model,
-                messages: latestMessages.map(msg => ({
-                    role: msg?.role === 'assistant' ? 'assistant' : 'user',
-                    content: msg?.content
-                })).filter(m => Boolean(m?.content)) as MessageParam[],
-                max_tokens: config.maxResponseLength,
-                system: enhancedSystemPrompt
-            };
-
-            // Add extended thinking if enabled (requires temperature=1)
-            if (config.extendedThinking) {
-                apiOptions.thinking = {
-                    type: 'enabled',
-                    budget_tokens: 3000
-                };
-                apiOptions.max_tokens = config.maxResponseLength + 3000;
-                // Temperature must be 1 for extended thinking
-            } else if (modelSupportsTemperature(config.model)) {
-                apiOptions.temperature = config.temperature;
-            }
-
-            // Grant the model the server-side web search tool when enabled.
-            // This is a "server tool" — Anthropic executes the search and
-            // returns results inline, so no client-side tool loop is needed.
-            if (config.webSearchEnabled) {
-                apiOptions.tools = [
-                    ...(apiOptions.tools ?? []),
-                    {
-                        type: 'web_search_20250305',
-                        name: 'web_search',
-                        max_uses: config.webSearchMaxUses
-                    }
-                ];
-            }
-
-            const completion = await this.anthropic.messages.create(apiOptions);
-
-            // With web search, the response may contain multiple text blocks
-            // interleaved with server_tool_use / web_search_tool_result blocks.
-            // Concatenate every text block, and append a Sources list from any
-            // web_search citations the model attached.
-            const blocks = completion.content as any[];
-            const textParts: string[] = [];
-            const sources = new Map<string, string>(); // url -> title
-            let searchesPerformed = 0;
-
-            for (const block of blocks) {
-                if (block.type === 'text') {
-                    textParts.push(block.text);
-                    if (Array.isArray(block.citations)) {
-                        for (const citation of block.citations) {
-                            if (citation.type === 'web_search_result_location' && citation.url) {
-                                sources.set(citation.url, citation.title || citation.url);
-                            }
-                        }
-                    }
-                } else if (block.type === 'server_tool_use' && block.name === 'web_search') {
-                    searchesPerformed++;
+            const result = await generateText(
+                { anthropic: this.anthropic, xai: this.xai },
+                {
+                    model: config.model,
+                    system: enhancedSystemPrompt,
+                    messages: latestMessages
+                        .map(msg => ({
+                            role: msg?.role === 'assistant' ? 'assistant' : 'user',
+                            content: msg?.content || ''
+                        }))
+                        .filter(m => Boolean(m.content)),
+                    maxTokens: config.maxResponseLength,
+                    temperature: config.temperature,
+                    extendedThinking: config.extendedThinking,
+                    webSearchEnabled: config.webSearchEnabled,
+                    webSearchMaxUses: config.webSearchMaxUses
                 }
-            }
+            );
 
-            const text = textParts.join('\n\n').trim();
-            if (text) {
-                let finalContent = text;
-                if (sources.size > 0) {
-                    const sourceLines = Array.from(sources.entries())
-                        .map(([url, title]) => `- [${title}](${url})`)
-                        .join('\n');
-                    finalContent += `\n\n**Sources:**\n${sourceLines}`;
-                }
+            if (result.content) {
+                const finalContent = withSourcesFooter(result.content, result.sources);
                 const response = { role: 'assistant', content: finalContent };
                 const meta: string[] = [];
                 if (config.extendedThinking) meta.push('thinking');
-                if (searchesPerformed > 0) meta.push(`${searchesPerformed} web search${searchesPerformed === 1 ? '' : 'es'}`);
+                if (result.searchesPerformed > 0) {
+                    meta.push(`${result.searchesPerformed} web search${result.searchesPerformed === 1 ? '' : 'es'}`);
+                }
                 const metaStr = meta.length ? ` [${meta.join(', ')}]` : '';
-                console.log(`✅ Generated response (${response.content.length} chars)${metaStr}`);
+                console.log(`✅ Generated response (${response.content.length} chars) via ${config.model}${metaStr}`);
                 return response;
             }
             return null;
@@ -464,50 +415,24 @@ export class CommandHandler {
 
         const taskFraming = `[SYSTEM] You are being invoked as a scheduled task. The user set this task in advance; they are not present to clarify. Carry out the following task and respond with your findings, in character. Do not break character to discuss the task framing.\n\n<task>\n${instructions}\n</task>`;
 
-        const apiOptions: any = {
-            model: config.model,
-            messages: [{ role: 'user', content: taskFraming }],
-            max_tokens: config.maxResponseLength,
-            system: systemPrompt?.content || '',
-            tools: [{
-                type: 'web_search_20250305',
-                name: 'web_search',
-                max_uses: TASK_AGENT_WEB_SEARCH_MAX_USES
-            }]
-        };
-        if (modelSupportsTemperature(config.model)) {
-            apiOptions.temperature = config.temperature;
-        }
-
-        const completion = await this.anthropic.messages.create(apiOptions);
-
-        const blocks = completion.content as any[];
-        const textParts: string[] = [];
-        const sources = new Map<string, string>();
-        for (const block of blocks) {
-            if (block.type === 'text') {
-                textParts.push(block.text);
-                if (Array.isArray(block.citations)) {
-                    for (const citation of block.citations) {
-                        if (citation.type === 'web_search_result_location' && citation.url) {
-                            sources.set(citation.url, citation.title || citation.url);
-                        }
-                    }
-                }
+        const result = await generateText(
+            { anthropic: this.anthropic, xai: this.xai },
+            {
+                model: config.model,
+                system: systemPrompt?.content || '',
+                messages: [{ role: 'user', content: taskFraming }],
+                maxTokens: config.maxResponseLength,
+                temperature: config.temperature,
+                webSearchEnabled: true,
+                webSearchMaxUses: TASK_AGENT_WEB_SEARCH_MAX_USES
             }
-        }
+        );
 
-        const text = textParts.join('\n\n').trim();
-        if (!text) return null;
-
-        let finalContent = text;
-        if (sources.size > 0) {
-            const sourceLines = Array.from(sources.entries())
-                .map(([url, title]) => `- [${title}](${url})`)
-                .join('\n');
-            finalContent += `\n\n**Sources:**\n${sourceLines}`;
-        }
-        return { role: 'assistant', content: finalContent };
+        if (!result.content) return null;
+        return {
+            role: 'assistant',
+            content: withSourcesFooter(result.content, result.sources)
+        };
     }
 
     /**

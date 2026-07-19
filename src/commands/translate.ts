@@ -1,7 +1,7 @@
 import { Message } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
-import { modelSupportsTemperature } from './constants';
+import { generateText } from '../llm/generate';
 import { extractTranslatableEmbedContent } from '../formatMessage';
 
 /**
@@ -405,21 +405,21 @@ async function detectLanguage(
     try {
         const config = deps.state.getConfig(guildId, false);
 
-        const response = await deps.anthropic.messages.create({
-            model: config.model,
-            max_tokens: 10,
-            ...(modelSupportsTemperature(config.model) && { temperature: 0.1 }),
-            messages: [{
-                role: 'user',
-                content: `Is the following text written in ${targetLanguage}? Respond with only "yes" or "no":\n\n${text}`
-            }],
-            system: `You are a language detection expert. Determine if text is written in the specified language.`
-        });
+        const result = await generateText(
+            { anthropic: deps.anthropic, xai: deps.xai },
+            {
+                model: config.model,
+                maxTokens: 10,
+                temperature: 0.1,
+                messages: [{
+                    role: 'user',
+                    content: `Is the following text written in ${targetLanguage}? Respond with only "yes" or "no":\n\n${text}`
+                }],
+                system: `You are a language detection expert. Determine if text is written in the specified language.`
+            }
+        );
 
-        const detectionResult = response.content[0]?.type === 'text'
-            ? response.content[0].text.trim().toLowerCase()
-            : '';
-
+        const detectionResult = (result.content || '').trim().toLowerCase();
         return detectionResult === 'yes';
     } catch (error) {
         console.error('Error detecting language:', error);
@@ -439,18 +439,21 @@ async function generateTranslation(
     try {
         const config = deps.state.getConfig(guildId, false);
 
-        const response = await deps.anthropic.messages.create({
-            model: config.model,
-            max_tokens: 1000,
-            ...(modelSupportsTemperature(config.model) && { temperature: 0.3 }),
-            messages: [{
-                role: 'user',
-                content: `Translate the following text to ${targetLanguage}. Only respond with the translation, nothing else:\n\n${text}`
-            }],
-            system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.`
-        });
+        const result = await generateText(
+            { anthropic: deps.anthropic, xai: deps.xai },
+            {
+                model: config.model,
+                maxTokens: 1000,
+                temperature: 0.3,
+                messages: [{
+                    role: 'user',
+                    content: `Translate the following text to ${targetLanguage}. Only respond with the translation, nothing else:\n\n${text}`
+                }],
+                system: `You are a professional translator. Translate text accurately and naturally to ${targetLanguage}.`
+            }
+        );
 
-        return response.content[0]?.type === 'text' ? response.content[0].text : null;
+        return result.content;
     } catch (error) {
         console.error('Error generating translation:', error);
         return null;

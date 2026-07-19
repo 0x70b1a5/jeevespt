@@ -1,7 +1,7 @@
 import { Message, TextChannel, DMChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils } from './utils';
-import { modelSupportsTemperature } from './constants';
+import { generateText } from '../llm/generate';
 import { LEARNING_PROMPT_TEMPLATE } from '../prompts/prompts';
 
 /**
@@ -188,18 +188,21 @@ export async function performLearningQuestion(
         const config = deps.state.getConfig(id, isDM);
         const learningPrompt = LEARNING_PROMPT_TEMPLATE.replace('{SUBJECT}', subject);
 
-        const response = await deps.anthropic.messages.create({
-            model: config.model,
-            max_tokens: 300,
-            ...(modelSupportsTemperature(config.model) && { temperature: config.temperature }),
-            messages: [{
-                role: 'user',
-                content: `Create a question for the following subject: ${subject}`
-            }],
-            system: learningPrompt
-        });
+        const result = await generateText(
+            { anthropic: deps.anthropic, xai: deps.xai },
+            {
+                model: config.model,
+                maxTokens: 300,
+                temperature: config.temperature,
+                messages: [{
+                    role: 'user',
+                    content: `Create a question for the following subject: ${subject}`
+                }],
+                system: learningPrompt
+            }
+        );
 
-        const questionText = response.content[0]?.type === 'text' ? response.content[0].text : '';
+        const questionText = result.content || '';
 
         if (questionText) {
             const questionMessage = {

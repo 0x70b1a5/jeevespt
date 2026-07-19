@@ -19,6 +19,7 @@ export class BotServer {
     private client: Client;
     private state: BotState;
     private openai: OpenAI;
+    private xai: OpenAI;
     private anthropic: Anthropic;
     private elevenLabs: ElevenLabs;
     private commands: CommandHandler;
@@ -46,13 +47,20 @@ export class BotServer {
             apiKey: process.env.OPENAI_API_KEY
         });
 
+        // xAI Grok — OpenAI-compatible Responses API at api.x.ai
+        this.xai = new OpenAI({
+            apiKey: process.env.XAI_API_KEY,
+            baseURL: 'https://api.x.ai/v1',
+            timeout: 360000
+        });
+
         this.anthropic = new Anthropic({
             apiKey: process.env.ANTHROPIC_API_KEY
         });
 
         this.elevenLabs = new ElevenLabs(process.env.ELEVENLABS_API_KEY);
 
-        this.commands = new CommandHandler(this.state, this.openai, this.anthropic, this.elevenLabs);
+        this.commands = new CommandHandler(this.state, this.openai, this.xai, this.anthropic, this.elevenLabs);
 
         this.initializeEventListeners();
         this.initializeMuseTimers();

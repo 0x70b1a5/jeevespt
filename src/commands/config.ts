@@ -2,7 +2,7 @@ import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
 import { commandUtils } from './utils';
-import { VALID_ANTHROPIC_MODELS } from '../bot';
+import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, isXaiModel } from '../bot';
 import { registry } from './registry';
 import { buildHelpEmbed, buildCommandDetailEmbed } from './helpText';
 
@@ -111,17 +111,12 @@ export const temperatureCommand: Command = {
 };
 
 /**
- * Model list cache for API validation
+ * Model list cache for API validation (Anthropic + xAI)
  */
 let modelListCache: string[] | null = null;
 let modelListCacheTime = 0;
 
-async function getValidModels(): Promise<string[]> {
-    const now = Date.now();
-    if (modelListCache && (now - modelListCacheTime) < MODEL_CACHE_DURATION) {
-        return modelListCache;
-    }
-
+async function fetchAnthropicModels(): Promise<string[]> {
     try {
         const response = await fetch('https://api.anthropic.com/v1/models', {
             headers: {
@@ -132,63 +127,113 @@ async function getValidModels(): Promise<string[]> {
 
         if (response.ok) {
             const data = await response.json() as { data: Array<{ id: string }> };
-            modelListCache = data.data.map(model => model.id);
-            modelListCacheTime = now;
-            console.log(`✅ Fetched ${modelListCache.length} models from Anthropic API`);
-            return modelListCache;
-        } else {
-            console.warn(`⚠️ Failed to fetch models from API (${response.status}), using static list`);
-            return [...VALID_ANTHROPIC_MODELS];
+            const ids = data.data.map(model => model.id);
+            console.log(`✅ Fetched ${ids.length} models from Anthropic API`);
+            return ids;
         }
+        console.warn(`⚠️ Failed to fetch Anthropic models (${response.status}), using static list`);
     } catch (error) {
-        console.warn(`⚠️ Error fetching models from API, using static list:`, error);
-        return [...VALID_ANTHROPIC_MODELS];
+        console.warn(`⚠️ Error fetching Anthropic models, using static list:`, error);
     }
+    return [...VALID_ANTHROPIC_MODELS];
+}
+
+async function fetchXaiModels(): Promise<string[]> {
+    try {
+        const response = await fetch('https://api.x.ai/v1/models', {
+            headers: {
+                Authorization: `Bearer ${process.env.XAI_API_KEY || ''}`
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json() as { data: Array<{ id: string }> };
+            // Prefer chat/text models; filter out image/video-only ids when obvious
+            const ids = data.data
+                .map(model => model.id)
+                .filter(id => id.startsWith('grok-') && !id.includes('imagine') && !id.includes('image') && !id.includes('video'));
+            console.log(`✅ Fetched ${ids.length} models from xAI API`);
+            return ids.length > 0 ? ids : [...VALID_XAI_MODELS];
+        }
+        console.warn(`⚠️ Failed to fetch xAI models (${response.status}), using static list`);
+    } catch (error) {
+        console.warn(`⚠️ Error fetching xAI models, using static list:`, error);
+    }
+    return [...VALID_XAI_MODELS];
+}
+
+async function getValidModels(): Promise<string[]> {
+    const now = Date.now();
+    if (modelListCache && (now - modelListCacheTime) < MODEL_CACHE_DURATION) {
+        return modelListCache;
+    }
+
+    const [anthropicModels, xaiModels] = await Promise.all([
+        fetchAnthropicModels(),
+        fetchXaiModels()
+    ]);
+
+    modelListCache = [...anthropicModels, ...xaiModels];
+    modelListCacheTime = now;
+    return modelListCache;
+}
+
+function formatModelList(models: string[], current?: string): string {
+    return models
+        .map(m => `• \`${m}\`${m === current ? ' ⭐ (current)' : ''}`)
+        .join('\n');
 }
 
 /**
- * !model - Set or list AI models
+ * !model - Set or list AI models (Anthropic Claude + xAI Grok)
  */
 export const modelCommand: Command = {
     names: ['model'],
-    description: 'Set the Claude model, or list available models.',
+    description: 'Set the AI model (Claude or Grok), or list available models.',
     category: 'Configuration',
     ephemeral: true,
     options: [{ name: 'model', description: 'Model id; omit to list models', type: 'string', required: false }],
-    deferred: true, // fetches the model list from the Anthropic API
+    deferred: true, // fetches model lists from Anthropic + xAI APIs
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const modelName = ctx.args[0];
 
         if (!modelName) {
             const validModels = await getValidModels();
             const currentConfig = deps.state.getConfig(ctx.id, ctx.isDM);
-            const modelList = validModels
-                .map(m => `• \`${m}\`${m === currentConfig.model ? ' ⭐ (current)' : ''}`)
-                .join('\n');
+            const anthropic = validModels.filter(m => !isXaiModel(m));
+            const xai = validModels.filter(m => isXaiModel(m));
 
             await commandUtils.reply(
                 ctx.message,
-                `**Available Anthropic models:**\n${modelList}\n\nUse \`!model <model_name>\` to switch models.`
+                `**Anthropic (Claude):**\n${formatModelList(anthropic, currentConfig.model)}\n\n` +
+                `**xAI (Grok):**\n${formatModelList(xai, currentConfig.model)}\n\n` +
+                `Use \`!model <model_name>\` to switch. Example: \`!model grok-4.5\``
             );
             return;
         }
 
         const validModels = await getValidModels();
-        const isValidModel = validModels.includes(modelName);
+        const recognized = validModels.includes(modelName) || isXaiModel(modelName);
 
         deps.state.updateConfig(ctx.id, ctx.isDM, { model: modelName });
 
-        if (!isValidModel) {
-            const modelList = validModels.map(m => `• \`${m}\``).join('\n');
+        if (!recognized) {
+            const anthropic = validModels.filter(m => !isXaiModel(m));
+            const xai = validModels.filter(m => isXaiModel(m));
             await commandUtils.reply(
                 ctx.message,
                 `Model set to \`${modelName}\`.\n\n` +
-                `**⚠️ Warning:** \`${modelName}\` is not a recognized Anthropic model. ` +
-                `This may be fine for testing purposes, but using an invalid model will cause the bot to fail when generating responses.\n\n` +
-                `**Valid Anthropic models:**\n${modelList}`
+                `**⚠️ Warning:** \`${modelName}\` is not a recognized model. ` +
+                `This may be fine for testing, but an invalid id will fail when generating responses.\n\n` +
+                `**Anthropic:**\n${formatModelList(anthropic)}\n\n` +
+                `**xAI:**\n${formatModelList(xai)}`
             );
         } else {
-            await commandUtils.reply(ctx.message, `Model set to \`${modelName}\`.`);
+            const provider = isXaiModel(modelName) ? 'xAI Grok' : 'Anthropic Claude';
+            await commandUtils.reply(
+                ctx.message,
+                `Model set to \`${modelName}\` (${provider}).`
+            );
         }
     }
 };

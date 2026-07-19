@@ -146,3 +146,37 @@ export const VALID_ANTHROPIC_MODELS = [
 export function isValidAnthropicModel(model: string): boolean {
     return VALID_ANTHROPIC_MODELS.includes(model as any);
 }
+
+/** Whether this model id should be served by the xAI (Grok) API. */
+export function isXaiModel(model: string): boolean {
+    return model.startsWith('grok-');
+}
+
+// Valid xAI Grok models (static fallback; !model also fetches live list)
+export const VALID_XAI_MODELS = [
+    'grok-4.5',
+    'grok-4.3',
+    'grok-4.20-0309-reasoning',
+    'grok-4.20-0309-non-reasoning',
+    'grok-4',
+    'grok-3',
+    'grok-3-mini',
+    'grok-3-fast',
+    'grok-3-mini-fast',
+    'grok-2',
+    'grok-2-latest',
+] as const;
+
+export function isValidXaiModel(model: string): boolean {
+    return VALID_XAI_MODELS.includes(model as any) || isXaiModel(model);
+}
+
+/** Combined static model list used when live API fetch is unavailable. */
+export const VALID_MODELS = [
+    ...VALID_ANTHROPIC_MODELS,
+    ...VALID_XAI_MODELS,
+] as const;
+
+export function isValidModel(model: string): boolean {
+    return isValidAnthropicModel(model) || isValidXaiModel(model);
+}
