@@ -2,7 +2,7 @@ import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
 import { commandUtils } from './utils';
-import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, isXaiModel } from '../bot';
+import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, isXaiModel, isHermesModel } from '../bot';
 import { registry } from './registry';
 import { buildHelpEmbed, buildCommandDetailEmbed } from './helpText';
 
@@ -189,7 +189,7 @@ function formatModelList(models: string[], current?: string): string {
  */
 export const modelCommand: Command = {
     names: ['model'],
-    description: 'Set the AI model (Claude or Grok), or list available models.',
+    description: 'Set the AI model (Claude, Grok, or Poolside/Hermes), or list available models.',
     category: 'Configuration',
     ephemeral: true,
     options: [{ name: 'model', description: 'Model id; omit to list models', type: 'string', required: false }],
@@ -200,14 +200,16 @@ export const modelCommand: Command = {
         if (!modelName) {
             const validModels = await getValidModels();
             const currentConfig = deps.state.getConfig(ctx.id, ctx.isDM);
-            const anthropic = validModels.filter(m => !isXaiModel(m));
+            const anthropic = validModels.filter(m => !isXaiModel(m) && !isHermesModel(m));
             const xai = validModels.filter(m => isXaiModel(m));
+            const hermesModels = validModels.filter(m => isHermesModel(m));
 
             await commandUtils.reply(
                 ctx.message,
                 `**Anthropic (Claude):**\n${formatModelList(anthropic, currentConfig.model)}\n\n` +
                 `**xAI (Grok):**\n${formatModelList(xai, currentConfig.model)}\n\n` +
-                `Use \`!model <model_name>\` to switch. Example: \`!model grok-4.5\``
+                `**Poolside (Hermes):**\n${formatModelList(hermesModels, currentConfig.model)}\n\n` +
+                `Use \`!model <model_name>\` to switch. Example: \`!model poolside/laguna-xs-2.1\``
             );
             return;
         }
@@ -229,7 +231,7 @@ export const modelCommand: Command = {
                 `**xAI:**\n${formatModelList(xai)}`
             );
         } else {
-            const provider = isXaiModel(modelName) ? 'xAI Grok' : 'Anthropic Claude';
+            const provider = isXaiModel(modelName) ? 'xAI Grok' : (isHermesModel(modelName) ? 'Poolside Hermes' : 'Anthropic Claude');
             await commandUtils.reply(
                 ctx.message,
                 `Model set to \`${modelName}\` (${provider}).`

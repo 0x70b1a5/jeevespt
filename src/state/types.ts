@@ -180,8 +180,10 @@ export function isValidXaiModel(model: string): boolean {
 export const VALID_MODELS = [
     ...VALID_ANTHROPIC_MODELS,
     ...VALID_XAI_MODELS,
-    'hermes-llama-3.1-70b',
-    'hermes-gpt-4o-mini',
+    // Poolside/Hermes models
+    'poolside/laguna-m.1',
+    'poolside/laguna-xs-2.1',
+    'poolside/laguna-s-2.1',
 ] as const;
 
 export function isValidModel(model: string): boolean {
