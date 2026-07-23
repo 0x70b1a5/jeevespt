@@ -1,13 +1,14 @@
 /**
- * Multi-provider LLM generation (Anthropic Claude + xAI Grok).
+ * Multi-provider LLM generation (Anthropic Claude + xAI Grok + Hermes/Nous).
  *
- * Routes by model id: `grok-*` → xAI Responses API; everything else → Anthropic.
+ * Routes by model id: `grok-*` → xAI Responses API; `hermes-*`, `poolside/*`, `nous/*` → Hermes/Nous API;
+ * everything else → Anthropic.
  */
 
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
-import { isXaiModel } from '../state/types';
+import { isXaiModel, isHermesModel } from '../state/types';
 import { modelSupportsTemperature } from '../commands/constants';
 
 export interface ChatMessage {
@@ -36,6 +37,7 @@ export interface GenerateResult {
 export interface LlmClients {
     anthropic: Anthropic;
     xai: OpenAI;
+    hermes?: OpenAI; // Hermes/Nous API (OpenAI-compatible)
 }
 
 /**
@@ -47,6 +49,12 @@ export async function generateText(
 ): Promise<GenerateResult> {
     if (isXaiModel(options.model)) {
         return generateWithXai(clients.xai, options);
+    }
+    if (isHermesModel(options.model)) {
+        if (!clients.hermes) {
+            throw new Error(`Hermes client not initialized for model: ${options.model}`);
+        }
+        return generateWithHermes(clients.hermes, options);
     }
     return generateWithAnthropic(clients.anthropic, options);
 }
@@ -206,6 +214,89 @@ function parseXaiResponse(response: any): GenerateResult {
         const web = usage.web_search ?? usage.WEB_SEARCH ?? usage.SERVER_SIDE_TOOL_WEB_SEARCH;
         if (typeof web === 'number' && web > searchesPerformed) {
             searchesPerformed = web;
+        }
+    }
+
+    text = text.trim();
+    return {
+        content: text || null,
+        sources,
+        searchesPerformed
+    };
+}
+
+/**
+ * Generate with Hermes/Nous API (OpenAI-compatible endpoint).
+ */
+async function generateWithHermes(
+    hermes: OpenAI,
+    options: GenerateOptions
+): Promise<GenerateResult> {
+    // Hermes uses OpenAI-compatible chat completions
+    const messages = options.messages
+        .map(msg => ({
+            role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+            content: msg.content
+        }))
+        .filter(m => Boolean(m.content));
+
+    const apiOptions: any = {
+        model: options.model,
+        messages: [{ role: 'system', content: options.system || '' }, ...messages],
+        max_tokens: options.maxTokens
+    };
+
+    if (options.temperature !== undefined) {
+        apiOptions.temperature = options.temperature;
+    }
+
+    // Hermes supports web search via tool
+    if (options.webSearchEnabled) {
+        apiOptions.tools = [{ type: 'web_search' }];
+    }
+
+    try {
+        const response = await hermes.chat.completions.create(apiOptions);
+        return parseHermesResponse(response);
+    } catch (error: any) {
+        // Fallback: try OpenAI-compatible completions API
+        const fallbackResponse = await hermes.completions.create({
+            model: options.model,
+            prompt: options.system ? `${options.system}\n\n${options.messages.map(m => m.content).join('\n')}` : options.messages.map(m => m.content).join('\n'),
+            max_tokens: options.maxTokens,
+            temperature: options.temperature
+        });
+        return {
+            content: fallbackResponse.choices[0]?.text || null,
+            sources: new Map(),
+            searchesPerformed: 0
+        };
+    }
+}
+
+function parseHermesResponse(response: any): GenerateResult {
+    const sources = new Map<string, string>();
+    let searchesPerformed = 0;
+    let text = '';
+
+    if (response.choices && response.choices.length > 0) {
+        text = response.choices[0]?.message?.content || '';
+    }
+
+    // Handle citations if present
+    if (response.choices && response.choices[0]?.message?.tool_calls) {
+        for (const tc of response.choices[0]?.message?.tool_calls || []) {
+            if (tc.type === 'function' || tc.type === 'web_search') {
+                searchesPerformed++;
+            }
+        }
+    }
+
+    // Handle tool results with citations
+    if (response.choices && response.choices[0]?.message?.content) {
+        const content = response.choices[0].message.content;
+        if (typeof content === 'string') {
+            text = content;
         }
     }
 

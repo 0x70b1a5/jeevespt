@@ -63,9 +63,10 @@ export class CommandHandler {
         private openai: OpenAI,
         private xai: OpenAI,
         private anthropic: Anthropic,
-        private elevenLabs: ElevenLabs
+        private elevenLabs: ElevenLabs,
+        private hermes?: OpenAI
     ) {
-        this.deps = { state, openai, xai, anthropic, elevenLabs };
+        this.deps = { state, openai, xai, anthropic, elevenLabs, hermes };
         this.utils = new CommandUtilsImpl();
 
         // Initialize muse handler with generateResponse bound to this instance
@@ -348,7 +349,7 @@ export class CommandHandler {
             }
 
             const result = await generateText(
-                { anthropic: this.anthropic, xai: this.xai },
+                { anthropic: this.anthropic, xai: this.xai, hermes: this.hermes },
                 {
                     model: config.model,
                     system: enhancedSystemPrompt,
@@ -416,7 +417,7 @@ export class CommandHandler {
         const taskFraming = `[SYSTEM] You are being invoked as a scheduled task. The user set this task in advance; they are not present to clarify. Carry out the following task and respond with your findings, in character. Do not break character to discuss the task framing.\n\n<task>\n${instructions}\n</task>`;
 
         const result = await generateText(
-            { anthropic: this.anthropic, xai: this.xai },
+            { anthropic: this.anthropic, xai: this.xai, hermes: this.hermes },
             {
                 model: config.model,
                 system: systemPrompt?.content || '',

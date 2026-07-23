@@ -23,6 +23,7 @@ export {
     VALID_XAI_MODELS,
     isValidXaiModel,
     isXaiModel,
+    isHermesModel,
     VALID_MODELS,
     isValidModel
 } from './state/index';

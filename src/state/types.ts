@@ -152,6 +152,11 @@ export function isXaiModel(model: string): boolean {
     return model.startsWith('grok-');
 }
 
+/** Whether this model id should be served by the Hermes/Nous API. */
+export function isHermesModel(model: string): boolean {
+    return model.startsWith('hermes-') || model.startsWith('poolside/') || model.startsWith('nous/');
+}
+
 // Valid xAI Grok models (static fallback; !model also fetches live list)
 export const VALID_XAI_MODELS = [
     'grok-4.5',
@@ -175,8 +180,10 @@ export function isValidXaiModel(model: string): boolean {
 export const VALID_MODELS = [
     ...VALID_ANTHROPIC_MODELS,
     ...VALID_XAI_MODELS,
+    'hermes-llama-3.1-70b',
+    'hermes-gpt-4o-mini',
 ] as const;
 
 export function isValidModel(model: string): boolean {
-    return isValidAnthropicModel(model) || isValidXaiModel(model);
+    return isValidAnthropicModel(model) || isValidXaiModel(model) || isHermesModel(model);
 }

@@ -20,6 +20,7 @@ export class BotServer {
     private state: BotState;
     private openai: OpenAI;
     private xai: OpenAI;
+    private hermes: OpenAI;
     private anthropic: Anthropic;
     private elevenLabs: ElevenLabs;
     private commands: CommandHandler;
@@ -54,13 +55,19 @@ export class BotServer {
             timeout: 360000
         });
 
+        // Hermes/Nous — OpenAI-compatible endpoint at inference-api.nousresearch.com
+        this.hermes = new OpenAI({
+            baseURL: 'https://inference-api.nousresearch.com/v1',
+            timeout: 360000
+        });
+
         this.anthropic = new Anthropic({
             apiKey: process.env.ANTHROPIC_API_KEY
         });
 
         this.elevenLabs = new ElevenLabs(process.env.ELEVENLABS_API_KEY);
 
-        this.commands = new CommandHandler(this.state, this.openai, this.xai, this.anthropic, this.elevenLabs);
+        this.commands = new CommandHandler(this.state, this.openai, this.xai, this.anthropic, this.elevenLabs, this.hermes);
 
         this.initializeEventListeners();
         this.initializeMuseTimers();

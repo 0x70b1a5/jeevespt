@@ -24,6 +24,8 @@ export interface CommandDependencies {
     xai: OpenAI;
     anthropic: Anthropic;
     elevenLabs: ElevenLabs;
+    /** Hermes/Nous client (OpenAI-compatible) - optional, used when Hermes models are selected */
+    hermes?: OpenAI;
 }
 
 /**
