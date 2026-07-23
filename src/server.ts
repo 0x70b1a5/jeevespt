@@ -55,9 +55,10 @@ export class BotServer {
             timeout: 360000
         });
 
-        // Hermes/Nous — OpenAI-compatible endpoint at inference-api.nousresearch.com
+        // Poolside/Hermes — OpenAI-compatible endpoint
         this.hermes = new OpenAI({
-            baseURL: 'https://inference-api.nousresearch.com/v1',
+            apiKey: process.env.POOLSIDE_API_KEY || '',
+            baseURL: 'https://inference.poolside.ai/v1',
             timeout: 360000
         });
 
