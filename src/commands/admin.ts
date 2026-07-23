@@ -155,10 +155,36 @@ export const showWhitelistCommand: Command = {
     }
 };
 
+/**
+ * !redeploy - Pull the latest code and restart the bot.
+ *
+ * Works by exiting the process: the run.sh supervisor loop in the bot's tmux
+ * window does the git pull and restart. If the bot was launched without
+ * run.sh, this just stops it — someone with shell access must start it again.
+ */
+export const redeployCommand: Command = {
+    names: ['redeploy'],
+    requiresGuild: true,
+    description: 'Pull the latest code and restart the bot (admin only).',
+    category: 'Admin',
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        if (!isAdmin(ctx.message)) {
+            await commandUtils.reply(ctx.message, 'You must be a server administrator to use this command.');
+            return;
+        }
+
+        await commandUtils.reply(ctx.message, 'Redeploying: pulling the latest code and restarting. Back in a moment, sir.');
+        console.log(`🔁 Redeploy requested by ${ctx.message.author.tag} — exiting so the supervisor restarts with fresh code`);
+        // Brief pause so the reply reliably lands before the process dies
+        setTimeout(() => process.exit(0), 1500);
+    }
+};
+
 // Export all admin commands
 export const adminCommands: Command[] = [
     adminModeCommand,
     whitelistCommand,
     unwhitelistCommand,
-    showWhitelistCommand
+    showWhitelistCommand,
+    redeployCommand
 ];
