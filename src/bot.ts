@@ -23,6 +23,8 @@ export {
     VALID_XAI_MODELS,
     isValidXaiModel,
     isXaiModel,
+    VALID_POOLSIDE_MODELS,
+    isValidPoolsideModel,
     isHermesModel,
     VALID_MODELS,
     isValidModel

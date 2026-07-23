@@ -189,7 +189,7 @@ export async function performLearningQuestion(
         const learningPrompt = LEARNING_PROMPT_TEMPLATE.replace('{SUBJECT}', subject);
 
         const result = await generateText(
-            { anthropic: deps.anthropic, xai: deps.xai },
+            { anthropic: deps.anthropic, xai: deps.xai, hermes: deps.hermes },
             {
                 model: config.model,
                 maxTokens: 300,

@@ -1,7 +1,7 @@
 /**
- * Multi-provider LLM generation (Anthropic Claude + xAI Grok + Hermes/Nous).
+ * Multi-provider LLM generation (Anthropic Claude + xAI Grok + Poolside Hermes).
  *
- * Routes by model id: `grok-*` → xAI Responses API; `hermes-*`, `poolside/*`, `nous/*` → Hermes/Nous API;
+ * Routes by model id: `grok-*` → xAI Responses API; `poolside/*` → Poolside chat completions;
  * everything else → Anthropic.
  */
 
@@ -37,7 +37,7 @@ export interface GenerateResult {
 export interface LlmClients {
     anthropic: Anthropic;
     xai: OpenAI;
-    hermes?: OpenAI; // Hermes/Nous API (OpenAI-compatible)
+    hermes?: OpenAI; // Poolside API (OpenAI-compatible)
 }
 
 /**
@@ -226,23 +226,30 @@ function parseXaiResponse(response: any): GenerateResult {
 }
 
 /**
- * Generate with Hermes/Nous API (OpenAI-compatible endpoint).
+ * Generate with the Poolside (Hermes) API — OpenAI-compatible chat completions.
+ *
+ * Web search is a no-op here: Poolside has no server-side web search tool, and
+ * its chat API rejects any tool type other than `function`.
  */
 async function generateWithHermes(
     hermes: OpenAI,
     options: GenerateOptions
 ): Promise<GenerateResult> {
-    // Hermes uses OpenAI-compatible chat completions
-    const messages = options.messages
-        .map(msg => ({
-            role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
-            content: msg.content
-        }))
-        .filter(m => Boolean(m.content));
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> =
+        options.messages
+            .map(msg => ({
+                role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+                content: msg.content
+            }))
+            .filter(m => Boolean(m.content));
+
+    if (options.system) {
+        messages.unshift({ role: 'system', content: options.system });
+    }
 
     const apiOptions: any = {
         model: options.model,
-        messages: [{ role: 'system', content: options.system || '' }, ...messages],
+        messages,
         max_tokens: options.maxTokens
     };
 
@@ -250,61 +257,16 @@ async function generateWithHermes(
         apiOptions.temperature = options.temperature;
     }
 
-    // Hermes supports web search via tool
-    if (options.webSearchEnabled) {
-        apiOptions.tools = [{ type: 'web_search' }];
-    }
-
-    try {
-        const response = await hermes.chat.completions.create(apiOptions);
-        return parseHermesResponse(response);
-    } catch (error: any) {
-        // Fallback: try OpenAI-compatible completions API
-        const fallbackResponse = await hermes.completions.create({
-            model: options.model,
-            prompt: options.system ? `${options.system}\n\n${options.messages.map(m => m.content).join('\n')}` : options.messages.map(m => m.content).join('\n'),
-            max_tokens: options.maxTokens,
-            temperature: options.temperature
-        });
-        return {
-            content: fallbackResponse.choices[0]?.text || null,
-            sources: new Map(),
-            searchesPerformed: 0
-        };
-    }
+    const response = await hermes.chat.completions.create(apiOptions);
+    return parseHermesResponse(response);
 }
 
 function parseHermesResponse(response: any): GenerateResult {
-    const sources = new Map<string, string>();
-    let searchesPerformed = 0;
-    let text = '';
-
-    if (response.choices && response.choices.length > 0) {
-        text = response.choices[0]?.message?.content || '';
-    }
-
-    // Handle citations if present
-    if (response.choices && response.choices[0]?.message?.tool_calls) {
-        for (const tc of response.choices[0]?.message?.tool_calls || []) {
-            if (tc.type === 'function' || tc.type === 'web_search') {
-                searchesPerformed++;
-            }
-        }
-    }
-
-    // Handle tool results with citations
-    if (response.choices && response.choices[0]?.message?.content) {
-        const content = response.choices[0].message.content;
-        if (typeof content === 'string') {
-            text = content;
-        }
-    }
-
-    text = text.trim();
+    const text = (response.choices?.[0]?.message?.content || '').trim();
     return {
         content: text || null,
-        sources,
-        searchesPerformed
+        sources: new Map(),
+        searchesPerformed: 0
     };
 }
 

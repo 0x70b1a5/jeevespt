@@ -9,7 +9,11 @@ describe('generateText', () => {
     responses: { create: jest.fn() }
   } as any;
 
-  const clients = { anthropic: mockAnthropic, xai: mockXai };
+  const mockHermes = {
+    chat: { completions: { create: jest.fn() } }
+  } as any;
+
+  const clients = { anthropic: mockAnthropic, xai: mockXai, hermes: mockHermes };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -61,6 +65,51 @@ describe('generateText', () => {
         { role: 'system', content: 'You are Jeeves.' },
         { role: 'user', content: 'Hi' }
       ]);
+    });
+
+    it('routes poolside models to the Hermes client', async () => {
+      mockHermes.chat.completions.create.mockResolvedValueOnce({
+        choices: [{ message: { content: 'Laguna says hello' } }]
+      });
+
+      const result = await generateText(clients, {
+        model: 'poolside/laguna-xs-2.1',
+        system: 'You are Jeeves.',
+        messages: [
+          { role: 'user', content: 'First' },
+          { role: 'assistant', content: 'Reply' },
+          { role: 'user', content: 'Second' }
+        ],
+        maxTokens: 100,
+        temperature: 0.9
+      });
+
+      expect(mockHermes.chat.completions.create).toHaveBeenCalledTimes(1);
+      expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
+      expect(mockXai.responses.create).not.toHaveBeenCalled();
+      expect(result.content).toBe('Laguna says hello');
+
+      const call = mockHermes.chat.completions.create.mock.calls[0][0];
+      expect(call.model).toBe('poolside/laguna-xs-2.1');
+      expect(call.max_tokens).toBe(100);
+      expect(call.temperature).toBe(0.9);
+      expect(call.messages).toEqual([
+        { role: 'system', content: 'You are Jeeves.' },
+        { role: 'user', content: 'First' },
+        { role: 'assistant', content: 'Reply' },
+        { role: 'user', content: 'Second' }
+      ]);
+    });
+
+    it('throws when a poolside model is selected but no Hermes client is configured', async () => {
+      await expect(generateText(
+        { anthropic: mockAnthropic, xai: mockXai },
+        {
+          model: 'poolside/laguna-s-2.1',
+          messages: [{ role: 'user', content: 'Hi' }],
+          maxTokens: 100
+        }
+      )).rejects.toThrow('Hermes client not initialized');
     });
   });
 
@@ -201,6 +250,43 @@ describe('generateText', () => {
         { role: 'assistant', content: 'Reply' },
         { role: 'user', content: 'Second' }
       ]);
+    });
+  });
+
+  describe('Poolside (Hermes) path', () => {
+    it('omits the system message when empty', async () => {
+      mockHermes.chat.completions.create.mockResolvedValueOnce({
+        choices: [{ message: { content: 'ok' } }]
+      });
+
+      await generateText(clients, {
+        model: 'poolside/laguna-m.1',
+        messages: [{ role: 'user', content: 'Hi' }],
+        maxTokens: 50
+      });
+
+      expect(mockHermes.chat.completions.create.mock.calls[0][0].messages).toEqual([
+        { role: 'user', content: 'Hi' }
+      ]);
+    });
+
+    it('does not send tools even when web search is enabled (Poolside rejects non-function tools)', async () => {
+      mockHermes.chat.completions.create.mockResolvedValueOnce({
+        choices: [{ message: { content: 'No search, sir.' } }]
+      });
+
+      const result = await generateText(clients, {
+        model: 'poolside/laguna-xs-2.1',
+        messages: [{ role: 'user', content: 'News?' }],
+        maxTokens: 200,
+        webSearchEnabled: true,
+        webSearchMaxUses: 3
+      });
+
+      const call = mockHermes.chat.completions.create.mock.calls[0][0];
+      expect(call.tools).toBeUndefined();
+      expect(result.content).toBe('No search, sir.');
+      expect(result.searchesPerformed).toBe(0);
     });
   });
 });

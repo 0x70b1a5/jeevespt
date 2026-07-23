@@ -77,6 +77,112 @@ export function canExecuteCommand(
 /**
  * Shared utilities for command handlers
  */
+// --- Message splitting ---------------------------------------------------
+//
+// Discord rejects messages over 2000 chars, so long responses are split into
+// chunks. Rather than chopping at a fixed width (which severs words, sentences,
+// and links), each break point is chosen by cascading through boundary tiers,
+// searching backwards from the size cap:
+//
+//   paragraph break → line break → sentence end → word boundary → hard chop
+//
+// A tier's boundary is only taken if it lands in the last quarter of the
+// window (otherwise chunks get too small) and doesn't fall inside a markdown
+// link. Bare URLs need no special case: they contain no whitespace, so no
+// tier above the hard chop can land inside one. Code fences are closed at the
+// chunk end and reopened (with their language tag) in the next chunk.
+
+const SENTENCE_END = /[.!?…]["')\]]*(?=\s)/g;
+const BREAK_TIERS: RegExp[] = [/\n{2,}/g, /\n/g, SENTENCE_END, /[ \t]+/g];
+const FENCE_CLOSE = '\n```';
+
+/** Markdown link/image spans (`[title](url)`) — never split inside one. */
+function linkSpans(text: string): Array<{ start: number; end: number }> {
+    const spans: Array<{ start: number; end: number }> = [];
+    for (const m of text.matchAll(/\[[^\]\n]*\]\([^)\n]*\)/g)) {
+        spans.push({ start: m.index!, end: m.index! + m[0].length });
+    }
+    return spans;
+}
+
+/** The still-open fence (e.g. '```ts') at the end of `text`, or null if none. */
+function openFenceAt(text: string): string | null {
+    let open: string | null = null;
+    for (const line of text.split('\n')) {
+        const m = /^\s*```+\s*(\S*)/.exec(line);
+        if (m) open = open === null ? '```' + m[1] : null;
+    }
+    return open;
+}
+
+/**
+ * Advance past the whitespace consumed by a break: trailing spaces, then any
+ * blank lines — but not the next line's indentation (it may be code).
+ */
+function skipBreakWhitespace(text: string, i: number): number {
+    while (i < text.length && (text[i] === ' ' || text[i] === '\t')) i++;
+    while (i < text.length && text[i] === '\n') {
+        i++;
+        let j = i;
+        while (j < text.length && (text[j] === ' ' || text[j] === '\t')) j++;
+        if (j < text.length && text[j] === '\n') i = j;
+        else break;
+    }
+    return i;
+}
+
+/** Find where to break `text` so the chunk fits in `room` chars. */
+function findBreak(text: string, room: number): { end: number; next: number } {
+    room = Math.max(1, room);
+    const floor = Math.floor(room * 0.75);
+    const window = text.slice(0, room + 1);
+    // Scan past the window edge so a link straddling it is still recognized
+    const spans = linkSpans(text.slice(0, room + 501));
+    const inLink = (i: number) => spans.some(s => i > s.start && i < s.end);
+
+    for (const tier of BREAK_TIERS) {
+        let best: number | null = null;
+        for (const m of window.matchAll(tier)) {
+            const end = tier === SENTENCE_END ? m.index! + m[0].length : m.index!;
+            if (end > room) break;
+            if (end >= floor && !inLink(end)) best = end;
+        }
+        if (best !== null) {
+            return { end: best, next: skipBreakWhitespace(text, best) };
+        }
+    }
+
+    return { end: room, next: room };
+}
+
+/** Split one message's content into Discord-safe pieces of ≤ `budget` chars. */
+function splitContent(content: string, budget: number): string[] {
+    const pieces: string[] = [];
+    let rest = content;
+    let carryFence: string | null = null;
+
+    while (rest.length > 0) {
+        const prefix = carryFence ? carryFence + '\n' : '';
+        const room = budget - prefix.length;
+
+        if (rest.length <= room) {
+            pieces.push(prefix + rest.replace(/[ \t\n]+$/, ''));
+            break;
+        }
+
+        const brk = findBreak(rest, room - FENCE_CLOSE.length);
+        let chunk = prefix + rest.slice(0, brk.end).replace(/[ \t\n]+$/, '');
+        carryFence = openFenceAt(chunk);
+        if (carryFence) {
+            chunk += FENCE_CLOSE;
+        }
+        pieces.push(chunk);
+        rest = rest.slice(Math.max(brk.next, 1));
+    }
+
+    return pieces.filter(p => p.length > 0);
+}
+
 export class CommandUtilsImpl implements CommandUtils {
     private webhookCache: Collection<string, Webhook> = new Collection();
     private defaultChunkOpts: ChunkOptions = {
@@ -97,17 +203,13 @@ export class CommandUtilsImpl implements CommandUtils {
         opts: ChunkOptions = this.defaultChunkOpts
     ): string[] {
         const maxSize = opts.maxChunkSize ?? MAX_CHUNK_SIZE;
+        // The spoiler wrapper counts against the Discord limit too
+        const budget = Math.max(1, maxSize - (opts.spoiler ? 4 : 0));
         const chunks: string[] = [];
 
         msgs.forEach(msg => {
-            let content = msg.content;
-            while (content.length > 0) {
-                let chunk = content.slice(0, maxSize);
-                if (opts.spoiler) {
-                    chunk = `||${chunk}||`;
-                }
-                chunks.push(chunk);
-                content = content.slice(maxSize);
+            for (const piece of splitContent(msg.content, budget)) {
+                chunks.push(opts.spoiler ? `||${piece}||` : piece);
             }
         });
 

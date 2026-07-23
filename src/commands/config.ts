@@ -2,7 +2,7 @@ import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
 import { commandUtils } from './utils';
-import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, isXaiModel, isHermesModel } from '../bot';
+import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, VALID_POOLSIDE_MODELS, isXaiModel, isHermesModel } from '../bot';
 import { registry } from './registry';
 import { buildHelpEmbed, buildCommandDetailEmbed } from './helpText';
 
@@ -162,18 +162,42 @@ async function fetchXaiModels(): Promise<string[]> {
     return [...VALID_XAI_MODELS];
 }
 
+async function fetchPoolsideModels(): Promise<string[]> {
+    try {
+        const response = await fetch('https://inference.poolside.ai/v1/models', {
+            headers: {
+                Authorization: `Bearer ${process.env.POOLSIDE_API_KEY || ''}`
+            }
+        });
+
+        if (response.ok) {
+            const data = await response.json() as { data: Array<{ id: string }> };
+            const ids = data.data
+                .map(model => model.id)
+                .filter(id => id.startsWith('poolside/'));
+            console.log(`✅ Fetched ${ids.length} models from Poolside API`);
+            return ids.length > 0 ? ids : [...VALID_POOLSIDE_MODELS];
+        }
+        console.warn(`⚠️ Failed to fetch Poolside models (${response.status}), using static list`);
+    } catch (error) {
+        console.warn(`⚠️ Error fetching Poolside models, using static list:`, error);
+    }
+    return [...VALID_POOLSIDE_MODELS];
+}
+
 async function getValidModels(): Promise<string[]> {
     const now = Date.now();
     if (modelListCache && (now - modelListCacheTime) < MODEL_CACHE_DURATION) {
         return modelListCache;
     }
 
-    const [anthropicModels, xaiModels] = await Promise.all([
+    const [anthropicModels, xaiModels, poolsideModels] = await Promise.all([
         fetchAnthropicModels(),
-        fetchXaiModels()
+        fetchXaiModels(),
+        fetchPoolsideModels()
     ]);
 
-    modelListCache = [...anthropicModels, ...xaiModels];
+    modelListCache = [...anthropicModels, ...xaiModels, ...poolsideModels];
     modelListCacheTime = now;
     return modelListCache;
 }
@@ -193,7 +217,7 @@ export const modelCommand: Command = {
     category: 'Configuration',
     ephemeral: true,
     options: [{ name: 'model', description: 'Model id; omit to list models', type: 'string', required: false }],
-    deferred: true, // fetches model lists from Anthropic + xAI APIs
+    deferred: true, // fetches model lists from Anthropic + xAI + Poolside APIs
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         const modelName = ctx.args[0];
 
@@ -215,20 +239,22 @@ export const modelCommand: Command = {
         }
 
         const validModels = await getValidModels();
-        const recognized = validModels.includes(modelName) || isXaiModel(modelName);
+        const recognized = validModels.includes(modelName) || isXaiModel(modelName) || isHermesModel(modelName);
 
         deps.state.updateConfig(ctx.id, ctx.isDM, { model: modelName });
 
         if (!recognized) {
-            const anthropic = validModels.filter(m => !isXaiModel(m));
+            const anthropic = validModels.filter(m => !isXaiModel(m) && !isHermesModel(m));
             const xai = validModels.filter(m => isXaiModel(m));
+            const poolside = validModels.filter(m => isHermesModel(m));
             await commandUtils.reply(
                 ctx.message,
                 `Model set to \`${modelName}\`.\n\n` +
                 `**⚠️ Warning:** \`${modelName}\` is not a recognized model. ` +
                 `This may be fine for testing, but an invalid id will fail when generating responses.\n\n` +
                 `**Anthropic:**\n${formatModelList(anthropic)}\n\n` +
-                `**xAI:**\n${formatModelList(xai)}`
+                `**xAI:**\n${formatModelList(xai)}\n\n` +
+                `**Poolside:**\n${formatModelList(poolside)}`
             );
         } else {
             const provider = isXaiModel(modelName) ? 'xAI Grok' : (isHermesModel(modelName) ? 'Poolside Hermes' : 'Anthropic Claude');

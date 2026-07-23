@@ -406,7 +406,7 @@ async function detectLanguage(
         const config = deps.state.getConfig(guildId, false);
 
         const result = await generateText(
-            { anthropic: deps.anthropic, xai: deps.xai },
+            { anthropic: deps.anthropic, xai: deps.xai, hermes: deps.hermes },
             {
                 model: config.model,
                 maxTokens: 10,
@@ -440,7 +440,7 @@ async function generateTranslation(
         const config = deps.state.getConfig(guildId, false);
 
         const result = await generateText(
-            { anthropic: deps.anthropic, xai: deps.xai },
+            { anthropic: deps.anthropic, xai: deps.xai, hermes: deps.hermes },
             {
                 model: config.model,
                 maxTokens: 1000,

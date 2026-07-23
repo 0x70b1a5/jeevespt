@@ -152,9 +152,9 @@ export function isXaiModel(model: string): boolean {
     return model.startsWith('grok-');
 }
 
-/** Whether this model id should be served by the Hermes/Nous API. */
+/** Whether this model id should be served by the Poolside (Hermes) API. */
 export function isHermesModel(model: string): boolean {
-    return model.startsWith('hermes-') || model.startsWith('poolside/') || model.startsWith('nous/');
+    return model.startsWith('poolside/');
 }
 
 // Valid xAI Grok models (static fallback; !model also fetches live list)
@@ -176,16 +176,24 @@ export function isValidXaiModel(model: string): boolean {
     return VALID_XAI_MODELS.includes(model as any) || isXaiModel(model);
 }
 
-/** Combined static model list used when live API fetch is unavailable. */
-export const VALID_MODELS = [
-    ...VALID_ANTHROPIC_MODELS,
-    ...VALID_XAI_MODELS,
-    // Poolside/Hermes models
+// Valid Poolside models (static fallback; !model also fetches live list)
+export const VALID_POOLSIDE_MODELS = [
     'poolside/laguna-m.1',
     'poolside/laguna-xs-2.1',
     'poolside/laguna-s-2.1',
 ] as const;
 
+export function isValidPoolsideModel(model: string): boolean {
+    return VALID_POOLSIDE_MODELS.includes(model as any) || isHermesModel(model);
+}
+
+/** Combined static model list used when live API fetch is unavailable. */
+export const VALID_MODELS = [
+    ...VALID_ANTHROPIC_MODELS,
+    ...VALID_XAI_MODELS,
+    ...VALID_POOLSIDE_MODELS,
+] as const;
+
 export function isValidModel(model: string): boolean {
-    return isValidAnthropicModel(model) || isValidXaiModel(model) || isHermesModel(model);
+    return isValidAnthropicModel(model) || isValidXaiModel(model) || isValidPoolsideModel(model);
 }
