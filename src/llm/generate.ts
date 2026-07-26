@@ -122,7 +122,10 @@ function parseAnthropicResponse(blocks: any[]): GenerateResult {
         }
     }
 
-    const text = textParts.join('\n\n').trim();
+    // Concatenate directly: web-search responses arrive fragmented into many
+    // blocks split mid-sentence at citation boundaries, each carrying its own
+    // spacing — any separator here injects breaks into the middle of prose.
+    const text = textParts.join('').trim();
     return {
         content: text || null,
         sources,

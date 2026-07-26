@@ -165,6 +165,35 @@ describe('generateText', () => {
       expect(result.searchesPerformed).toBe(1);
       expect(result.sources.get('https://example.com')).toBe('Example');
     });
+
+    it('reassembles citation-fragmented text blocks without inserting breaks', async () => {
+      // Web search fragments the reply into blocks split mid-sentence at
+      // citation boundaries; each block carries its own spacing.
+      mockAnthropic.messages.create.mockResolvedValueOnce({
+        content: [
+          { type: 'text', text: 'The market grew ' },
+          {
+            type: 'text',
+            text: 'about 12% last year',
+            citations: [{
+              type: 'web_search_result_location',
+              url: 'https://example.com/report',
+              title: 'Report'
+            }]
+          },
+          { type: 'text', text: ', sir.' }
+        ]
+      });
+
+      const result = await generateText(clients, {
+        model: 'claude-opus-5',
+        messages: [{ role: 'user', content: 'Market?' }],
+        maxTokens: 200,
+        webSearchEnabled: true
+      });
+
+      expect(result.content).toBe('The market grew about 12% last year, sir.');
+    });
   });
 
   describe('xAI path', () => {
