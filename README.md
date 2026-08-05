@@ -20,7 +20,7 @@ With apologies to P. G. Wodehouse.
 - **Custom Prompts** — Define your own system prompt for fully customizable personalities
 
 ### Voice Integration
-- **Speech-to-Text** — Transcribe audio messages using OpenAI Whisper
+- **Speech-to-Text** — Transcribe audio messages locally using [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (base.en model, no API calls)
 - **Voice Commands** — Execute bot commands via voice (say "command clear" to run `!clear`)
 - **Text-to-Speech** — Optional voice responses via ElevenLabs (Jonathan Cecil voice for authentic Jeeves delivery)
 
@@ -70,6 +70,15 @@ With apologies to P. G. Wodehouse.
     - add token to .env file
 2. Install dependencies
     - `npm install`
+    - For transcription, build [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (requires `cmake` and `ffmpeg`, ~216MB total):
+      ```sh
+      git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git /root/whisper.cpp
+      cd /root/whisper.cpp
+      sh ./models/download-ggml-model.sh base.en
+      cmake -B build -DCMAKE_BUILD_TYPE=Release
+      cmake --build build -j --config Release
+      ```
+    - The bot expects the binary at `/root/whisper.cpp/build/bin/whisper-cli` and the model at `/root/whisper.cpp/models/ggml-base.en.bin`; override with `WHISPER_CPP_BIN`, `WHISPER_CPP_MODEL`, and `WHISPER_CPP_THREADS` in `.env` if yours live elsewhere
 3. Run the bot
     - `npm start` or `npm run dev` (with logging)
 4. Invite the bot to your server with both the `bot` and `applications.commands` scopes (the latter is required for slash commands)
