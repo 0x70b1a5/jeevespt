@@ -681,7 +681,7 @@ export class CommandHandler {
             await this.downloadFile(attachment.proxyURL, filename, safePath);
             console.log(`📥 Downloaded audio file from ${attachment.proxyURL} to ${safePath}`);
 
-            const result = await whisper(this.openai, safePath, speedScalar);
+            const result = await whisper(safePath, speedScalar);
 
             if (result.error) {
                 console.error(`❌ Transcription error: ${result.error}`);

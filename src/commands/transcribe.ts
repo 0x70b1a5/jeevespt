@@ -48,7 +48,7 @@ export const transcribeCommand: Command = {
             await channel.send(`${SYS_PREFIX}Transcribing audio...`);
             await channel.sendTyping();
 
-            const result = await whisper(deps.openai, audioFile);
+            const result = await whisper(audioFile);
 
             if (result.error) {
                 await commandUtils.replyError(ctx.message, result.error);
