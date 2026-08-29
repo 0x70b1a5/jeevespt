@@ -1,5 +1,7 @@
 // Security constants for file downloads
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
+/** Readable text attachments (HTML battery reports are typically 150–400KB). */
+export const MAX_TEXT_ATTACHMENT_SIZE = 1 * 1024 * 1024; // 1MB
 export const ALLOWED_DOMAINS = ['cdn.discordapp.com', 'media.discordapp.net'];
 export const TEMP_DIR = './temp';
 

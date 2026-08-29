@@ -45,6 +45,7 @@ jest.mock('fs', () => ({
 // Mock the prompts module
 jest.mock('./prompts/prompts', () => ({
   JEEVES_PROMPT: 'You are Jeeves, a butler.',
+  JEEVES_GROK_ADDENDUM: 'Grok wears the Jeeves suit.',
   WEB_SEARCH_ADDENDUM: ' You may use the web_search tool.',
   TOKIPONA_PROMPT: 'sina jan pi toki pona.',
   LEARNING_PROMPT_TEMPLATE: 'Create questions about {SUBJECT}.'
@@ -446,6 +447,16 @@ describe('CommandHandler', () => {
       state.setCustomPrompt('guild123', false, 'You are a pirate!');
       const prompt = handler.getSystemPrompt('guild123', false);
       expect(prompt?.content).toBe('You are a pirate!');
+    });
+
+    it('appends the Grok addendum only for grok models', () => {
+      state.updateConfig('guild123', false, { mode: 'jeeves', model: 'claude-opus-5' });
+      expect(handler.getSystemPrompt('guild123', false)?.content).not.toContain('Grok wears the Jeeves suit.');
+
+      state.updateConfig('guild123', false, { model: 'grok-4.5' });
+      const grokPrompt = handler.getSystemPrompt('guild123', false)?.content || '';
+      expect(grokPrompt).toContain('You are Jeeves, a butler.');
+      expect(grokPrompt).toContain('Grok wears the Jeeves suit.');
     });
   });
 

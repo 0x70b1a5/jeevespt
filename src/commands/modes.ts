@@ -64,13 +64,20 @@ export const promptCommand: Command = {
                         attachment.url,
                         `prompt_${ctx.message.author.id}_${Date.now()}.txt`
                     );
+                    const body = commandUtils.formatTextAttachment(attachment, fileContent);
                     // Prepend or use file content as prompt
-                    prompt = prompt ? `${prompt}\n\n${fileContent}` : fileContent;
+                    prompt = prompt ? `${prompt}\n\n${body}` : body;
                 } catch (error) {
                     console.error(`❌ Error reading text file ${attachment.name}:`, error);
                     await commandUtils.replyError(ctx.message, `Could not read file: ${attachment.name}`);
                     return;
                 }
+            } else if (commandUtils.isTextLikeAttachment(attachment)) {
+                await commandUtils.replyError(
+                    ctx.message,
+                    `File too large to read as a prompt: ${attachment.name} (${attachment.size} bytes).`
+                );
+                return;
             }
         }
 

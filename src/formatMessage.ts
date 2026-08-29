@@ -1,5 +1,5 @@
 import dayjs from "dayjs"
-import { Message } from "discord.js"
+import { Attachment, Message } from "discord.js"
 
 export const prependTimestampAndUsername = (message: Message) => {
     // Get display name from guild member if available, fallback to username
@@ -36,6 +36,46 @@ export const extractEmbedDataToText = (message: Message) => {
         }
     }
     return formatted;
+}
+
+/**
+ * Discord "Forward" posts an empty wrapper; the original lives on
+ * `messageSnapshots`. Without this, Jeeves sees a blank envelope.
+ */
+export const extractForwardedContent = (message: Message): string => {
+    const snapshots = message.messageSnapshots;
+    if (!snapshots?.size) return '';
+
+    const parts: string[] = [];
+    for (const snapshot of snapshots.values()) {
+        const text = snapshot.cleanContent || snapshot.content || '';
+        const embeds = extractEmbedDataToText(snapshot as unknown as Message);
+        const attNames = snapshot.attachments
+            ? [...snapshot.attachments.values()].map(a => a.name).filter(Boolean)
+            : [];
+        const body = [text, embeds.trim(), attNames.length ? `(attachments: ${attNames.join(', ')})` : '']
+            .filter(Boolean)
+            .join('\n');
+        parts.push(
+            body
+                ? `[SYSTEM] The user forwarded a message:\n\n${body}`
+                : '[SYSTEM] The user forwarded a message whose content was empty or unavailable.'
+        );
+    }
+    return parts.length ? '\n' + parts.join('\n') : '';
+}
+
+/** Outer attachments plus any on forwarded snapshots. */
+export const allMessageAttachments = (message: Message): Attachment[] => {
+    const out = [...(message.attachments?.values() ?? [])];
+    const snapshots = message.messageSnapshots;
+    if (!snapshots?.size) return out;
+    for (const snapshot of snapshots.values()) {
+        if (snapshot.attachments?.size) {
+            out.push(...snapshot.attachments.values());
+        }
+    }
+    return out;
 }
 
 // Extract only translatable prose content from embeds (for autotranslate)

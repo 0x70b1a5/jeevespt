@@ -1,5 +1,5 @@
 import { Message, TextChannel, TextBasedChannel, Webhook, Collection, Attachment, PermissionFlagsBits } from 'discord.js';
-import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS, ALLOWED_DOMAINS, TEMP_DIR } from './constants';
+import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS, ALLOWED_DOMAINS, TEMP_DIR, MAX_TEXT_ATTACHMENT_SIZE } from './constants';
 import { ChunkOptions, CommandUtils } from './types';
 import { BotConfig } from '../state/types';
 import fs from 'fs';
@@ -72,6 +72,29 @@ export function canExecuteCommand(
         reason: `Admin mode is enabled. Only administrators can run \`!${commandName}\`. ` +
             `Whitelisted commands: ${config.commandWhitelist.length > 0 ? config.commandWhitelist.map(c => `\`!${c}\``).join(', ') : 'none'}`
     };
+}
+
+/**
+ * Strip HTML to readable text. Windows `powercfg /batteryreport` exports are
+ * mostly CSS plus tables; this keeps the tables and drops the chrome.
+ */
+export function htmlToReadableText(html: string): string {
+    let text = html.replace(/^\uFEFF/, '');
+    text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+    text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
+    text = text.replace(/<br\s*\/?>/gi, '\n');
+    text = text.replace(/<\/(tr|p|div|h[1-6]|li|table|section)\s*>/gi, '\n');
+    text = text.replace(/<\/(td|th)\s*>/gi, '\t');
+    text = text.replace(/<[^>]+>/g, '');
+    text = text.replace(/&nbsp;/gi, ' ');
+    text = text.replace(/&amp;/gi, '&');
+    text = text.replace(/&lt;/gi, '<');
+    text = text.replace(/&gt;/gi, '>');
+    text = text.replace(/&quot;/gi, '"');
+    text = text.replace(/&#39;|&apos;/gi, "'");
+    text = text.replace(/[ \t]+\n/g, '\n');
+    text = text.replace(/\n{3,}/g, '\n\n');
+    return text.trim();
 }
 
 /**
@@ -321,18 +344,36 @@ export class CommandUtilsImpl implements CommandUtils {
     }
 
     /**
-     * Check if an attachment is a readable text file
+     * Whether the attachment looks like text (by MIME type or filename).
+     * Size is not considered — use isTextFileAttachment to also enforce the cap.
+     */
+    isTextLikeAttachment(attachment: Attachment): boolean {
+        return (
+            !!attachment.contentType?.startsWith('text/') ||
+            !!attachment.contentType?.includes('xml') ||
+            !!attachment.contentType?.includes('svg') ||
+            !!attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|svg|sh|bash|zsh|xml|ini|conf|cfg|env|gitignore|dockerfile)$/i)
+        );
+    }
+
+    /**
+     * Check if an attachment is a readable text file under the size cap
      */
     isTextFileAttachment(attachment: Attachment): boolean {
-        return (
-            attachment.size < 100000 &&
-            (
-                attachment.contentType?.startsWith('text/') ||
-                attachment.contentType?.includes('xml') ||
-                attachment.contentType?.includes('svg') ||
-                !!attachment.name.match(/\.(txt|md|json|yaml|yml|csv|log|ts|js|py|html|css|tsx|jsx|mdx|rtf|svg|sh|bash|zsh|xml|ini|conf|cfg|env|gitignore|dockerfile)$/i)
-            )
-        );
+        return this.isTextLikeAttachment(attachment) && attachment.size < MAX_TEXT_ATTACHMENT_SIZE;
+    }
+
+    /**
+     * Prepare downloaded attachment text for the model. HTML (e.g. Windows
+     * `powercfg /batteryreport` exports) is stripped to readable text so CSS
+     * and markup don't dominate the prompt.
+     */
+    formatTextAttachment(attachment: Attachment, content: string): string {
+        const type = attachment.contentType || '';
+        if (type.includes('html') || /\.html?$/i.test(attachment.name)) {
+            return htmlToReadableText(content);
+        }
+        return content;
     }
 
     /**
@@ -341,7 +382,10 @@ export class CommandUtilsImpl implements CommandUtils {
     async downloadAndReadTextFile(url: string, filename: string): Promise<string> {
         const safePath = this.createTempFilename(filename);
         await this.downloadFile(url, filename, safePath);
-        const content = fs.readFileSync(safePath, 'utf8');
+        let content = fs.readFileSync(safePath, 'utf8');
+        if (content.charCodeAt(0) === 0xFEFF) {
+            content = content.slice(1);
+        }
         console.log(`🔍 Read file from ${safePath}: ${content.slice(0, 100)}...`);
         fs.unlinkSync(safePath);
         return content;

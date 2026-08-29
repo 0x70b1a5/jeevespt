@@ -28,7 +28,7 @@ src/
     …                # reminders, learning, reactions, translate, muse, …
   llm/generate.ts    # Multi-provider LLM: Claude + Grok routing
   state/             # BotState + stores; types + model lists in types.ts
-  prompts/           # JEEVES_PROMPT, TOKIPONA, WEB_SEARCH_ADDENDUM, lugso
+  prompts/           # JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA, WEB_SEARCH_ADDENDUM, lugso
   bot.ts             # Re-exports state (compat)
 ```
 
@@ -82,6 +82,7 @@ Default chat model remains Claude Sonnet (`BotState` defaultConfig).
 ## Personas / product notes
 
 - **Jeeves** is the flagship persona (`prompts/prompts.ts`) — Wodehouse butler, King’s English, philosophy/theology allusions; keep voice intact when editing the prompt.
+- **Grok in Jeeves mode** also gets `JEEVES_GROK_ADDENDUM`: Grok is the intellect (powerhouse), Jeeves is the household name and diction. Guests address him as Jeeves; do not overwrite Grok’s truth-seeking. Claude does not receive this addendum.
 - Web-search addendum is only appended when search is actually enabled (or forced for tasks).
 - Tasks force web search on regardless of channel chat setting.
 

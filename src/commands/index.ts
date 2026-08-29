@@ -9,12 +9,12 @@ import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel, ChatInpu
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 
-import { BotState } from '../bot';
+import { BotState, isXaiModel } from '../bot';
 import { ElevenLabs } from '../elevenlabs';
 import { synthesizeIPA } from '../ipaSpeech';
 import dayjs from 'dayjs';
-import { JEEVES_PROMPT, TOKIPONA_PROMPT, WEB_SEARCH_ADDENDUM } from '../prompts/prompts';
-import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
+import { JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA_PROMPT, WEB_SEARCH_ADDENDUM } from '../prompts/prompts';
+import { prependTimestampAndUsername, extractEmbedDataToText, extractForwardedContent, allMessageAttachments } from '../formatMessage';
 import whisper from '../whisper';
 import { generateText, withSourcesFooter } from '../llm/generate';
 
@@ -224,17 +224,27 @@ export class CommandHandler {
         const config = this.state.getConfig(id, isDM);
 
         let userMessage = prependTimestampAndUsername(message);
+        userMessage += extractForwardedContent(message);
 
-        // Handle audio attachments if present
+        // Handle audio attachments if present (including those on a forward)
         let audio: Attachment | undefined;
-        for (const [messageID, attachment] of message.attachments) {
+        for (const attachment of allMessageAttachments(message)) {
             if (attachment.name.match(/\.(mp3|ogg|wav|m4a|aac|flac|webm)$/i)) {
                 audio = attachment;
                 break;
             } else if (this.utils.isTextFileAttachment(attachment)) {
-                console.log(`🔍 Processing text file: ${attachment.name} (${attachment.contentType})`);
-                const content = await this.utils.downloadAndReadTextFile(attachment.url, `text_${message.author.id}_${Date.now()}.txt`);
-                userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${content}`;
+                console.log(`🔍 Processing text file: ${attachment.name} (${attachment.contentType}, ${attachment.size} bytes)`);
+                try {
+                    const content = await this.utils.downloadAndReadTextFile(attachment.url, `text_${message.author.id}_${Date.now()}.txt`);
+                    const body = this.utils.formatTextAttachment(attachment, content);
+                    userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}). Here is the content: \n\n ${body}`;
+                } catch (error) {
+                    console.error(`❌ Error reading text file ${attachment.name}:`, error);
+                    userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}) but it could not be downloaded.`;
+                }
+            } else if (this.utils.isTextLikeAttachment(attachment)) {
+                console.log(`⚠️ Skipping oversized text file: ${attachment.name} (${attachment.size} bytes)`);
+                userMessage += `\n[SYSTEM] The user attached a text file (${attachment.name}, ${attachment.size} bytes) that is too large to read.`;
             }
         }
 
@@ -464,7 +474,10 @@ export class CommandHandler {
                 const dateLine = `\nThe current date and time is ${dayjs().format('dddd, MMMM D, YYYY, HH:mm')}.\n`;
                 return {
                     role: 'system',
-                    content: JEEVES_PROMPT + (webSearch ? WEB_SEARCH_ADDENDUM : '') + dateLine
+                    content: JEEVES_PROMPT
+                        + (isXaiModel(config.model) ? JEEVES_GROK_ADDENDUM : '')
+                        + (webSearch ? WEB_SEARCH_ADDENDUM : '')
+                        + dateLine
                 };
             }
         }

@@ -1,4 +1,6 @@
-import { commandUtils } from './utils';
+import { Attachment } from 'discord.js';
+import { commandUtils, htmlToReadableText } from './utils';
+import { MAX_TEXT_ATTACHMENT_SIZE } from './constants';
 
 const split = (content: string, maxChunkSize?: number, spoiler?: boolean) =>
     commandUtils.splitMessageIntoChunks(
@@ -105,5 +107,91 @@ describe('splitMessageIntoChunks', () => {
         const chunks = split(content, 100);
         const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
         expect(normalize(chunks.join(' '))).toBe(normalize(content));
+    });
+});
+
+function mockAttachment(partial: { name: string; contentType?: string; size: number }): Attachment {
+    return partial as Attachment;
+}
+
+describe('isTextFileAttachment', () => {
+    it('accepts a Windows battery-report HTML over the old 100KB cap', () => {
+        const attachment = mockAttachment({
+            name: 'battery-report.html',
+            contentType: 'text/html; charset=UTF-8-SIG',
+            size: 216333
+        });
+        expect(commandUtils.isTextLikeAttachment(attachment)).toBe(true);
+        expect(commandUtils.isTextFileAttachment(attachment)).toBe(true);
+    });
+
+    it('rejects a battery report that exceeds the text size cap', () => {
+        const attachment = mockAttachment({
+            name: 'battery-report.html',
+            contentType: 'text/html; charset=UTF-8-SIG',
+            size: MAX_TEXT_ATTACHMENT_SIZE
+        });
+        expect(commandUtils.isTextLikeAttachment(attachment)).toBe(true);
+        expect(commandUtils.isTextFileAttachment(attachment)).toBe(false);
+    });
+
+    it('rejects images', () => {
+        const attachment = mockAttachment({
+            name: 'photo.png',
+            contentType: 'image/png',
+            size: 50000
+        });
+        expect(commandUtils.isTextLikeAttachment(attachment)).toBe(false);
+        expect(commandUtils.isTextFileAttachment(attachment)).toBe(false);
+    });
+});
+
+describe('htmlToReadableText', () => {
+    it('drops CSS and keeps table cells', () => {
+        const html = `<!DOCTYPE html>
+<html><head><style>body { font: 12px sans-serif; }</style></head>
+<body>
+<h1>Battery report</h1>
+<table>
+<tr><th>START TIME</th><th>STATE</th><th>CAPACITY REMAINING</th></tr>
+<tr><td>2026-08-21</td><td>Active</td><td>48 %</td></tr>
+</table>
+</body></html>`;
+        const text = htmlToReadableText(html);
+        expect(text).toContain('Battery report');
+        expect(text).toContain('START TIME');
+        expect(text).toContain('48 %');
+        expect(text).not.toContain('font:');
+        expect(text).not.toContain('<style');
+    });
+
+    it('strips a UTF-8 BOM', () => {
+        expect(htmlToReadableText('\uFEFF<p>hello</p>')).toBe('hello');
+    });
+});
+
+describe('formatTextAttachment', () => {
+    it('converts HTML battery reports to readable text', () => {
+        const attachment = mockAttachment({
+            name: 'battery-report.html',
+            contentType: 'text/html; charset=UTF-8-SIG',
+            size: 216333
+        });
+        const formatted = commandUtils.formatTextAttachment(
+            attachment,
+            '<style>x{}</style><h1>Battery report</h1><p>Design capacity: 45,000 mWh</p>'
+        );
+        expect(formatted).toContain('Battery report');
+        expect(formatted).toContain('Design capacity: 45,000 mWh');
+        expect(formatted).not.toContain('<h1>');
+    });
+
+    it('leaves plain text unchanged', () => {
+        const attachment = mockAttachment({
+            name: 'notes.txt',
+            contentType: 'text/plain',
+            size: 12
+        });
+        expect(commandUtils.formatTextAttachment(attachment, 'hello world')).toBe('hello world');
     });
 });

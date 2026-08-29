@@ -1,5 +1,5 @@
-import { prependTimestampAndUsername, extractEmbedDataToText, extractTranslatableEmbedContent } from './formatMessage';
-import { Message, GuildMember, User, Embed } from 'discord.js';
+import { prependTimestampAndUsername, extractEmbedDataToText, extractTranslatableEmbedContent, extractForwardedContent, allMessageAttachments } from './formatMessage';
+import { Message, GuildMember, User, Embed, Collection, Attachment } from 'discord.js';
 
 // Mock dayjs to return consistent timestamps
 jest.mock('dayjs', () => {
@@ -25,6 +25,8 @@ function createMockMessage(options: {
   cleanContent?: string;
   createdTimestamp?: number;
   embeds?: MockEmbedParts[];
+  messageSnapshots?: Collection<string, any>;
+  attachments?: Collection<string, Attachment>;
 }): Message {
   const mockUser = {
     username: options.username || 'testuser'
@@ -39,7 +41,9 @@ function createMockMessage(options: {
     member: mockMember,
     cleanContent: options.cleanContent !== undefined ? options.cleanContent : 'Hello world',
     createdTimestamp: options.createdTimestamp || Date.now(),
-    embeds: (options.embeds || []) as unknown as Embed[]
+    embeds: (options.embeds || []) as unknown as Embed[],
+    attachments: options.attachments ?? new Collection(),
+    messageSnapshots: options.messageSnapshots ?? new Collection()
   } as Message;
 }
 
@@ -228,3 +232,61 @@ describe('extractTranslatableEmbedContent', () => {
     expect(result).not.toContain('Footer');
   });
 });
+
+describe('extractForwardedContent', () => {
+  it('returns empty string when nothing was forwarded', () => {
+    expect(extractForwardedContent(createMockMessage({}))).toBe('');
+  });
+
+  it('injects snapshot text that Discord leaves off the wrapper', () => {
+    const snapshots = new Collection<string, any>([[
+      '1542979101998973050',
+      {
+        content: "My laptop has been weird lately. It blacked out as if its battery had run out.",
+        embeds: [],
+        attachments: new Collection()
+      }
+    ]]);
+    const message = createMockMessage({
+      cleanContent: '',
+      messageSnapshots: snapshots
+    });
+    const result = extractForwardedContent(message);
+    expect(result).toContain('[SYSTEM] The user forwarded a message:');
+    expect(result).toContain('My laptop has been weird lately');
+  });
+
+  it('includes forwarded embed text and attachment names', () => {
+    const snapshots = new Collection<string, any>([[
+      '1',
+      {
+        content: 'https://example.com/status/1',
+        embeds: [{ title: 'A tweet', description: 'the actual post' }],
+        attachments: new Collection([['a', { name: 'battery-report.html' } as Attachment]])
+      }
+    ]]);
+    const result = extractForwardedContent(createMockMessage({
+      cleanContent: '',
+      messageSnapshots: snapshots
+    }));
+    expect(result).toContain('A tweet');
+    expect(result).toContain('the actual post');
+    expect(result).toContain('battery-report.html');
+  });
+});
+
+describe('allMessageAttachments', () => {
+  it('includes attachments from forwarded snapshots', () => {
+    const snapAtt = { name: 'notes.txt', size: 12 } as Attachment;
+    const snapshots = new Collection<string, any>([[
+      '1',
+      { content: 'see file', embeds: [], attachments: new Collection([['a', snapAtt]]) }
+    ]]);
+    const atts = allMessageAttachments(createMockMessage({
+      cleanContent: '',
+      messageSnapshots: snapshots
+    }));
+    expect(atts).toEqual([snapAtt]);
+  });
+});
+
