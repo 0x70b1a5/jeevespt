@@ -42,6 +42,9 @@ With apologies to P. G. Wodehouse.
 ### Reaction Mode
 - AI-driven contextual emoji reactions on messages in monitored channels
 
+### Link Shortening
+- `!shorten <url> [slug]` / `/shorten` — mint a short link on the household [iunctus](https://github.com/0x70b1a5/iunctus) instance (`IUNCTUS_URL`, `IUNCTUS_API_KEY`)
+
 ### Reminders
 - Natural time parsing (`5m`, `2h`, `1d`)
 - Persistent across bot restarts

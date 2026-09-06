@@ -11,7 +11,7 @@ Discord bot with multi-persona chat (Jeeves, toki pona, Lugso, custom), reminder
 | Typecheck | `npx tsc --noEmit` |
 | Install | `npm install` |
 
-Env keys (see `.env.sample`): `DISCORD_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` (Whisper), `ELEVENLABS_API_KEY`, optional `DISCORD_GUILD_ID`.
+Env keys (see `.env.sample`): `DISCORD_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` (Whisper), `ELEVENLABS_API_KEY`, `IUNCTUS_URL` + `IUNCTUS_API_KEY` (`!shorten`), optional `DISCORD_GUILD_ID`.
 
 ## Architecture (where to look)
 

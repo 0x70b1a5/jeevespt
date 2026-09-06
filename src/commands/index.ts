@@ -41,6 +41,7 @@ import { adminCommands } from './admin';
 import { patreonCommands } from './patreon';
 import { transcribeCommands } from './transcribe';
 import { sitelenCommands } from './sitelen';
+import { shortenCommands } from './shorten';
 
 import fs from 'fs';
 import https from 'https';
@@ -98,7 +99,8 @@ export class CommandHandler {
             ...adminCommands,
             ...patreonCommands,
             ...transcribeCommands,
-            ...sitelenCommands
+            ...sitelenCommands,
+            ...shortenCommands
         ]);
     }
 
