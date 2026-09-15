@@ -73,7 +73,7 @@ async function generateGlam(
         prompt,
         n: 1,
         size: '1024x1024',
-        input_fidelity: 'high'
+        //input_fidelity: 'high'
     });
     const b64 = result.data?.[0]?.b64_json;
     if (!b64) return null;
