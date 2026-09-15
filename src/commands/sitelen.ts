@@ -68,7 +68,7 @@ async function generateGlam(
 ): Promise<Buffer | null> {
     const image = await toFile(sitelenPng, 'sitelen.png', { type: 'image/png' });
     const result = await deps.openai.images.edit({
-        model: 'gpt-image-1',
+        model: 'gpt-image-2.5-flare',
         image,
         prompt,
         n: 1,
