@@ -121,20 +121,9 @@ export async function performLearningQuestion(
         const questionText = result.content || '';
 
         if (questionText) {
-            const questionMessage = {
-                role: 'assistant',
-                content: questionText
-            };
-
-            // Add to log so bot remembers asking this question
-            const log = deps.state.getLog(id, isDM);
-            log.messages.push(questionMessage);
-
-            if (log.messages.length > config.messageLimit) {
-                log.messages = log.messages.slice(-config.messageLimit);
-            }
-
-            await commandUtils.sendWebhookMessage(channel, questionMessage.content, config.mode);
+            // Chat history is read from the channel, so the bot will see
+            // that it asked this when someone answers.
+            await commandUtils.sendWebhookMessage(channel, questionText, config.mode);
             console.log(`✅ Posted learning question for ${subject}`);
         } else {
             console.error('Failed to generate learning question - empty response');

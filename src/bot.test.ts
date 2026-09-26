@@ -143,32 +143,12 @@ describe('BotState', () => {
     });
   });
 
-  describe('getBuffer', () => {
-    it('should return empty buffer for new entity', () => {
-      const buffer = state.getBuffer('guild123', false);
-      expect(buffer.messages).toEqual([]);
-      expect(buffer.responseTimer).toBeNull();
-    });
-
-    it('should return same buffer on subsequent calls', () => {
-      const buffer1 = state.getBuffer('guild123', false);
-      buffer1.messages.push({ role: 'user', content: 'test' });
-      const buffer2 = state.getBuffer('guild123', false);
-      expect(buffer2.messages).toHaveLength(1);
-    });
-  });
-
-  describe('getLog', () => {
-    it('should return empty log for new entity', () => {
-      const log = state.getLog('guild123', false);
-      expect(log.messages).toEqual([]);
-    });
-
-    it('should return same log on subsequent calls', () => {
-      const log1 = state.getLog('guild123', false);
-      log1.messages.push({ role: 'assistant', content: 'hello' });
-      const log2 = state.getLog('guild123', false);
-      expect(log2.messages).toHaveLength(1);
+  describe('resetContext', () => {
+    it('moves the chat context floor to now', () => {
+      expect(state.getConfig('guild123', false).contextResetAt).toBe(0);
+      const before = Date.now();
+      state.resetContext('guild123', false);
+      expect(state.getConfig('guild123', false).contextResetAt).toBeGreaterThanOrEqual(before);
     });
   });
 

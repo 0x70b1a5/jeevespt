@@ -1,6 +1,7 @@
 import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
+import { channelHistory, toLlmMessages } from '../chat/history';
 import { commandUtils } from './utils';
 import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, VALID_POOLSIDE_MODELS, isXaiModel, isPoolsideModel } from '../state';
 import { registry } from './registry';
@@ -57,22 +58,22 @@ export const clearCommand: Command = {
     category: 'Chat History',
     ephemeral: true,
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const log = deps.state.getLog(ctx.id, ctx.isDM);
-        log.messages = [];
-        await commandUtils.reply(ctx.message, 'Cleared messages log.');
+        deps.state.resetContext(ctx.id, ctx.isDM);
+        await commandUtils.reply(ctx.message, 'Conversation context starts afresh from here.');
     }
 };
 
 /**
- * !log - Show current message log
+ * !log - Show the chat context the bot would read in this channel
  */
 export const logCommand: Command = {
     names: ['log'],
-    description: 'Print the current message history.',
+    description: 'Print the recent channel history the bot reads when replying here.',
     category: 'Chat History',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const log = deps.state.getLog(ctx.id, ctx.isDM);
-        const logAsString = JSON.stringify(log.messages, null, 2);
+        const config = deps.state.getConfig(ctx.id, ctx.isDM);
+        const lines = await channelHistory.fetch(ctx.message.channel, { limit: config.messageLimit, since: config.contextResetAt });
+        const logAsString = toLlmMessages(lines).map(m => `${m.role}: ${m.content}`).join('\n') || '(nothing yet)';
         const chunks = commandUtils.splitMessageIntoChunks([{ role: 'assistant', content: logAsString }]);
 
         await commandUtils.reply(ctx.message, 'CURRENT MEMORY:\n---');

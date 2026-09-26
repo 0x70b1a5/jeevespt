@@ -136,6 +136,34 @@ function createMockMessage(options: {
   } as unknown as Message;
 }
 
+/** A channel whose history is the given texts (oldest first), all from testuser. */
+function chatChannel(...texts: string[]) {
+  const messages = texts.map((text, i) => ({
+    id: `m${i}`,
+    content: text,
+    cleanContent: text,
+    createdTimestamp: 1_700_000_000_000 + i * 1000,
+    author: { id: 'user123', username: 'testuser', bot: false },
+    member: { displayName: 'Test User' },
+    attachments: new Collection(),
+    embeds: [],
+    url: `https://discord.com/channels/guild123/channel123/m${i}`
+  }));
+  return {
+    id: 'channel123',
+    client: { user: { id: 'bot1' } },
+    messages: {
+      // Discord returns newest first
+      fetch: jest.fn().mockResolvedValue(new Collection([...messages].reverse().map(m => [m.id, m] as [string, any])))
+    }
+  };
+}
+
+/** Let timers set to 0 ms and the promise chains behind them run. */
+async function flush() {
+  for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 5));
+}
+
 /** All ❌ buttons in a list message payload, in order. */
 function listButtons(payload: any): any[] {
   return payload.components.flatMap((row: any) => row.toJSON().components);
@@ -180,15 +208,12 @@ describe('CommandHandler', () => {
 
     it('should handle !clear command', async () => {
       const message = createMockMessage({ content: '!clear' });
-      
-      // Add some messages to log first
-      const log = state.getLog('guild123', false);
-      log.messages.push({ role: 'user', content: 'test' });
-      
+      const before = Date.now();
+
       await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Cleared'));
-      expect(state.getLog('guild123', false).messages).toHaveLength(0);
+
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('afresh'));
+      expect(state.getConfig('guild123', false).contextResetAt).toBeGreaterThanOrEqual(before);
     });
 
     it('should handle !prompt command', async () => {
@@ -372,11 +397,7 @@ describe('CommandHandler', () => {
         content: [{ type: 'text', text: 'Hello, sir.' }]
       });
 
-      // Add a message to the buffer
-      const buffer = state.getBuffer('guild123', false);
-      buffer.messages.push({ role: 'user', content: 'Hello Jeeves' });
-
-      const response = await handler.generateResponse('guild123', false);
+      const response = await handler.generateResponse('guild123', false, [], false, { channel: chatChannel('Hello Jeeves') });
       
       expect(mockAnthropic.messages.create).toHaveBeenCalled();
       expect(mockXai.responses.create).not.toHaveBeenCalled();
@@ -391,10 +412,7 @@ describe('CommandHandler', () => {
         output: []
       });
 
-      const buffer = state.getBuffer('guild123', false);
-      buffer.messages.push({ role: 'user', content: 'Hello Jeeves' });
-
-      const response = await handler.generateResponse('guild123', false);
+      const response = await handler.generateResponse('guild123', false, [], false, { channel: chatChannel('Hello Jeeves') });
 
       expect(mockXai.responses.create).toHaveBeenCalled();
       expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
@@ -418,10 +436,7 @@ describe('CommandHandler', () => {
         citations: ['https://example.com']
       });
 
-      const buffer = state.getBuffer('guild123', false);
-      buffer.messages.push({ role: 'user', content: 'What is the news?' });
-
-      const response = await handler.generateResponse('guild123', false);
+      const response = await handler.generateResponse('guild123', false, [], false, { channel: chatChannel('What is the news?') });
 
       const call = mockXai.responses.create.mock.calls[0][0];
       expect(call.tools).toContainEqual({ type: 'web_search' });
@@ -436,10 +451,7 @@ describe('CommandHandler', () => {
         content: [{ type: 'tool_use', id: 'test' }]
       });
 
-      const buffer = state.getBuffer('guild123', false);
-      buffer.messages.push({ role: 'user', content: 'Hello' });
-
-      const response = await handler.generateResponse('guild123', false);
+      const response = await handler.generateResponse('guild123', false, [], false, { channel: chatChannel('Hello') });
       expect(response).toBeNull();
     });
 
@@ -453,9 +465,9 @@ describe('CommandHandler', () => {
         .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'I have suggested web search, sir.' }] });
 
       state.updateConfig('guild123', false, { webSearchEnabled: false });
-      state.getBuffer('guild123', false).messages.push({ role: 'user', content: 'Latest news?' });
-
-      const response = await handler.generateResponse('guild123', false, [], false, { allowProposals: true });
+      const response = await handler.generateResponse('guild123', false, [], false, {
+        allowProposals: true, channel: chatChannel('Latest news?')
+      });
 
       const call = mockAnthropic.messages.create.mock.calls[0][0];
       expect(call.tools.map((t: any) => t.name)).toContain('propose_setting_change');
@@ -466,8 +478,7 @@ describe('CommandHandler', () => {
 
     it('does not offer the proposal tool by default', async () => {
       mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'Hello.' }] });
-      state.getBuffer('guild123', false).messages.push({ role: 'user', content: 'Hi' });
-      await handler.generateResponse('guild123', false);
+      await handler.generateResponse('guild123', false, [], false, { channel: chatChannel('Hi') });
       const call = mockAnthropic.messages.create.mock.calls[0][0];
       expect(call.tools.map((t: any) => t.name)).not.toContain('propose_setting_change');
     });
@@ -475,10 +486,7 @@ describe('CommandHandler', () => {
     it('propagates API errors without retrying (the SDK client owns retries)', async () => {
       mockAnthropic.messages.create.mockRejectedValue(new Error('Rate limited'));
 
-      const buffer = state.getBuffer('guild123', false);
-      buffer.messages.push({ role: 'user', content: 'Hello' });
-
-      await expect(handler.generateResponse('guild123', false)).rejects.toThrow('Rate limited');
+      await expect(handler.generateResponse('guild123', false, [], false, { channel: chatChannel('Hello') })).rejects.toThrow('Rate limited');
       expect(mockAnthropic.messages.create).toHaveBeenCalledTimes(1);
     });
   });
@@ -487,10 +495,8 @@ describe('CommandHandler', () => {
     // We test this indirectly through the log command
     it('should split long messages into chunks', async () => {
       const longContent = 'a'.repeat(5000);
-      const log = state.getLog('guild123', false);
-      log.messages.push({ role: 'user', content: longContent });
-
       const message = createMockMessage({ content: '!log' });
+      (message.channel as any).messages = chatChannel(longContent).messages;
       await handler.handleCommand(message, false);
 
       // Should have called send multiple times for chunks
@@ -499,24 +505,121 @@ describe('CommandHandler', () => {
   });
 
   describe('handleMessage', () => {
-    it('should add message to buffer and log', async () => {
+    it('replies from the channel history after the response delay', async () => {
+      state.updateConfig('guild123', false, { responseDelayMs: 0 });
+      mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'Good evening, sir.' }] });
       const message = createMockMessage({ content: 'Hello Jeeves!' });
-      
-      // Don't wait for the delayed response
-      await handler.handleMessage(message, false, false);
-      
-      const buffer = state.getBuffer('guild123', false);
-      const log = state.getLog('guild123', false);
-      
-      expect(buffer.messages.length).toBeGreaterThan(0);
-      expect(log.messages.length).toBeGreaterThan(0);
+      (message.channel as any).messages = chatChannel('Hello Jeeves!').messages;
+
+      await handler.handleMessage(message, false, 'reply');
+      await flush();
+
+      const call = mockAnthropic.messages.create.mock.calls[0][0];
+      expect(JSON.stringify(call.messages)).toContain('Hello Jeeves!');
+    });
+
+    it('records but does not reply when the trigger is none', async () => {
+      state.updateConfig('guild123', false, { responseDelayMs: 0 });
+      await handler.handleMessage(createMockMessage({ content: 'just chatting' }), false, 'none');
+      await flush();
+      expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
+    });
+
+    describe('ambient channels', () => {
+      let fetchSpy: jest.SpyInstance;
+      const jev = (over: Record<string, any> = {}) => ({
+        ok: true, status: 200, headers: new Headers(), text: async () => '',
+        json: async () => ({
+          answers: {
+            addressed: { type: 'noul', noul: 0.05 },
+            value: { type: 'score', score: 0.3, probabilities: {}, confidence: 0.9 },
+            intrusive: { type: 'noul', noul: 0.05 },
+            responds: { type: 'noul', noul: 0.1 },
+            reactable: { type: 'noul', noul: 0.1 },
+            emoji: { type: 'choice', choice: '😂', probabilities: { '😂': 0.9, '👍': 0.1 }, confidence: 0.8 },
+            ...over
+          }
+        })
+      } as any);
+
+      beforeEach(() => {
+        process.env.TYPESAFE_API_KEY = 'test-key';
+        fetchSpy = jest.spyOn(global, 'fetch');
+        state.updateConfig('guild123', false, { responseDelayMs: 0, sociability: 1 });
+      });
+      afterEach(() => fetchSpy.mockRestore());
+
+      function ambientMessage(text: string) {
+        const message = createMockMessage({ content: text });
+        (message.channel as any).messages = chatChannel(text).messages;
+        (message.channel as any).createWebhook = jest.fn().mockResolvedValue({ id: 'wh1', send: jest.fn().mockResolvedValue({ id: 'sent1' }) });
+        return message;
+      }
+
+      it('chimes in, briefly, when Jev judges it worthwhile', async () => {
+        fetchSpy.mockResolvedValueOnce(jev({ value: { type: 'score', score: 3, probabilities: {}, confidence: 1 } }));
+        mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'Socrates, sir.' }] });
+        const message = ambientMessage('who said the unexamined life is not worth living?');
+
+        await handler.handleMessage(message, false, 'ambient');
+        await flush();
+
+        const call = mockAnthropic.messages.create.mock.calls[0][0];
+        expect(call.system).toContain('[Joining in]');
+        expect(call.max_tokens).toBeLessThanOrEqual(400);
+        const webhook = await ((message.channel as any).createWebhook as jest.Mock).mock.results[0].value;
+        expect(webhook.send).toHaveBeenCalledWith(expect.objectContaining({ content: 'Socrates, sir.' }));
+      });
+
+      it('stays quiet when there is nothing to add', async () => {
+        fetchSpy.mockResolvedValueOnce(jev());
+        const message = ambientMessage('lol same');
+        await handler.handleMessage(message, false, 'ambient');
+        await flush();
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
+        expect(message.react).not.toHaveBeenCalled();
+      });
+
+      it('reacts instead when the message merits an emoji', async () => {
+        fetchSpy.mockResolvedValueOnce(jev({ reactable: { type: 'noul', noul: 0.9 } }));
+        const message = ambientMessage('I passed my driving test!');
+        (message as any).id = 'm0'; // the latest line in the channel
+        await handler.handleMessage(message, false, 'ambient');
+        await flush();
+        expect(message.react).toHaveBeenCalledWith('😂');
+        expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
+      });
+
+      it('answers an @mention directly without consulting Jev', async () => {
+        mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'At once, sir.' }] });
+        const message = ambientMessage('@Jeeves a word?');
+        (message as any).client = { user: { id: 'bot1' } };
+        (message as any).mentions = { users: new Collection([['bot1', {}]]), repliedUser: null };
+        await handler.handleMessage(message, false, 'ambient');
+        await flush();
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(mockAnthropic.messages.create.mock.calls[0][0].system).not.toContain('[Joining in]');
+      });
+
+      it('in shadow mode decides and drafts, but posts nothing', async () => {
+        state.updateConfig('guild123', false, { ambientShadow: true });
+        fetchSpy.mockResolvedValueOnce(jev({ value: { type: 'score', score: 3, probabilities: {}, confidence: 1 } }));
+        mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'Socrates, sir.' }] });
+        const message = ambientMessage('who said it?');
+        await handler.handleMessage(message, false, 'ambient');
+        await flush();
+        expect(mockAnthropic.messages.create).toHaveBeenCalled();
+        expect((message.channel as any).createWebhook).not.toHaveBeenCalled();
+        expect((message.channel as TextChannel).send).not.toHaveBeenCalled();
+      });
     });
 
     it('should handle whisper mode without generating response', async () => {
       state.updateConfig('guild123', false, { mode: 'whisper' });
       const message = createMockMessage({ content: 'Hello' });
       
-      await handler.handleMessage(message, false, true);
+      await handler.handleMessage(message, false, 'reply');
       
       expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('audio'));
     });

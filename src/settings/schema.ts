@@ -78,7 +78,7 @@ export const SETTINGS: Setting[] = [
     },
     {
         kind: 'number', key: 'messageLimit', label: 'Memory', emoji: '📚', tab: 'chat',
-        description: 'How many past messages the bot remembers.',
+        description: 'How many recent channel messages the bot reads when replying.',
         min: 1, max: 1000, integer: true, unit: 'messages'
     },
     {
@@ -113,6 +113,12 @@ export const SETTINGS: Setting[] = [
         description: 'Ask spaced-repetition learning questions.'
     },
     {
+        kind: 'number', key: 'sociability', label: 'Sociability', emoji: '🗣️', tab: 'features',
+        guildOnly: true,
+        description: 'In ambient channels, how much of the conversation to join unprompted: 0 only when addressed, 1 a full share.',
+        min: 0, max: 1
+    },
+    {
         kind: 'number', key: 'museInterval', label: 'Muse interval', emoji: '⏰', tab: 'features',
         description: 'Hours of quiet before an automatic muse.',
         min: 0, minExclusive: true, max: 24 * 30, scale: 60 * 60 * 1000, unit: 'hours'
@@ -126,7 +132,17 @@ export const SETTINGS: Setting[] = [
     // ── Admin ───────────────────────────────────────────────────────────
     {
         kind: 'toggle', key: 'shouldSaveData', label: 'Save to disk', emoji: '💾', tab: 'admin',
-        description: 'Persist settings and history between restarts.'
+        description: 'Persist settings between restarts.'
+    },
+    {
+        kind: 'toggle', key: 'ambientEverywhere', label: 'Join any channel', emoji: '🌐', tab: 'admin',
+        guildOnly: true, requiresAdmin: true,
+        description: 'Channels without a /config setting behave as ambient (set a channel to none to keep out).'
+    },
+    {
+        kind: 'toggle', key: 'ambientShadow', label: 'Ambient shadow mode', emoji: '👻', tab: 'admin',
+        guildOnly: true,
+        description: 'Decide when to chime in and log it, but post nothing (for tuning).'
     },
     {
         kind: 'toggle', key: 'allowDMs', label: 'Direct messages', emoji: '📨', tab: 'admin',
@@ -200,10 +216,9 @@ export function applySetting(state: BotState, id: string, isDM: boolean, setting
     state.updateConfig(id, isDM, { [setting.key]: value } as Partial<BotConfig>);
 }
 
-/** Switch persona. Clears memory, as the mode commands always have. */
+/** Switch persona. Context starts afresh, as the mode commands always have. */
 export function applyMode(state: BotState, id: string, isDM: boolean, mode: BotMode): void {
-    state.getLog(id, isDM).messages = [];
-    state.updateConfig(id, isDM, { mode });
+    state.updateConfig(id, isDM, { mode, contextResetAt: Date.now() });
 }
 
 export const PROPOSABLE_SETTINGS = SETTINGS.filter(s => s.proposable);

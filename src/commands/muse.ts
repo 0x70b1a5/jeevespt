@@ -11,7 +11,9 @@ export class MuseHandler {
         private generateResponse: (
             id: string,
             isDM: boolean,
-            additionalMessages?: { role: string; content: string }[]
+            additionalMessages?: { role: string; content: string }[],
+            isReminder?: boolean,
+            opts?: { channel?: any }
         ) => Promise<GeneratedResponse | null>,
         private deps: CommandDependencies
     ) {}
@@ -64,7 +66,7 @@ And remember, you are in ${config.mode} mode. Please conform to the instructions
 If there was an error fetching the webpage, please mention this, as the developer will want to fix his code.`
         };
 
-        const response = await this.generateResponse(id, isDM, [prompt]);
+        const response = await this.generateResponse(id, isDM, [prompt], false, { channel: message.channel });
         if (response) {
             const chunks = commandUtils.splitMessageIntoChunks([response]);
             for (const chunk of chunks) {

@@ -172,11 +172,11 @@ describe('handleSettingsInteraction', () => {
     expect(interactionPermissionError(fakeInteraction('x', { admin: true }), config, opts)).toBeNull();
   });
 
-  it('switches persona from the dropdown, clearing memory', async () => {
-    state.getLog('g', false).messages.push({ role: 'user', content: 'hi' });
+  it('switches persona from the dropdown, starting the context afresh', async () => {
+    const before = Date.now();
     await handleSettingsInteraction(fakeInteraction('cfg:mode', { kind: 'select', values: ['tokipona'] }), state);
     expect(state.getConfig('g', false).mode).toBe('tokipona');
-    expect(state.getLog('g', false).messages).toEqual([]);
+    expect(state.getConfig('g', false).contextResetAt).toBeGreaterThanOrEqual(before);
   });
 
   it('applies valid numbers from the form and reports invalid ones', async () => {

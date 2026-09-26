@@ -9,7 +9,7 @@ import { applyMode } from '../settings/schema';
  */
 export const promptCommand: Command = {
     names: ['prompt'],
-    description: 'Set a custom system prompt (the AI\'s personality). Clears memory. Accepts text or a text-file attachment.',
+    description: 'Set a custom system prompt (the AI\'s personality). Starts the conversation afresh. Accepts text or a text-file attachment.',
     category: 'Modes',
     ephemeral: true,
     options: [{ name: 'text', description: 'The system prompt text', type: 'string', required: false, rest: true }],
@@ -48,9 +48,7 @@ export const promptCommand: Command = {
             return;
         }
 
-        const log = deps.state.getLog(ctx.id, ctx.isDM);
-        log.messages = [];
-        deps.state.updateConfig(ctx.id, ctx.isDM, { mode: 'customprompt' });
+        deps.state.updateConfig(ctx.id, ctx.isDM, { mode: 'customprompt', contextResetAt: Date.now() });
         deps.state.setCustomPrompt(ctx.id, ctx.isDM, prompt);
 
         const charCount = prompt.length >= 1000

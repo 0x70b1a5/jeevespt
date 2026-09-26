@@ -18,13 +18,14 @@ import { adminCommands } from '../src/commands/admin';
 import { patreonCommands } from '../src/commands/patreon';
 import { transcribeCommands } from '../src/commands/transcribe';
 import { sitelenCommands } from '../src/commands/sitelen';
+import { notesCommands } from '../src/commands/notes';
 import { buildSlashCommandData } from '../src/commands/slash';
 
 const all = [
     ...configCommands, ...settingsCommands, ...modeCommands, museCommand, learnCommand,
     ...reminderCommands, ...taskCommands, ...learningCommands, ...reactionCommands,
     ...translateCommands, ...channelConfigCommands, ...adminCommands, ...patreonCommands,
-    ...transcribeCommands, ...sitelenCommands, ...shortenCommands
+    ...transcribeCommands, ...sitelenCommands, ...shortenCommands, ...notesCommands
 ];
 
 const NAME_RE = /^[a-z0-9_-]{1,32}$/;

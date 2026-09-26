@@ -1,6 +1,6 @@
 # JeevesPT — Agent Guide
 
-Discord bot with multi-persona chat (Jeeves, toki pona, Lugso, custom), reminders/tasks, learning, autotranslate, reactions, muse, voice. TypeScript + discord.js v14 + Jest.
+Discord bot with multi-persona chat (Jeeves, toki pona, Lugso, custom), ambient participation (joins conversations unprompted, decided by TypeSafe's Jev model), people notes & follow-ups, reminders/tasks, learning, autotranslate, reactions, muse, voice. TypeScript + discord.js v14 + Jest.
 
 ## Commands
 
@@ -11,7 +11,7 @@ Discord bot with multi-persona chat (Jeeves, toki pona, Lugso, custom), reminder
 | Typecheck | `npx tsc --noEmit` |
 | Install | `npm install` |
 
-Env keys (see `.env.sample`): `DISCORD_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` (Whisper), `ELEVENLABS_API_KEY`, `IUNCTUS_URL` + `IUNCTUS_API_KEY` (`!shorten`), optional `DISCORD_GUILD_ID`.
+Env keys (see `.env.sample`): `DISCORD_BOT_TOKEN`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `OPENAI_API_KEY` (Whisper), `ELEVENLABS_API_KEY`, `IUNCTUS_URL` + `IUNCTUS_API_KEY` (`!shorten`), `TYPESAFE_API_KEY` (Jev: ambient gate + reaction emoji), optional `DISCORD_GUILD_ID`.
 
 ## Architecture (where to look)
 
@@ -25,12 +25,17 @@ src/
     config.ts        # !model, temperature, websearch, think*, etc.
     modes.ts         # !prompt (persona switching lives in /settings)
     settings.ts      # /settings panel command
-    listPanel.ts     # Managed lists with ❌ remove buttons (reminders, tasks, translate, learning, reactchannels, whitelist)
+    listPanel.ts     # Managed lists with ❌ remove buttons (reminders, tasks, translate, learning, reactchannels, whitelist, notes)
+    notes.ts         # /notes: what the bot remembers about you
     retired.ts       # Old command names → "has moved to …" redirects
     tasks.ts         # Scheduled task NL parser (hardcoded Claude haiku)
     …                # reminders, learning, reactions, translate, muse, …
   llm/generate.ts    # Multi-provider LLM: Claude + Grok + Poolside routing, agent loop
-  llm/tools.ts       # Client-side agent tools (AGENT_TOOLS), e.g. fetch_webpage
+  llm/tools.ts       # Client-side agent tools (AGENT_TOOLS), e.g. fetch_webpage; people tools
+  llm/typesafe.ts    # TypeSafe System One client (Jev): typed noul/choice/score judgments
+  chat/history.ts    # Live per-channel chat history (replaces the old buffer/log)
+  chat/ambient.ts    # Ambient policy: credit budget, engagement feedback, decide()
+  chat/gate.ts       # Jev questions for the ambient gate + reaction emoji picker
   settings/schema.ts # Settings table (toggles + numbers): parse/validate/apply, agent briefing
   settings/panel.ts  # /settings panel + agent proposal messages; cfg:* button/menu/modal handler
   state/             # BotState + stores; types + model lists in types.ts
@@ -89,6 +94,23 @@ Default chat model remains Claude Sonnet (`BotState` defaultConfig).
 - LLM unit tests live in `src/llm/generate.test.ts`.
 - Do not commit secrets; `.env` is local only.
 
+## Chat history
+
+There is no bot-side buffer or log. When replying, `generateResponse(..., { channel })` reads the channel's last `messageLimit` messages via `channelHistory.fetch` (`chat/history.ts`): per channel, oldest first, our own lines (bot user or our persona webhooks) as `assistant`, commands / `[SYSTEM]` notices / slash replies skipped. What Discord can't return — voice transcripts, attached-file text — is annotated per message id when the message arrives (`handleMessage`). "Clearing memory" (`!clear`, persona switch, `!prompt`) sets `config.contextResetAt`; history before it is ignored. Replies are debounced per channel (`responseDelayMs`).
+
+## Ambient participation ("one of the fellas")
+
+Channel frequencies: `all` / `mentions` / `none` / **`ambient`** (`/config`). With **Join any channel** (`ambientEverywhere`, admin) unconfigured channels are ambient too. In an ambient channel, @mentions and replies to the bot are answered directly; otherwise, once the channel settles, `runAmbientGate` (commands/index.ts):
+
+1. Reads the last ~20 lines; never speaks twice running.
+2. Asks **Jev** (`chat/gate.ts`, one TypeSafe request, ~100–300 ms): addressed? how much could he add (Score)? intrusive? responds to him? reaction-worthy? which message to answer (Choice)? which emoji (Choice over `BASE_EMOJI` + the server's custom emoji; recent ones down-weighted in code)?
+3. `decide()` (`chat/ambient.ts`) applies policy in code: addressed → reply; else reply if `value × (1 − intrusive)` clears a bar that drops with **Sociability** (0–1 setting) *and* the channel has ≥1 credit; else react if worthy (¼ credit). Credit per human message = `sociability × engagement ÷ active speakers` (1 = a fair share of the conversation). Engagement rises when unprompted messages get replies/reactions/responses and falls when ignored.
+4. Unprompted replies get a "[Joining in]" addendum (match the chat's median message length) and a token cap; webhooks can't do Discord replies, so answering an older message prefixes `-# ↪ [name](link)`.
+
+**Ambient shadow mode** (`ambientShadow`) makes and logs every decision (`🎲 Ambient …`, `👻 Would say …`) but posts nothing — use it to tune. Keep Jev's arithmetic-free: thresholds and budgets live in `chat/ambient.ts`. Reaction mode (`/reactchannels`) also picks its emoji with Jev (`chooseReaction`); without `TYPESAFE_API_KEY` both stay quiet.
+
+**People.** Live chat replies get `remember_about_person` (notes in `data/people.json`, injected into the system prompt when that person is in the conversation; each person sees/removes theirs via `/notes`) and `schedule_followup` (a reminder with `followup` set, listed in that person's `/reminders`; when due, `sendFollowup` asks them about it in character).
+
 ## Settings panel & agent proposals
 
 - `/settings` (or `!settings`) posts a **public** panel: tabs (Chat / Features / Admin), checkbox-style toggle buttons (green ✅ on, grey ⬜ off), persona + model dropdowns, and a "Numbers…" modal. Everything a component needs is in its `custom_id` (`cfg:…`), so panels survive restarts with no bookkeeping (the Joblin pattern). `server.ts` hands every button/menu/modal to `CommandHandler.handleComponent`, which routes `cfg:*` to the settings panel and `lst:*` to managed lists.
@@ -97,7 +119,7 @@ Default chat model remains Claude Sonnet (`BotState` defaultConfig).
 
 ## Command surface
 
-21 slash commands (from 59) after folding settings into `/settings` and list/remove pairs into single list commands. `scripts/validate-slash.ts` checks the payloads against Discord's limits.
+22 slash commands (from 59) after folding settings into `/settings` and list/remove pairs into single list commands (plus `/notes`). `scripts/validate-slash.ts` checks the payloads against Discord's limits.
 
 ## Personas / product notes
 

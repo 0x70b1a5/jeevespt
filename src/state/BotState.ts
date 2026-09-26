@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { JEEVES_PROMPT } from '../prompts/prompts';
 import {
-    BotConfig, BotMode, MessageBuffer, MessageLog,
+    BotConfig, BotMode,
     ChannelMembershipConfig, AutotranslateChannel, AutotranslateUser,
     ScheduledReminder, ScheduledTask, LearningTracker, ReactionHistory
 } from './types';
@@ -10,6 +10,7 @@ import { TaskStore } from './TaskStore';
 import { LearningStore } from './LearningStore';
 import { ReactionStore } from './ReactionStore';
 import { AutotranslateStore } from './AutotranslateStore';
+import { PeopleStore, PersonNote } from './PeopleStore';
 
 /**
  * BotState - Central state management for the bot
@@ -21,10 +22,6 @@ export class BotState {
     // Core state maps
     private guildConfigs: Map<string, BotConfig> = new Map();
     private userConfigs: Map<string, BotConfig> = new Map();
-    private guildBuffers: Map<string, MessageBuffer> = new Map();
-    private userBuffers: Map<string, MessageBuffer> = new Map();
-    private guildLogs: Map<string, MessageLog> = new Map();
-    private userLogs: Map<string, MessageLog> = new Map();
     private customPrompts: Map<string, string> = new Map();
 
     // Extracted stores
@@ -32,6 +29,7 @@ export class BotState {
     private taskStore: TaskStore;
     private learningStore: LearningStore;
     private reactionStore: ReactionStore;
+    private peopleStore: PeopleStore;
 
     private defaultConfig: BotConfig = {
         mode: 'jeeves',
@@ -57,7 +55,11 @@ export class BotState {
         commandWhitelist: ['help'],
         extendedThinking: false,
         webSearchEnabled: true,
-        webSearchMaxUses: 5
+        webSearchMaxUses: 5,
+        sociability: 0.3,
+        ambientEverywhere: false,
+        ambientShadow: false,
+        contextResetAt: 0
     };
 
     constructor() {
@@ -65,6 +67,7 @@ export class BotState {
         this.taskStore = new TaskStore();
         this.learningStore = new LearningStore();
         this.reactionStore = new ReactionStore();
+        this.peopleStore = new PeopleStore();
         this.loadPersistedData();
     }
 
@@ -102,38 +105,9 @@ export class BotState {
         return Array.from(this.userConfigs.entries());
     }
 
-    // ==================== Buffer Management ====================
-
-    getBuffer(id: string, isDM: boolean): MessageBuffer {
-        const map = isDM ? this.userBuffers : this.guildBuffers;
-        let buffer = map.get(id);
-
-        if (!buffer) {
-            console.log(`💬 No buffer found for ${isDM ? 'DM' : 'guild'} (${id}). Creating new buffer.`);
-            buffer = {
-                messages: [],
-                lastMessageTimestamp: Date.now(),
-                responseTimer: null
-            };
-            map.set(id, buffer);
-        }
-
-        return buffer;
-    }
-
-    // ==================== Log Management ====================
-
-    getLog(id: string, isDM: boolean): MessageLog {
-        const map = isDM ? this.userLogs : this.guildLogs;
-        let log = map.get(id);
-
-        if (!log) {
-            console.log(`💬 No log found for ${isDM ? 'DM' : 'guild'} (${id}). Creating new log.`);
-            log = { messages: [] };
-            map.set(id, log);
-        }
-
-        return log;
+    /** Start chat context afresh from now (persona switch); history before this is ignored. */
+    resetContext(id: string, isDM: boolean): void {
+        this.updateConfig(id, isDM, { contextResetAt: Date.now() });
     }
 
     // ==================== Custom Prompts ====================
@@ -238,6 +212,20 @@ export class BotState {
         return this.reactionStore.getRecentReactions(id, isDM);
     }
 
+    // ==================== People Notes Delegation ====================
+
+    addPersonNote(id: string, isDM: boolean, userId: string, name: string, text: string): void {
+        this.peopleStore.add(this.getStorageKey(id, isDM), userId, name, text);
+    }
+
+    getPersonNotes(id: string, isDM: boolean, userId: string): PersonNote[] {
+        return this.peopleStore.get(this.getStorageKey(id, isDM), userId);
+    }
+
+    removePersonNote(id: string, isDM: boolean, userId: string, at: number): boolean {
+        return this.peopleStore.remove(this.getStorageKey(id, isDM), userId, at);
+    }
+
     // ==================== Channel Membership ====================
 
     setChannelMembership(id: string, isDM: boolean, channelId: string, membership: ChannelMembershipConfig): void {
@@ -333,7 +321,7 @@ export class BotState {
             const files = await fs.promises.readdir('data');
 
             for (const file of files) {
-                if (!file.endsWith('.json') || file === 'reminders.json' || file === 'tasks.json') continue;
+                if (!file.endsWith('.json') || ['reminders.json', 'tasks.json', 'people.json'].includes(file)) continue;
 
                 const data = JSON.parse(
                     await fs.promises.readFile(`data/${file}`, 'utf8')
@@ -349,11 +337,6 @@ export class BotState {
                         config.channelMemberships = new Map(Object.entries(data.config.channelMemberships));
                     }
                     map.set(id, config);
-                }
-
-                if (data.messages) {
-                    const map = isDM ? this.userLogs : this.guildLogs;
-                    map.set(id, { messages: data.messages });
                 }
 
                 if (data.customPrompt) {
@@ -377,7 +360,6 @@ export class BotState {
         try {
             const key = this.getStorageKey(id, isDM);
             const config = this.getConfig(id, isDM);
-            const log = this.getLog(id, isDM);
             const customPrompt = this.customPrompts.get(key);
 
             const learningData = this.learningStore.serialize(id, isDM);
@@ -390,7 +372,6 @@ export class BotState {
 
             const data = {
                 config: configForSerialization,
-                messages: log.messages,
                 customPrompt,
                 learningData,
                 reactionData,

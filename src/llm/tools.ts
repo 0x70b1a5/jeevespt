@@ -6,7 +6,7 @@
 
 import { LlmTool } from './generate';
 import { getWebpage } from '../getWebpage';
-import { BotConfig } from '../state';
+import { BotConfig, BotState } from '../state';
 import {
     PROPOSABLE_SETTINGS, SettingProposal, describeChange, describeRange, displayNumber, formatSetting,
     getSetting, parseSettingValue
@@ -70,6 +70,117 @@ export function createProposeSettingTool(config: BotConfig, proposals: SettingPr
             proposals.push({ key: setting.key, value: display, reason: String(reason ?? '').trim() || 'It may serve you better.' });
             return `Queued: the user will be offered to ${describeChange(setting, display).replace(/\*\*/g, '')}, ` +
                 'with Apply / Not now buttons, right after your reply. Do not claim it is already changed.';
+        }
+    };
+}
+
+/** Someone in the current chat, as the agent sees them ("username/Display Name"). */
+export interface ChatParticipant {
+    id: string;
+    name: string;
+}
+
+const MAX_FOLLOWUP_HOURS = 24 * 60;
+const MAX_PENDING_FOLLOWUPS_PER_PERSON = 3;
+
+/** Match the name the model used against the people in the chat. */
+export function resolveParticipant(participants: ChatParticipant[], who: string): ChatParticipant | undefined {
+    const wanted = String(who ?? '').trim().replace(/^@/, '').toLowerCase();
+    if (!wanted) return undefined;
+    return participants.find(p => {
+        const [username, display] = p.name.toLowerCase().split('/');
+        return wanted === p.name.toLowerCase() || wanted === username || wanted === display;
+    });
+}
+
+function unknownPerson(participants: ChatParticipant[], who: string): Error {
+    const names = participants.map(p => p.name.split('/')[0]).join(', ') || 'nobody';
+    return new Error(`No one called "${who}" in the recent conversation. People here: ${names}.`);
+}
+
+/**
+ * Lets the agent note a lasting fact about someone in the chat. Notes are
+ * shown to it whenever that person is in the conversation, and each person
+ * can see and delete what's noted about them with /notes.
+ */
+export function createRememberTool(
+    state: BotState, scope: { id: string; isDM: boolean }, participants: ChatParticipant[]
+): LlmTool {
+    return {
+        name: 'remember_about_person',
+        description:
+            'Quietly note a lasting fact about someone in this chat that a friend would remember next time: ' +
+            'their work or studies, interests, plans, family, pets, what they are going through. Only what they ' +
+            'shared openly here, and nothing sensitive (health, money, secrets) unless they plainly want it ' +
+            'remembered. Your notes about people are shown to you whenever they are in the conversation, and ' +
+            'they can view or delete them with /notes. Do not remark that you are taking a note.',
+        parameters: {
+            type: 'object',
+            properties: {
+                person: { type: 'string', description: 'Their username as shown in the chat.' },
+                fact: { type: 'string', description: 'One short sentence, e.g. "Has a viva on 3 October in medieval history."' }
+            },
+            required: ['person', 'fact']
+        },
+        run: async ({ person, fact }: { person: string; fact: string }) => {
+            const who = resolveParticipant(participants, person);
+            if (!who) throw unknownPerson(participants, person);
+            if (!String(fact ?? '').trim()) throw new Error('The fact is empty.');
+            state.addPersonNote(scope.id, scope.isDM, who.id, who.name, fact);
+            return `Noted about ${who.name}.`;
+        }
+    };
+}
+
+/**
+ * Lets the agent plan to check in with someone later ("how did the viva
+ * go?"). Stored as a reminder for that person — so it shows in their
+ * /reminders and they can cancel it — which fires as an in-character
+ * question in this channel instead of a plain reminder.
+ */
+export function createFollowupTool(
+    state: BotState, scope: { id: string; isDM: boolean }, channelId: string, participants: ChatParticipant[]
+): LlmTool {
+    return {
+        name: 'schedule_followup',
+        description:
+            'Plan to check in with someone later about something they mentioned — an exam, an interview, a trip, ' +
+            'a problem they were wrestling with — the way a friend asks "how did it go?". When the time comes you ' +
+            'will be prompted to ask them about it in this channel. Use sparingly, only for things they would be ' +
+            'glad to be asked about, and time it for just after the event.',
+        parameters: {
+            type: 'object',
+            properties: {
+                person: { type: 'string', description: 'Their username as shown in the chat.' },
+                about: { type: 'string', description: 'What to ask about, e.g. "their viva in medieval history".' },
+                hours_from_now: { type: 'number', description: `When to ask, in hours from now (up to ${MAX_FOLLOWUP_HOURS}).` }
+            },
+            required: ['person', 'about', 'hours_from_now']
+        },
+        run: async ({ person, about, hours_from_now }: { person: string; about: string; hours_from_now: number }) => {
+            const who = resolveParticipant(participants, person);
+            if (!who) throw unknownPerson(participants, person);
+            const hours = Number(hours_from_now);
+            if (!Number.isFinite(hours) || hours <= 0 || hours > MAX_FOLLOWUP_HOURS) {
+                throw new Error(`hours_from_now must be between 0 and ${MAX_FOLLOWUP_HOURS}.`);
+            }
+            const topic = String(about ?? '').trim().slice(0, 200);
+            if (!topic) throw new Error('Say what to ask about.');
+            const pending = state.getRemindersForUser(who.id).filter(r => r.followup).length;
+            if (pending >= MAX_PENDING_FOLLOWUPS_PER_PERSON) {
+                throw new Error(`${who.name} already has ${pending} follow-ups planned; that is plenty.`);
+            }
+            const triggerTime = new Date(Date.now() + hours * 60 * 60 * 1000);
+            state.addReminder({
+                id: `${who.id}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+                userId: who.id,
+                channelId,
+                content: `Follow-up: ${topic}`,
+                triggerTime,
+                isDM: scope.isDM,
+                followup: { about: topic }
+            });
+            return `Planned: you will ask ${who.name} about ${topic} at ${triggerTime.toISOString()}.`;
         }
     };
 }

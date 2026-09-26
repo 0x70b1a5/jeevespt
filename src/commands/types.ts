@@ -122,7 +122,7 @@ export interface CommandUtils {
     /** Get channel ID from name */
     getChannelIdFromName(message: Message, channelName: string): string | null;
     /** Send message via webhook with persona */
-    sendWebhookMessage(channel: TextChannel | DMChannel, content: string, mode: string, files?: any[]): Promise<void>;
+    sendWebhookMessage(channel: TextChannel | DMChannel, content: string, mode: string, files?: any[]): Promise<Message | null>;
     /** Get or create webhook for channel */
     getWebhookForChannel(channel: TextChannel, mode: string): Promise<Webhook | null>;
 }

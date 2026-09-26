@@ -100,7 +100,9 @@ export async function buildSettingsPanel(
     if (settings.some(s => s.kind === 'number')) {
         buttons.push(new ButtonBuilder().setCustomId(`cfg:num:${tab}`).setLabel('Numbers…').setEmoji('✏️').setStyle(ButtonStyle.Primary));
     }
-    if (buttons.length) components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons));
+    for (let i = 0; i < buttons.length; i += 5) { // Discord: 5 buttons per row
+        components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.slice(i, i + 5)));
+    }
     components.push(tabRow(tab));
 
     return { embeds: [embed], components };

@@ -10,12 +10,11 @@ export { TaskStore } from './TaskStore';
 export { LearningStore } from './LearningStore';
 export { ReactionStore } from './ReactionStore';
 export { AutotranslateStore } from './AutotranslateStore';
+export { PeopleStore, PersonNote } from './PeopleStore';
 
 export {
     BotConfig,
     BotMode,
-    MessageBuffer,
-    MessageLog,
     ChannelMembershipConfig,
     AutotranslateChannel,
     AutotranslateUser,

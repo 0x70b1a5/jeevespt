@@ -5,7 +5,9 @@
 export enum ResponseFrequency {
     None = 'none',
     EveryMessage = 'all',
-    WhenMentioned = 'mentions'
+    WhenMentioned = 'mentions',
+    /** Join in when there's something worth saying (see chat/ambient.ts). */
+    Ambient = 'ambient'
 }
 
 export interface ChannelMembershipConfig {
@@ -20,16 +22,6 @@ export interface AutotranslateChannel {
 export interface AutotranslateUser {
     userId: string;
     language: string;
-}
-
-export interface MessageBuffer {
-    messages: { role: string; content: string }[];
-    lastMessageTimestamp: number;
-    responseTimer: NodeJS.Timeout | null;
-}
-
-export interface MessageLog {
-    messages: { role: string; content: string }[];
 }
 
 export interface LearningTracker {
@@ -60,6 +52,12 @@ export interface ScheduledReminder {
         type: 'daily' | 'weekly' | 'custom';
     };
     isDM: boolean;
+    /**
+     * Set when the bot scheduled this itself to check in on the user (the
+     * schedule_followup tool): it asks about `about` in the channel, in
+     * character, instead of posting a plain reminder.
+     */
+    followup?: { about: string };
 }
 
 /**
@@ -123,6 +121,14 @@ export interface BotConfig {
     webSearchEnabled: boolean;
     /** Maximum web searches the model may perform per response */
     webSearchMaxUses: number;
+    /** 0–1: how much of the conversation the bot takes part in unprompted (ambient channels) */
+    sociability: number;
+    /** Channels with no explicit /config behave as ambient */
+    ambientEverywhere: boolean;
+    /** Ambient decisions are made and logged, but nothing is posted */
+    ambientShadow: boolean;
+    /** Chat context starts after this time (ms); set when the persona changes */
+    contextResetAt: number;
 }
 
 // Valid Anthropic Claude models

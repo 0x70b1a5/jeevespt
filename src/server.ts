@@ -3,7 +3,7 @@ installTimestampedLogging();
 
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
 import { BotState, ScheduledReminder, ScheduledTask } from './state';
-import { CommandHandler } from './commands';
+import { CommandHandler, ResponseTrigger } from './commands';
 import { registry } from './commands/registry';
 import { registerSlashCommands } from './commands/slash';
 import { commandUtils, discordTimestamp } from './commands/utils';
@@ -37,9 +37,13 @@ export class BotServer {
                 GatewayIntentBits.GuildMessages,
                 GatewayIntentBits.MessageContent,
                 GatewayIntentBits.DirectMessages,
+                // Reactions on our unprompted messages count as engagement (chat/ambient.ts)
+                GatewayIntentBits.GuildMessageReactions,
             ],
             partials: [
                 Partials.Channel,
+                Partials.Message,
+                Partials.Reaction,
             ]
         });
 
@@ -259,41 +263,48 @@ export class BotServer {
             const isDM = message.channel.type === ChannelType.DM;
             const id = isDM ? message.author.id : message.guild!.id;
 
-            // Determine if we should process this message and whether we should respond
+            // Determine if we should process this message, and what to do with it
             let shouldProcess = false;
-            let shouldRespond = false;
+            let trigger: ResponseTrigger = 'none';
 
             if (isDM) {
                 // DM logic: check allowDMs config
                 const config = this.state.getConfig(message.author.id, true);
                 shouldProcess = config.allowDMs;
-                shouldRespond = config.allowDMs;
+                trigger = config.allowDMs ? 'reply' : 'none';
             } else {
                 // Guild channel logic
                 const channelId = message.channel.id;
                 const membership = this.state.getChannelMembership(id, false, channelId);
+                const config = this.state.getConfig(id, false);
 
                 if (membership) {
                     // Channel is explicitly configured
                     switch (membership.responseFrequency) {
                         case 'none':
                             shouldProcess = false;
-                            shouldRespond = false;
                             break;
                         case 'all':
                             shouldProcess = true;
-                            shouldRespond = true;
+                            trigger = 'reply';
                             break;
                         case 'mentions':
                             shouldProcess = true;
                             // Check if bot is mentioned
-                            shouldRespond = message.mentions.has(this.client.user!.id);
+                            trigger = message.mentions.has(this.client.user!.id) ? 'reply' : 'none';
+                            break;
+                        case 'ambient':
+                            shouldProcess = true;
+                            trigger = 'ambient';
                             break;
                     }
                 } else if ((message.channel as TextChannel)?.name === process.env.TARGET_CHANNEL_NAME) {
                     // Backwards compatibility: TARGET_CHANNEL_NAME behaves like EveryMessage
                     shouldProcess = true;
-                    shouldRespond = true;
+                    trigger = 'reply';
+                } else if (config.ambientEverywhere && this.canSpeakIn(message.channel)) {
+                    shouldProcess = true;
+                    trigger = 'ambient';
                 }
             }
 
@@ -306,17 +317,29 @@ export class BotServer {
                 return;
             }
 
-            console.log(`📨 Processing message from ${message.author.tag} in ${isDM ? 'DM' : message.guild?.name} (shouldRespond: ${shouldRespond})`);
+            console.log(`📨 Processing message from ${message.author.tag} in ${isDM ? 'DM' : message.guild?.name} (trigger: ${trigger})`);
 
             // Handle commands or regular messages
             if (message.content.startsWith('!')) {
                 await this.commands.handleCommand(message, isDM);
             } else {
-                await this.commands.handleMessage(message, isDM, shouldRespond);
+                await this.commands.handleMessage(message, isDM, trigger);
             }
         });
 
+        this.client.on('messageReactionAdd', (reaction, user) => {
+            if (user.bot) return;
+            this.commands.handleReactionAdded(reaction.message.channelId, reaction.message.id);
+        });
+
         process.on('SIGINT', () => this.handleShutdown());
+    }
+
+    /** Ordinary text channels (and threads) where the bot may post. */
+    private canSpeakIn(channel: Message['channel']): boolean {
+        if (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.PublicThread) return false;
+        const me = channel.guild.members.me;
+        return !!me && !!channel.permissionsFor(me)?.has(['ViewChannel', 'SendMessages']);
     }
 
     private async checkReminders() {
@@ -343,6 +366,12 @@ export class BotServer {
 
             if (!channel || !('send' in channel)) {
                 console.log(`🚫 Could not find channel for reminder: ${reminder.id}`);
+                return;
+            }
+
+            if (reminder.followup) {
+                await this.commands.sendFollowup(reminder, channel as TextChannel);
+                console.log(`✅ Sent follow-up to ${reminder.userId}: "${reminder.followup.about}"`);
                 return;
             }
 

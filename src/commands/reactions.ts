@@ -1,11 +1,10 @@
 import { Message } from 'discord.js';
-import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
 import { buildListMessage, registerListKind } from './listPanel';
-import { generateText } from '../llm/generate';
-import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
-import { LUGSO_PROMPT } from '../prompts/lugso';
+import { isTypesafeConfigured } from '../llm/typesafe';
+import { channelHistory } from '../chat/history';
+import { chooseReaction, guildCustomEmoji } from '../chat/gate';
 
 /** Channels where the bot adds emoji reactions, with a ❌ per channel. */
 export const reactionChannelList = registerListKind({
@@ -108,92 +107,32 @@ export async function handleReaction(message: Message, deps: CommandDependencies
 }
 
 /**
- * Generate an appropriate emoji reaction for a message
+ * Pick an emoji for the message with Jev: a Choice over a curated set plus the
+ * server's own emoji, steered away from recently used ones (see chat/gate.ts).
  */
 async function generateEmojiReaction(message: Message, deps: CommandDependencies): Promise<string | null> {
+    if (!isTypesafeConfigured()) {
+        console.warn('⚠️ Reactions need TYPESAFE_API_KEY; skipping.');
+        return null;
+    }
     try {
-        const recentMessages = await message.channel.messages.fetch({ limit: 10 });
-        let userMessage = prependTimestampAndUsername(message);
-        userMessage += extractEmbedDataToText(message);
-
-        const channelHistory = [...recentMessages.values()]
-            .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
-            .map(msg => ({
-                role: "user",
-                content: userMessage
-            }));
-
         const id = message.guild!.id;
         const config = deps.state.getConfig(id, false);
+        const lines = await channelHistory.fetch(message.channel, { limit: 10, since: config.contextResetAt });
+        const upToMessage = lines.slice(0, lines.findIndex(line => line.id === message.id) + 1);
+        if (!upToMessage.length) return null;
 
-        // Get system prompt based on mode
-        const systemPrompt = getSystemPromptForMode(id, false, deps);
-
-        // Get recent reactions for variety
-        const recentReactions = deps.state.getRecentReactions(id, false);
-        let reactionContext = '';
-        if (recentReactions.length > 0) {
-            const recentEmojis = recentReactions.map(r => r.emoji).join(', ');
-            reactionContext = `\n\nIMPORTANT: My recent reactions were: ${recentEmojis}. Please choose a different emoji to add variety and avoid repetition.`;
-        }
-
-        const messages = [
-            ...channelHistory,
-            {
-                role: "user",
-                content: `Based on this conversation, please respond to the most recent message with a single emoji that would be an appropriate reaction. Only respond with the emoji itself.${reactionContext}`
-            }
-        ] as MessageParam[];
-
-        const result = await generateText(
-            { anthropic: deps.anthropic, xai: deps.xai, poolside: deps.poolside },
-            {
-                model: config.model,
-                maxTokens: 30,
-                temperature: config.temperature,
-                messages: messages.map(m => ({
-                    role: typeof m.role === 'string' ? m.role : 'user',
-                    content: typeof m.content === 'string' ? m.content : String(m.content ?? '')
-                })),
-                system: systemPrompt?.content || ''
-            }
-        );
-
-        const responseText = result.content || '';
-
-        const emojiMatch = responseText.trim().match(/^(\p{Emoji}|:\w+:)$/u);
-        if (emojiMatch) {
-            return emojiMatch[0];
-        }
-
-        console.log(`🤖 Generated emoji reaction: ${responseText}`);
-        return null;
+        const emoji = await chooseReaction(upToMessage, {
+            mode: config.mode,
+            channelName: (message.channel as any).name,
+            customEmoji: guildCustomEmoji(message.guild),
+            recentEmoji: deps.state.getRecentReactions(id, false).map(r => r.emoji)
+        });
+        console.log(`🤖 Jev picked reaction: ${emoji}`);
+        return emoji;
     } catch (error) {
         console.error('Error generating emoji reaction:', error);
         return null;
-    }
-}
-
-/**
- * Get system prompt for a given mode (duplicated here to avoid circular dependency)
- */
-function getSystemPromptForMode(id: string, isDM: boolean, deps: CommandDependencies): { role: string; content: string } | null {
-    const config = deps.state.getConfig(id, isDM);
-    // Import prompts lazily to avoid circular deps
-    const { JEEVES_PROMPT, TOKIPONA_PROMPT } = require('../prompts/prompts');
-
-    switch (config.mode) {
-        case 'tokipona':
-            return { role: 'system', content: TOKIPONA_PROMPT };
-        case 'whisper':
-            return null;
-        case 'customprompt':
-            return { role: 'system', content: deps.state.getCustomPrompt(id, isDM) };
-        case 'lugso':
-            return { role: 'system', content: LUGSO_PROMPT };
-        case 'jeeves':
-        default:
-            return { role: 'system', content: JEEVES_PROMPT };
     }
 }
 

@@ -1,6 +1,7 @@
 import { Message, TextChannel, TextBasedChannel, Webhook, Collection, Attachment, PermissionFlagsBits } from 'discord.js';
 import { SYS_PREFIX, MAX_CHUNK_SIZE, PERSONAS, ALLOWED_DOMAINS, TEMP_DIR, MAX_TEXT_ATTACHMENT_SIZE } from './constants';
 import { ChunkOptions, CommandUtils } from './types';
+import { channelHistory } from '../chat/history';
 import { BotConfig } from '../state/types';
 import fs from 'fs';
 import https from 'https';
@@ -308,8 +309,9 @@ export class CommandUtilsImpl implements CommandUtils {
                 console.log(`🔗 Created webhook for ${mode} mode in ${channel.name}`);
             }
 
-            // Cache the webhook
+            // Cache the webhook, and remember it's ours for reading history
             this.webhookCache.set(cacheKey, webhook);
+            channelHistory.addOwnWebhook(webhook.id);
             return webhook;
         } catch (error) {
             console.error(`Error managing webhook for ${mode} mode:`, error);
@@ -322,7 +324,7 @@ export class CommandUtilsImpl implements CommandUtils {
         content: string,
         mode: string,
         files?: any[]
-    ): Promise<void> {
+    ): Promise<Message | null> {
         // Only use webhooks for TextChannels, fallback to regular sends for other types
         if (channel.type === 0) { // TextChannel type
             try {
@@ -330,13 +332,12 @@ export class CommandUtilsImpl implements CommandUtils {
                 const persona = PERSONAS[mode] || PERSONAS.jeeves;
 
                 if (webhook) {
-                    await webhook.send({
+                    return await webhook.send({
                         content,
                         username: persona.name,
                         avatarURL: persona.avatar,
                         files
                     });
-                    return;
                 }
             } catch (error) {
                 console.error('Error sending webhook message:', error);
@@ -346,12 +347,12 @@ export class CommandUtilsImpl implements CommandUtils {
         // Fallback to regular message for all other cases
         try {
             if (files && files.length > 0) {
-                await channel.send({ content, files });
-            } else {
-                await channel.send(content);
+                return await channel.send({ content, files });
             }
+            return await channel.send(content);
         } catch (error) {
             console.error('Error sending regular message:', error);
+            return null;
         }
     }
 

@@ -2,16 +2,18 @@ import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils } from './utils';
 import { ResponseFrequency } from '../state';
 
-const VALID_FREQUENCIES = ['all', 'mentions', 'none'] as const;
+const VALID_FREQUENCIES = ['all', 'ambient', 'mentions', 'none'] as const;
 
 const FREQUENCY_MAP: Record<string, ResponseFrequency> = {
     'all': ResponseFrequency.EveryMessage,
+    'ambient': ResponseFrequency.Ambient,
     'mentions': ResponseFrequency.WhenMentioned,
     'none': ResponseFrequency.None
 };
 
 const FREQUENCY_DESCRIPTIONS: Record<string, string> = {
     'all': 'respond to every message',
+    'ambient': 'join the conversation when I have something worth saying (see Sociability in `/settings`), and always answer when mentioned or replied to',
     'mentions': 'only respond when mentioned',
     'none': 'ignore all messages'
 };
@@ -31,12 +33,13 @@ export const configCommand: Command = {
             name: 'frequency', description: 'How often to respond', type: 'string', required: false,
             choices: [
                 { name: 'all (every message)', value: 'all' },
+                { name: 'ambient (join in when worthwhile)', value: 'ambient' },
                 { name: 'mentions (only when mentioned)', value: 'mentions' },
                 { name: 'none (ignore)', value: 'none' }
             ]
         }
     ],
-    examples: ['!config', '!config #general all', '!config #random mentions'],
+    examples: ['!config', '!config #general ambient', '!config #random mentions'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
         // Show current configuration if no args
         if (ctx.args.length === 0) {
@@ -49,8 +52,9 @@ export const configCommand: Command = {
             await commandUtils.reply(
                 ctx.message,
                 `Usage: \`!config <#channel> <responseFrequency>\`\n` +
-                `Response frequencies: \`all\`, \`mentions\`, \`none\`\n` +
+                `Response frequencies: \`all\`, \`ambient\`, \`mentions\`, \`none\`\n` +
                 `Example: \`!config #general all\` - respond to every message in #general\n` +
+                `Example: \`!config #chat ambient\` - join in when there's something worth saying\n` +
                 `Example: \`!config #random mentions\` - only respond when mentioned in #random\n` +
                 `Example: \`!config #off-topic none\` - ignore messages in #off-topic`
             );
@@ -103,7 +107,7 @@ async function showChannelConfiguration(ctx: CommandContext, deps: CommandDepend
             ctx.message,
             `No channels are currently configured.\n` +
             `Use \`!config <#channel> <responseFrequency>\` to configure a channel.\n` +
-            `Response frequencies: \`all\`, \`mentions\`, \`none\``
+            `Response frequencies: \`all\`, \`ambient\`, \`mentions\`, \`none\``
         );
         return;
     }
