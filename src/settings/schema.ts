@@ -2,13 +2,12 @@
  * The settings table — single source of truth for every simple on/off and
  * numeric BotConfig setting. It drives:
  *   • the `/settings` panel (settings/panel.ts)
- *   • the generated `!thinkon`, `!tokens 500`, … commands (commands/settings.ts)
  *   • what agents are told about their settings, and which ones they may
  *     propose changing (llm/tools.ts)
  *
- * Persona (mode) and model are pick-one settings with bespoke commands
- * (`!jeeves`, `!model`), so they live outside this table; the panel handles
- * them with dropdowns via applyMode / the model list.
+ * Persona (mode) and model are pick-one settings, so they live outside this
+ * table; the panel handles them with dropdowns (applyMode / the model list),
+ * and `!model` remains for typing an arbitrary model id.
  */
 
 import { BotConfig, BotMode, BotState } from '../state';
@@ -23,8 +22,6 @@ interface SettingBase {
     /** One line: what it does. Shown in help, the panel, and to agents. */
     description: string;
     tab: SettingTab;
-    /** `!help` section for the generated commands. */
-    category: string;
     /** Meaningless in DMs (hidden from the DM panel; commands require a guild). */
     guildOnly?: boolean;
     /** Only server administrators may change it, even with admin mode off. */
@@ -36,8 +33,6 @@ interface SettingBase {
 export interface ToggleSetting extends SettingBase {
     kind: 'toggle';
     key: KeysOfType<BotConfig, boolean>;
-    /** Generated command names. `toggle` flips; `on`/`off` set explicitly. */
-    commands?: { on?: string[]; off?: string[]; toggle?: string[] };
 }
 
 export interface NumberSetting extends SettingBase {
@@ -54,7 +49,6 @@ export interface NumberSetting extends SettingBase {
     scale?: number;
     /** Plural unit shown after the value, e.g. "seconds". */
     unit?: string;
-    command?: { names: string[]; option: { name: string; description: string } };
 }
 
 export type Setting = ToggleSetting | NumberSetting;
@@ -63,109 +57,84 @@ export const SETTINGS: Setting[] = [
     // ── Chat ────────────────────────────────────────────────────────────
     {
         kind: 'toggle', key: 'webSearchEnabled', label: 'Web search', emoji: '🔍', tab: 'chat',
-        category: 'Configuration', proposable: true,
-        description: 'Let the bot search the internet when answering.',
-        commands: { on: ['websearchon', 'searchon'], off: ['websearchoff', 'searchoff'] }
+        proposable: true,
+        description: 'Let the bot search the internet when answering.'
     },
     {
         kind: 'toggle', key: 'extendedThinking', label: 'Extended thinking', emoji: '🧠', tab: 'chat',
-        category: 'Configuration', proposable: true,
-        description: 'Think before answering (+3000 thinking tokens; slower, more careful).',
-        commands: { on: ['thinkon'], off: ['thinkoff'] }
+        proposable: true,
+        description: 'Think before answering (+3000 thinking tokens; slower, more careful).'
     },
     {
         kind: 'number', key: 'temperature', label: 'Temperature', emoji: '🌡️', tab: 'chat',
-        category: 'Configuration',
         description: 'Sampling randomness; higher is more adventurous.',
-        min: 0, minExclusive: true, max: 2,
-        command: { names: ['temperature'], option: { name: 'value', description: 'Temperature between 0 and 2' } }
+        min: 0, minExclusive: true, max: 2
     },
     {
         kind: 'number', key: 'maxResponseLength', label: 'Max response', emoji: '📏', tab: 'chat',
-        category: 'Configuration', proposable: true,
+        proposable: true,
         description: 'Maximum tokens per reply.',
-        min: 1, max: 32000, integer: true, unit: 'tokens',
-        command: { names: ['tokens'], option: { name: 'tokens', description: 'Max tokens (1–32000)' } }
+        min: 1, max: 32000, integer: true, unit: 'tokens'
     },
     {
         kind: 'number', key: 'messageLimit', label: 'Memory', emoji: '📚', tab: 'chat',
-        category: 'Chat History',
         description: 'How many past messages the bot remembers.',
-        min: 1, max: 1000, integer: true, unit: 'messages',
-        command: { names: ['limit'], option: { name: 'count', description: 'Number of messages to remember' } }
+        min: 1, max: 1000, integer: true, unit: 'messages'
     },
     {
         kind: 'number', key: 'responseDelayMs', label: 'Response delay', emoji: '⏳', tab: 'chat',
-        category: 'Configuration',
         description: 'How long to wait for follow-up messages before replying.',
-        min: 1, max: 600, integer: true, round: true, scale: 1000, unit: 'seconds',
-        command: { names: ['delay'], option: { name: 'seconds', description: 'Delay in seconds' } }
+        min: 1, max: 600, integer: true, round: true, scale: 1000, unit: 'seconds'
     },
     {
         kind: 'number', key: 'webSearchMaxUses', label: 'Searches per reply', emoji: '🔢', tab: 'chat',
-        category: 'Configuration', proposable: true,
+        proposable: true,
         description: 'Cap on web searches per reply.',
-        min: 1, max: 20, integer: true, unit: 'searches',
-        command: { names: ['websearchmax', 'searchmax'], option: { name: 'count', description: 'Max searches per response (1–20)' } }
+        min: 1, max: 20, integer: true, unit: 'searches'
     },
 
     // ── Features ────────────────────────────────────────────────────────
     {
         kind: 'toggle', key: 'useVoiceResponse', label: 'Voice replies', emoji: '🔊', tab: 'features',
-        category: 'Configuration', proposable: true,
-        description: 'Attach spoken audio to replies.',
-        commands: { on: ['voiceon'], off: ['voiceoff'] }
+        proposable: true,
+        description: 'Attach spoken audio to replies.'
     },
     {
         kind: 'toggle', key: 'shouldMuseRegularly', label: 'Auto-muse', emoji: '🎭', tab: 'features',
-        category: 'Musing',
-        description: 'Periodically muse on a web page when the chat is quiet.',
-        commands: { on: ['museon'], off: ['museoff'] }
+        description: 'Periodically muse on a web page when the chat is quiet.'
     },
     {
         kind: 'toggle', key: 'reactionModeEnabled', label: 'Reactions', emoji: '😀', tab: 'features',
-        category: 'Reactions', guildOnly: true,
-        description: 'React to messages with emoji in monitored channels.',
-        commands: { on: ['reacton'], off: ['reactoff'] }
+        guildOnly: true,
+        description: 'React to messages with emoji in monitored channels.'
     },
     {
         kind: 'toggle', key: 'learningEnabled', label: 'Learning', emoji: '🎓', tab: 'features',
-        category: 'Learning',
-        description: 'Ask spaced-repetition learning questions.',
-        commands: { on: ['learnon'], off: ['learnoff'] }
+        description: 'Ask spaced-repetition learning questions.'
     },
     {
         kind: 'number', key: 'museInterval', label: 'Muse interval', emoji: '⏰', tab: 'features',
-        category: 'Musing',
         description: 'Hours of quiet before an automatic muse.',
-        min: 0, minExclusive: true, max: 24 * 30, scale: 60 * 60 * 1000, unit: 'hours',
-        command: { names: ['museinterval'], option: { name: 'hours', description: 'Hours between automatic muses' } }
+        min: 0, minExclusive: true, max: 24 * 30, scale: 60 * 60 * 1000, unit: 'hours'
     },
     {
         kind: 'number', key: 'transcriptionSpeedScalar', label: 'Transcription speed', emoji: '⏩', tab: 'features',
-        category: 'Configuration',
         description: 'Speed audio up by this factor before transcribing.',
-        min: 0.5, max: 4,
-        command: { names: ['speedscalar'], option: { name: 'scalar', description: 'Speed scalar between 0.5 and 4.0' } }
+        min: 0.5, max: 4
     },
 
     // ── Admin ───────────────────────────────────────────────────────────
     {
         kind: 'toggle', key: 'shouldSaveData', label: 'Save to disk', emoji: '💾', tab: 'admin',
-        category: 'Configuration',
-        description: 'Persist settings and history between restarts.',
-        commands: { toggle: ['persist'] }
+        description: 'Persist settings and history between restarts.'
     },
     {
         kind: 'toggle', key: 'allowDMs', label: 'Direct messages', emoji: '📨', tab: 'admin',
-        category: 'Configuration',
-        description: 'Respond to direct messages.',
-        commands: { toggle: ['dms'] }
+        description: 'Respond to direct messages.'
     },
     {
-        // Command stays hand-written (!adminmode) for its whitelist guidance.
         kind: 'toggle', key: 'adminMode', label: 'Admin mode', emoji: '🛡️', tab: 'admin',
-        category: 'Admin', guildOnly: true, requiresAdmin: true,
+        guildOnly: true, requiresAdmin: true,
         description: 'Only administrators may run commands or change settings.'
     }
 ];

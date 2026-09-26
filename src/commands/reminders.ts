@@ -1,11 +1,7 @@
-import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { TIME_MULTIPLIERS, MIN_REMINDER_MS, MAX_REMINDER_MS } from './constants';
 import { commandUtils, discordTimestamp } from './utils';
-
-function isSendableChannel(channel: any): channel is TextBasedChannel & { send: Function } {
-    return channel && typeof channel.send === 'function';
-}
+import { buildListMessage, registerListKind } from './listPanel';
 
 /**
  * !remind - Add a reminder
@@ -72,91 +68,43 @@ Examples:
             ctx.message,
             `⏰ Reminder set for ${discordTimestamp(triggerTime, 'f')} (${discordTimestamp(triggerTime, 'R')})\n` +
             `📝 "${reminderContent}"\n` +
-            `🆔 ID: \`${reminder.id}\``
+            `Use \`/reminders\` to see or cancel it.`
         );
     }
 };
 
+/** Your reminders, soonest first, each with a ❌ to cancel it. */
+export const reminderList = registerListKind({
+    code: 'rem',
+    command: 'reminders',
+    title: '⏰ Your reminders',
+    perUser: true,
+    empty: 'You have no active reminders. Set one with `/remind`.',
+    entries: (deps, scope) => deps.state.getRemindersForUser(scope.ownerId)
+        .sort((a, b) => a.triggerTime.getTime() - b.triggerTime.getTime())
+        .map(r => ({
+            value: r.id,
+            text: `${discordTimestamp(r.triggerTime, 'f')} (${discordTimestamp(r.triggerTime, 'R')}) — "${r.content}"`
+        })),
+    remove: (deps, _scope, entry) => { deps.state.removeReminder(entry.value); }
+});
+
 /**
- * !reminders - List active reminders
+ * !reminders - List your reminders, with ❌ buttons to cancel them
  */
 export const remindersCommand: Command = {
     names: ['reminders'],
-    description: 'List your active reminders.',
+    description: 'List your active reminders, with buttons to cancel them.',
     category: 'Reminders',
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const userReminders = deps.state.getRemindersForUser(ctx.message.author.id);
-
-        if (userReminders.length === 0) {
-            await commandUtils.reply(ctx.message, 'You have no active reminders.');
-            return;
-        }
-
-        const reminderList = userReminders
-            .sort((a, b) => a.triggerTime.getTime() - b.triggerTime.getTime())
-            .map(reminder => {
-                return `⏰ ${discordTimestamp(reminder.triggerTime, 'f')} (${discordTimestamp(reminder.triggerTime, 'R')})\n` +
-                    `📝 "${reminder.content}"\n` +
-                    `🆔 \`${reminder.id}\``;
-            })
-            .join('\n\n');
-
-        const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: reminderList }]);
-        await commandUtils.reply(ctx.message, 'Your active reminders:');
-
-        const channel = ctx.message.channel;
-        if (isSendableChannel(channel)) {
-            for (const chunk of chunks) {
-                if (chunk) await channel.send(chunk);
-            }
-        }
-    }
-};
-
-/**
- * !cancelreminder - Cancel a reminder
- */
-export const cancelReminderCommand: Command = {
-    names: ['cancelreminder'],
-    description: 'Cancel a reminder by its ID.',
-    category: 'Reminders',
-    options: [{ name: 'id', description: 'The reminder ID (from !reminders)', type: 'string', required: true }],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const reminderId = ctx.args[0];
-
-        if (!reminderId) {
-            await commandUtils.reply(ctx.message, 'Usage: `!cancelreminder <reminder_id>`');
-            return;
-        }
-
-        const reminder = deps.state.getReminder(reminderId);
-        if (!reminder) {
-            await commandUtils.reply(ctx.message, `Reminder not found: \`${reminderId}\``);
-            return;
-        }
-
-        if (reminder.userId !== ctx.message.author.id) {
-            await commandUtils.reply(ctx.message, 'You can only cancel your own reminders.');
-            return;
-        }
-
-        const deleted = deps.state.removeReminder(reminderId);
-        if (deleted) {
-            await commandUtils.reply(
-                ctx.message,
-                `✅ Cancelled reminder:\n` +
-                `📝 "${reminder.content}"\n` +
-                `⏰ Was scheduled for: ${discordTimestamp(reminder.triggerTime, 'f')}`
-            );
-        } else {
-            await commandUtils.reply(ctx.message, 'Failed to cancel reminder.');
-        }
+        await ctx.message.reply(buildListMessage(reminderList, deps, {
+            id: ctx.id, isDM: ctx.isDM, ownerId: ctx.message.author.id
+        }));
     }
 };
 
 // Export all reminder commands
 export const reminderCommands: Command[] = [
     remindCommand,
-    remindersCommand,
-    cancelReminderCommand
+    remindersCommand
 ];

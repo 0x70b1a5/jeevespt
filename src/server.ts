@@ -14,7 +14,6 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import { ElevenLabs } from './elevenlabs';
 import { shutdownBrowser } from './getWebpage';
-import { handleSettingsInteraction, isSettingsInteraction } from './settings/panel';
 dotenv.config();
 
 export class BotServer {
@@ -237,8 +236,8 @@ export class BotServer {
             try {
                 if (interaction.isChatInputCommand()) {
                     await this.commands.handleInteraction(interaction);
-                } else if (isSettingsInteraction(interaction)) {
-                    await handleSettingsInteraction(interaction, this.state);
+                } else {
+                    await this.commands.handleComponent(interaction);
                 }
             } catch (error) {
                 console.error('Error handling interaction:', error);
@@ -483,7 +482,7 @@ export class BotServer {
                         `${SYS_PREFIX}⏸️ Task paused after ${task.consecutiveFailures} consecutive failures.\n` +
                         `📝 ${task.instructions}\n` +
                         `🆔 \`${task.id}\`\n` +
-                        `Use \`!canceltask ${task.id}\` to remove it, or recreate it with \`!task\`.`
+                        `Use \`/tasks\` to remove it, or recreate it with \`/task\`.`
                     );
                 } catch { /* best effort */ }
             }

@@ -1,251 +1,87 @@
 import { Message } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
+import { buildListMessage, registerListKind } from './listPanel';
 import { generateText } from '../llm/generate';
 import { extractTranslatableEmbedContent } from '../formatMessage';
 
-/**
- * !translateadd - Add a channel to autotranslate
- */
-export const translateAddCommand: Command = {
-    names: ['translateadd'],
-    requiresGuild: true,
-    description: 'Auto-translate all messages in a channel to a language.',
-    category: 'Autotranslate',
-    ephemeral: true,
-    options: [
-        { name: 'channel', description: 'Channel to auto-translate', type: 'channel', required: true },
-        { name: 'language', description: 'Target language (e.g. Spanish, toki pona)', type: 'string', required: true, rest: true }
+/** Everything being auto-translated here: channels, then users (one row per language). */
+export const translateList = registerListKind({
+    code: 'tr',
+    command: 'translate',
+    title: '🌐 Autotranslate',
+    empty: 'Nothing is being translated. Add a channel with `/translate channel:#channel language:Spanish`, or a person with `/translate user:@name language:Latin`.',
+    entries: (deps, scope) => [
+        ...deps.state.getAllAutotranslateChannels(scope.id, scope.isDM).map(c => ({
+            value: `c:${c.channelId}`,
+            text: `<#${c.channelId}> → **${c.language}**`
+        })),
+        ...deps.state.getAllAutotranslateUsers(scope.id, scope.isDM).map(u => ({
+            value: `u:${u.userId}:${u.language}`,
+            text: `<@${u.userId}> → **${u.language}**`
+        }))
     ],
-    examples: ['!translateadd #spanish-practice Spanish'],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        if (ctx.args.length < 2) {
-            await commandUtils.reply(
-                ctx.message,
-                `Usage: \`!translateadd <#channel> <language>\`\n` +
-                `Example: \`!translateadd #toki-pona "toki pona"\` - translates messages from #toki-pona to toki pona`
-            );
-            return;
-        }
-
-        const channelName = ctx.args[0];
-        const language = ctx.args.slice(1).join(' ');
-
-        const channelId = commandUtils.getChannelIdFromName(ctx.message, channelName);
-        if (!channelId) {
-            await commandUtils.reply(ctx.message, `Could not find channel "${channelName}".`);
-            return;
-        }
-
-        deps.state.addAutotranslateChannel(ctx.id, ctx.isDM, channelId, language);
-
-        const channel = ctx.message.guild!.channels.cache.get(channelId);
-        const channelMention = channel ? `<#${channelId}>` : channelName;
-
-        await commandUtils.reply(
-            ctx.message,
-            `Added ${channelMention} to autotranslate.\n` +
-            `Messages in that channel will be automatically translated to **${language}**.`
-        );
-    }
-};
-
-/**
- * !translateremove - Remove a channel from autotranslate
- */
-export const translateRemoveCommand: Command = {
-    names: ['translateremove'],
-    requiresGuild: true,
-    description: 'Stop auto-translating a channel.',
-    category: 'Autotranslate',
-    ephemeral: true,
-    options: [{ name: 'channel', description: 'Channel to stop translating', type: 'channel', required: true }],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const channelName = ctx.args[0];
-
-        if (!channelName) {
-            await commandUtils.reply(ctx.message, 'Please specify a channel name.');
-            return;
-        }
-
-        const channelId = commandUtils.getChannelIdFromName(ctx.message, channelName);
-        if (!channelId) {
-            await commandUtils.reply(ctx.message, `Could not find channel "${channelName}".`);
-            return;
-        }
-
-        const wasRemoved = deps.state.removeAutotranslateChannel(ctx.id, ctx.isDM, channelId);
-
-        if (wasRemoved) {
-            const channel = ctx.message.guild!.channels.cache.get(channelId);
-            const channelMention = channel ? `<#${channelId}>` : channelName;
-            await commandUtils.reply(ctx.message, `Removed ${channelMention} from autotranslate.`);
+    remove: (deps, scope, entry) => {
+        const [type, target, ...language] = entry.value.split(':');
+        if (type === 'c') {
+            deps.state.removeAutotranslateChannel(scope.id, scope.isDM, target);
         } else {
-            await commandUtils.reply(ctx.message, `Channel "${channelName}" is not in the autotranslate list.`);
+            deps.state.removeAutotranslateUser(scope.id, scope.isDM, target, language.join(':'));
         }
     }
-};
+});
 
 /**
- * !translatelist - List autotranslate channels
+ * !translate — show what's being auto-translated (❌ to remove), or add a
+ * channel or a person:
+ *   !translate                      → list
+ *   !translate #channel Spanish     → translate everything in #channel
+ *   !translate @Alice Quenya        → translate Alice's messages (repeatable per language)
  */
-export const translateListCommand: Command = {
-    names: ['translatelist'],
+export const translateCommand: Command = {
+    names: ['translate'],
     requiresGuild: true,
-    description: 'List channels configured for auto-translation.',
+    description: 'Auto-translate a channel or a person: no arguments lists them (with remove buttons).',
     category: 'Autotranslate',
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const channels = deps.state.getAllAutotranslateChannels(ctx.id, ctx.isDM);
-
-        if (channels.length === 0) {
-            await commandUtils.reply(
-                ctx.message,
-                `No channels are currently configured for autotranslate.\n` +
-                `Use \`!translateadd <#channel> <language>\` to add a channel.`
-            );
-            return;
-        }
-
-        let channelList = '🌐 **Autotranslate Channels:**\n\n';
-        for (const { channelId, language } of channels) {
-            const channel = ctx.message.guild!.channels.cache.get(channelId);
-            const channelName = channel ? `<#${channelId}>` : `Unknown (${channelId})`;
-            channelList += `• ${channelName} → **${language}**\n`;
-        }
-
-        await ctx.message.reply(channelList);
-    }
-};
-
-/**
- * !translateadduser - Add a user to autotranslate
- */
-export const translateAddUserCommand: Command = {
-    names: ['translateadduser'],
-    requiresGuild: true,
-    description: "Auto-translate a specific user's messages to a language (can add several).",
-    category: 'Autotranslate',
-    ephemeral: true,
     options: [
-        { name: 'user', description: 'User whose messages to translate', type: 'user', required: true },
-        { name: 'language', description: 'Target language', type: 'string', required: true, rest: true }
+        { name: 'channel', description: 'Channel whose messages to translate', type: 'channel', required: false },
+        { name: 'user', description: 'Person whose messages to translate', type: 'user', required: false },
+        { name: 'language', description: 'Target language (e.g. Spanish, toki pona)', type: 'string', required: false, rest: true }
     ],
-    examples: ['!translateadduser @Alice Quenya'],
+    examples: ['!translate', '!translate #spanish-practice Spanish', '!translate @Alice Quenya'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        if (ctx.args.length < 2) {
-            await commandUtils.reply(
-                ctx.message,
-                `Usage: \`!translateadduser <@user or userId> <language>\`\n` +
-                `Example: \`!translateadduser @Alice Quenya\` - translates messages for Alice to Quenya\n` +
-                `Example: \`!translateadduser 123456789 Latin\` - translates messages for user ID to Latin`
-            );
+        const scope = { id: ctx.id, isDM: ctx.isDM, ownerId: ctx.message.author.id };
+        if (ctx.args.length === 0) {
+            await ctx.message.reply(buildListMessage(translateList, deps, scope));
             return;
         }
 
-        const userId = parseUserId(ctx.args[0]);
-        if (!userId) {
-            await commandUtils.reply(ctx.message, 'Invalid user format. Use @mention or user ID.');
+        const [target, ...rest] = ctx.args;
+        const language = rest.join(' ').trim();
+        if (parseUserId(rest[0] ?? '')) {
+            await commandUtils.reply(ctx.message, 'One at a time, please: give either a channel or a person.');
+            return;
+        }
+        if (!language) {
+            await commandUtils.reply(ctx.message, 'Say which language, e.g. `/translate channel:#chat language:Spanish` or `!translate @Alice Quenya`.');
             return;
         }
 
-        const language = ctx.args.slice(1).join(' ');
-        deps.state.addAutotranslateUser(ctx.id, ctx.isDM, userId, language);
-
-        await commandUtils.reply(
-            ctx.message,
-            `Added <@${userId}> to autotranslate.\n` +
-            `Messages from that user will be automatically translated to **${language}**.`
-        );
-    }
-};
-
-/**
- * !translateremoveuser - Remove a user from autotranslate
- */
-export const translateRemoveUserCommand: Command = {
-    names: ['translateremoveuser'],
-    requiresGuild: true,
-    description: 'Remove one or all translation languages for a user.',
-    category: 'Autotranslate',
-    ephemeral: true,
-    options: [
-        { name: 'user', description: 'User to update', type: 'user', required: true },
-        { name: 'language', description: 'Language to remove; omit to remove all', type: 'string', required: false, rest: true }
-    ],
-    examples: ['!translateremoveuser @Alice Latin', '!translateremoveuser @Alice'],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        if (ctx.args.length < 1) {
-            await commandUtils.reply(
-                ctx.message,
-                `Usage: \`!translateremoveuser <@user> [language]\`\n` +
-                `Remove a specific language or all languages for a user.\n` +
-                `Examples:\n` +
-                `- \`!translateremoveuser @Alice Latin\` - removes only Latin\n` +
-                `- \`!translateremoveuser @Alice\` - removes all languages for Alice`
-            );
-            return;
-        }
-
-        const userId = parseUserId(ctx.args[0]);
-        if (!userId) {
-            await commandUtils.reply(ctx.message, 'Invalid user format. Use @mention or user ID.');
-            return;
-        }
-
-        const language = ctx.args.length > 1 ? ctx.args.slice(1).join(' ') : undefined;
-        const wasRemoved = deps.state.removeAutotranslateUser(ctx.id, ctx.isDM, userId, language);
-
-        if (wasRemoved) {
-            if (language) {
-                await commandUtils.reply(ctx.message, `Removed **${language}** for <@${userId}> from autotranslate.`);
-            } else {
-                await commandUtils.reply(ctx.message, `Removed all languages for <@${userId}> from autotranslate.`);
-            }
+        const userId = parseUserId(target);
+        let note: string;
+        if (userId) {
+            deps.state.addAutotranslateUser(ctx.id, ctx.isDM, userId, language);
+            note = `✅ Added <@${userId}> → **${language}**`;
         } else {
-            if (language) {
-                await commandUtils.reply(ctx.message, `User <@${userId}> does not have **${language}** configured.`);
-            } else {
-                await commandUtils.reply(ctx.message, `User <@${userId}> is not in the autotranslate list.`);
+            const channelId = commandUtils.getChannelIdFromName(ctx.message, target);
+            if (!channelId) {
+                await commandUtils.reply(ctx.message, `Could not find a channel or person called "${target}".`);
+                return;
             }
+            deps.state.addAutotranslateChannel(ctx.id, ctx.isDM, channelId, language);
+            note = `✅ Added <#${channelId}> → **${language}**`;
         }
-    }
-};
-
-/**
- * !translatelistusers - List users configured for autotranslate
- */
-export const translateListUsersCommand: Command = {
-    names: ['translatelistusers'],
-    requiresGuild: true,
-    description: 'List users configured for auto-translation.',
-    category: 'Autotranslate',
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const users = deps.state.getAllAutotranslateUsers(ctx.id, ctx.isDM);
-
-        if (users.length === 0) {
-            await commandUtils.reply(
-                ctx.message,
-                `No users are currently configured for autotranslate.\n` +
-                `Use \`!translateadduser <@user> <language>\` to add a user.`
-            );
-            return;
-        }
-
-        // Group languages by user
-        const userLanguageMap = new Map<string, string[]>();
-        for (const { userId, language } of users) {
-            if (!userLanguageMap.has(userId)) {
-                userLanguageMap.set(userId, []);
-            }
-            userLanguageMap.get(userId)!.push(language);
-        }
-
-        let userList = '🌐 **Autotranslate Users:**\n\n';
-        for (const [userId, languages] of userLanguageMap) {
-            userList += `• <@${userId}> → **${languages.join(', ')}**\n`;
-        }
-
-        await ctx.message.reply(userList);
+        await ctx.message.reply(buildListMessage(translateList, deps, scope, note));
     }
 };
 
@@ -461,11 +297,4 @@ async function generateTranslation(
 }
 
 // Export all translate commands
-export const translateCommands: Command[] = [
-    translateAddCommand,
-    translateRemoveCommand,
-    translateListCommand,
-    translateAddUserCommand,
-    translateRemoveUserCommand,
-    translateListUsersCommand
-];
+export const translateCommands: Command[] = [translateCommand];

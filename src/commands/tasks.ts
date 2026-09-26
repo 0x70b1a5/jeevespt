@@ -2,6 +2,7 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { ScheduledTask, TaskRecurrence } from '../state/types';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, discordTimestamp } from './utils';
+import { buildListMessage, registerListKind } from './listPanel';
 import { TASK_PARSER_MODEL } from './constants';
 
 /**
@@ -259,81 +260,46 @@ Examples:
             `${kind} set for ${discordTimestamp(task.nextRun, 'f')} (${discordTimestamp(task.nextRun, 'R')})\n` +
             `🗓️  ${task.rawScheduleText}\n` +
             `📝 ${task.instructions}\n` +
-            `🆔 \`${task.id}\``
+            `Use \`/tasks\` to see or cancel it.`
         );
     }
 };
 
-/**
- * !tasks — List the caller's active scheduled tasks.
- */
-export const tasksCommand: Command = {
-    names: ['tasks'],
-    description: 'List your active scheduled tasks.',
-    category: 'Tasks',
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const userTasks = deps.state.getTasksForUser(ctx.message.author.id);
-        if (userTasks.length === 0) {
-            await commandUtils.reply(ctx.message, 'You have no active tasks.');
-            return;
-        }
-
-        const sorted = userTasks.sort((a, b) => a.nextRun.getTime() - b.nextRun.getTime());
-        const lines = sorted.map(t => {
+/** Your scheduled tasks, next run first, each with a ❌ to cancel it. */
+export const taskList = registerListKind({
+    code: 'task',
+    command: 'tasks',
+    title: '🗓️ Your scheduled tasks',
+    perUser: true,
+    empty: 'You have no active tasks. Schedule one with `/task`.',
+    entries: (deps, scope) => deps.state.getTasksForUser(scope.ownerId)
+        .sort((a, b) => a.nextRun.getTime() - b.nextRun.getTime())
+        .map(t => {
             const status: string[] = [];
             if (t.paused) status.push('⏸️ paused');
             if (t.consecutiveFailures > 0 && !t.paused) status.push(`⚠️ ${t.consecutiveFailures} recent failure(s)`);
-            const statusStr = status.length ? `  _${status.join(', ')}_\n` : '';
-            return `${t.recurrence ? '🔁' : '📋'} ${describeRecurrence(t)}\n` +
-                `  next: ${discordTimestamp(t.nextRun, 'f')} (${discordTimestamp(t.nextRun, 'R')})\n` +
-                `  📝 ${t.instructions}\n` +
-                statusStr +
-                `  🆔 \`${t.id}\``;
-        });
-
-        const reply = lines.join('\n\n');
-        const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: reply }]);
-        await commandUtils.reply(ctx.message, 'Your active tasks:');
-        const channel = ctx.message.channel as any;
-        if (channel && typeof channel.send === 'function') {
-            for (const chunk of chunks) {
-                if (chunk) await channel.send(chunk);
-            }
-        }
-    }
-};
+            return {
+                value: t.id,
+                text: `${t.recurrence ? '🔁' : '📋'} ${describeRecurrence(t)} · next ${discordTimestamp(t.nextRun, 'R')}` +
+                    (status.length ? ` · _${status.join(', ')}_` : '') +
+                    `\n   ${t.instructions}`
+            };
+        }),
+    remove: (deps, _scope, entry) => { deps.state.removeTask(entry.value); }
+});
 
 /**
- * !canceltask <id> — Cancel a specific task.
+ * !tasks — List your scheduled tasks, with ❌ buttons to cancel them.
  */
-export const cancelTaskCommand: Command = {
-    names: ['canceltask'],
-    description: 'Cancel a scheduled task by its ID.',
+export const tasksCommand: Command = {
+    names: ['tasks'],
+    description: 'List your scheduled tasks, with buttons to cancel them.',
     category: 'Tasks',
-    options: [{ name: 'id', description: 'The task ID (from !tasks)', type: 'string', required: true }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const id = ctx.args[0];
-        if (!id) {
-            await commandUtils.reply(ctx.message, 'Usage: `!canceltask <task_id>`');
-            return;
-        }
-
-        const task = deps.state.getTask(id);
-        if (!task) {
-            await commandUtils.reply(ctx.message, `Task not found: \`${id}\``);
-            return;
-        }
-        if (task.userId !== ctx.message.author.id) {
-            await commandUtils.reply(ctx.message, 'You can only cancel your own tasks.');
-            return;
-        }
-
-        deps.state.removeTask(id);
-        await commandUtils.reply(
-            ctx.message,
-            `✅ Cancelled task:\n📝 ${task.instructions}\n🗓️ Was: ${task.rawScheduleText}`
-        );
+        await ctx.message.reply(buildListMessage(taskList, deps, {
+            id: ctx.id, isDM: ctx.isDM, ownerId: ctx.message.author.id
+        }));
     }
 };
 
-export const taskCommands: Command[] = [taskCommand, tasksCommand, cancelTaskCommand];
+export const taskCommands: Command[] = [taskCommand, tasksCommand];

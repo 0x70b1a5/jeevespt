@@ -136,6 +136,27 @@ function createMockMessage(options: {
   } as unknown as Message;
 }
 
+/** All ❌ buttons in a list message payload, in order. */
+function listButtons(payload: any): any[] {
+  return payload.components.flatMap((row: any) => row.toJSON().components);
+}
+
+/** A button click on a list/settings message, as handleComponent sees it. */
+function fakeButton(customId: string, userId = 'user123') {
+  return {
+    customId,
+    guildId: 'guild123',
+    user: { id: userId, username: 'tester', displayName: 'Tester' },
+    inGuild: () => true,
+    memberPermissions: { has: () => false },
+    isButton: () => true,
+    isStringSelectMenu: () => false,
+    isModalSubmit: () => false,
+    update: jest.fn(),
+    reply: jest.fn()
+  } as any;
+}
+
 describe('CommandHandler', () => {
   let handler: CommandHandler;
   let state: BotState;
@@ -170,103 +191,6 @@ describe('CommandHandler', () => {
       expect(state.getLog('guild123', false).messages).toHaveLength(0);
     });
 
-    it('should handle !jeeves command', async () => {
-      const message = createMockMessage({ content: '!jeeves' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Jeeves'));
-      expect(state.getConfig('guild123', false).mode).toBe('jeeves');
-    });
-
-    it('should handle !tokipona command', async () => {
-      const message = createMockMessage({ content: '!tokipona' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('toki pona'));
-      expect(state.getConfig('guild123', false).mode).toBe('tokipona');
-    });
-
-    it('should handle !whisper command', async () => {
-      const message = createMockMessage({ content: '!whisper' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('transcription'));
-      expect(state.getConfig('guild123', false).mode).toBe('whisper');
-    });
-
-    it('should handle !temperature command with valid value', async () => {
-      const message = createMockMessage({ content: '!temperature 0.5' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('0.5'));
-      expect(state.getConfig('guild123', false).temperature).toBe(0.5);
-    });
-
-    it('should reject !temperature with invalid value', async () => {
-      const message = createMockMessage({ content: '!temperature 3.0' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Couldn\'t parse'));
-    });
-
-    it('should handle !delay command', async () => {
-      const message = createMockMessage({ content: '!delay 5' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('5 seconds'));
-      expect(state.getConfig('guild123', false).responseDelayMs).toBe(5000);
-    });
-
-    it('should handle !tokens command', async () => {
-      const message = createMockMessage({ content: '!tokens 500' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('500'));
-      expect(state.getConfig('guild123', false).maxResponseLength).toBe(500);
-    });
-
-    it('should handle !limit command', async () => {
-      const message = createMockMessage({ content: '!limit 50' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('50'));
-      expect(state.getConfig('guild123', false).messageLimit).toBe(50);
-    });
-
-    it('should handle !speedscalar command with valid value', async () => {
-      const message = createMockMessage({ content: '!speedscalar 2.0' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('2'));
-      expect(state.getConfig('guild123', false).transcriptionSpeedScalar).toBe(2.0);
-    });
-
-    it('should reject !speedscalar with out-of-range value', async () => {
-      const message = createMockMessage({ content: '!speedscalar 10.0' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining("Couldn't parse"));
-      expect(state.getConfig('guild123', false).transcriptionSpeedScalar).not.toBe(10);
-    });
-
-    it('should handle !persist command', async () => {
-      const message = createMockMessage({ content: '!persist' });
-      const initialValue = state.getConfig('guild123', false).shouldSaveData;
-      
-      await handler.handleCommand(message, false);
-      
-      expect(state.getConfig('guild123', false).shouldSaveData).toBe(!initialValue);
-    });
-
-    it('should handle !dms command', async () => {
-      const message = createMockMessage({ content: '!dms' });
-      const initialValue = state.getConfig('guild123', false).allowDMs;
-      
-      await handler.handleCommand(message, false);
-      
-      expect(state.getConfig('guild123', false).allowDMs).toBe(!initialValue);
-    });
-
     it('should handle !prompt command', async () => {
       const message = createMockMessage({ content: '!prompt You are a helpful robot.' });
       await handler.handleCommand(message, false);
@@ -283,99 +207,103 @@ describe('CommandHandler', () => {
       expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Unrecognized'));
     });
 
-    // Learning commands
-    it('should handle !learnon command', async () => {
-      const message = createMockMessage({ content: '!learnon' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Learning: **ON**'));
-      expect(state.getConfig('guild123', false).learningEnabled).toBe(true);
+    it('points retired commands at their new home without changing anything', async () => {
+      const before = state.getConfig('guild123', false).maxResponseLength;
+      for (const [cmd, where] of [['!tokens 500', '/settings'], ['!thinkon', '/settings'], ['!jeeves', 'Persona'],
+                                  ['!canceltask abc', '/tasks'], ['!translateadd general Spanish', '/translate']]) {
+        const message = createMockMessage({ content: cmd });
+        await handler.handleCommand(message, false);
+        expect(message.reply).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`has moved.*${where}`)));
+      }
+      expect(state.getConfig('guild123', false).maxResponseLength).toBe(before);
+      expect(state.getAutotranslateLanguage('guild123', false, 'channel123')).toBeNull();
     });
 
-    it('should handle !learnoff command', async () => {
-      const message = createMockMessage({ content: '!learnoff' });
-      state.updateConfig('guild123', false, { learningEnabled: true });
-      
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Learning: **OFF**'));
-      expect(state.getConfig('guild123', false).learningEnabled).toBe(false);
+    it('retires names cleanly: none still registered, every redirect names a real command', () => {
+      const { RETIRED_COMMANDS } = require('./commands/retired');
+      const { registry } = require('./commands/registry');
+      for (const [name, where] of Object.entries(RETIRED_COMMANDS) as [string, string][]) {
+        expect(registry.has(name)).toBe(false);
+        const target = where.match(/`\/([a-z]+)/)![1];
+        expect(registry.has(target)).toBe(true);
+      }
     });
 
-    it('should handle !learnadd command', async () => {
-      const message = createMockMessage({ content: '!learnadd Ancient Greek' });
+    it('!learning adds a subject and lists it with a remove button', async () => {
+      const message = createMockMessage({ content: '!learning Ancient Greek' });
       await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Ancient Greek'));
+
       expect(state.getConfig('guild123', false).learningSubjects).toContain('Ancient Greek');
+      const payload = (message.reply as jest.Mock).mock.calls[0][0];
+      expect(payload.embeds[0].toJSON().description).toContain('Added **Ancient Greek**');
+
+      const subjects = state.getConfig('guild123', false).learningSubjects;
+      const button = listButtons(payload)[subjects.indexOf('Ancient Greek')];
+      const click = fakeButton(button.custom_id);
+      await handler.handleComponent(click);
+      expect(state.getConfig('guild123', false).learningSubjects).not.toContain('Ancient Greek');
+      expect(click.update).toHaveBeenCalled();
     });
 
-    it('should handle !learnremove command', async () => {
-      const message = createMockMessage({ content: '!learnremove Latin' });
+    it('!translate adds channels and people, and lists both', async () => {
+      await handler.handleCommand(createMockMessage({ content: '!translate general Spanish' }), false);
+      await handler.handleCommand(createMockMessage({ content: '!translate <@999> Old Norse' }), false);
+      expect(state.getAutotranslateLanguage('guild123', false, 'channel123')).toBe('Spanish');
+      expect(state.getAllAutotranslateUsers('guild123', false)).toContainEqual(expect.objectContaining({ userId: '999', language: 'Old Norse' }));
+
+      const list = createMockMessage({ content: '!translate' });
+      await handler.handleCommand(list, false);
+      const description = (list.reply as jest.Mock).mock.calls[0][0].embeds[0].toJSON().description;
+      expect(description).toContain('<#channel123> → **Spanish**');
+      expect(description).toContain('<@999> → **Old Norse**');
+    });
+
+    it('!reactchannels adds a channel', async () => {
+      await handler.handleCommand(createMockMessage({ content: '!reactchannels general' }), false);
+      expect(state.getConfig('guild123', false).reactionChannels).toContain('channel123');
+    });
+
+    it('!whitelist: anyone may view, only admins may add', async () => {
+      const viewer = createMockMessage({ content: '!whitelist' });
+      (viewer as any).member = { permissions: { has: () => false } };
+      await handler.handleCommand(viewer, false);
+      expect((viewer.reply as jest.Mock).mock.calls[0][0].embeds).toBeDefined();
+
+      const nonAdmin = createMockMessage({ content: '!whitelist settings' });
+      (nonAdmin as any).member = { permissions: { has: () => false } };
+      await handler.handleCommand(nonAdmin, false);
+      expect(state.getConfig('guild123', false).commandWhitelist).not.toContain('settings');
+
+      const admin = createMockMessage({ content: '!whitelist settings' });
+      (admin as any).member = { permissions: { has: () => true } };
+      await handler.handleCommand(admin, false);
+      expect(state.getConfig('guild123', false).commandWhitelist).toContain('settings');
+    });
+
+    it('!reminders: only the owner can cancel, and a stale list refreshes instead of removing', async () => {
+      state.addReminder({
+        id: 'r1', userId: 'user123', channelId: 'channel123', content: 'tea',
+        triggerTime: new Date(Date.now() + 60_000), isDM: false
+      });
+      const message = createMockMessage({ content: '!reminders' });
       await handler.handleCommand(message, false);
-      
-      expect(state.getConfig('guild123', false).learningSubjects).not.toContain('Latin');
+      const [button] = listButtons((message.reply as jest.Mock).mock.calls[0][0]);
+
+      const stranger = fakeButton(button.custom_id, 'someone-else');
+      await handler.handleComponent(stranger);
+      expect(stranger.reply).toHaveBeenCalledWith(expect.objectContaining({ ephemeral: true }));
+      expect(state.getReminder('r1')).toBeDefined();
+
+      const stale = fakeButton(button.custom_id.replace(/:[^:]+$/, ':zzzz'), 'user123');
+      await handler.handleComponent(stale);
+      expect(state.getReminder('r1')).toBeDefined();
+      expect(stale.update.mock.calls[0][0].embeds[0].toJSON().description).toContain('had changed');
+
+      const owner = fakeButton(button.custom_id, 'user123');
+      await handler.handleComponent(owner);
+      expect(state.getReminder('r1')).toBeUndefined();
     });
 
-    // Voice commands
-    it('should handle !voiceon command', async () => {
-      const message = createMockMessage({ content: '!voiceon' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Voice replies: **ON**'));
-      expect(state.getConfig('guild123', false).useVoiceResponse).toBe(true);
-    });
-
-    it('should handle !voiceoff command', async () => {
-      const message = createMockMessage({ content: '!voiceoff' });
-      state.updateConfig('guild123', false, { useVoiceResponse: true });
-      
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Voice replies: **OFF**'));
-      expect(state.getConfig('guild123', false).useVoiceResponse).toBe(false);
-    });
-
-    // Muse commands
-    it('should handle !museon command', async () => {
-      const message = createMockMessage({ content: '!museon' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Auto-muse: **ON**'));
-      expect(state.getConfig('guild123', false).shouldMuseRegularly).toBe(true);
-    });
-
-    it('should handle !museoff command', async () => {
-      const message = createMockMessage({ content: '!museoff' });
-      await handler.handleCommand(message, false);
-      
-      expect(state.getConfig('guild123', false).shouldMuseRegularly).toBe(false);
-    });
-
-    it('should handle !museinterval command', async () => {
-      const message = createMockMessage({ content: '!museinterval 12' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('12 hours'));
-      expect(state.getConfig('guild123', false).museInterval).toBe(12 * 60 * 60 * 1000);
-    });
-
-    // Reaction mode commands
-    it('should handle !reacton command in guild', async () => {
-      const message = createMockMessage({ content: '!reacton' });
-      await handler.handleCommand(message, false);
-      
-      expect(state.getConfig('guild123', false).reactionModeEnabled).toBe(true);
-    });
-
-    it('should reject !reacton in DM', async () => {
-      const message = createMockMessage({ content: '!reacton', isDM: true, guildId: null });
-      await handler.handleCommand(message, true);
-      
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('only available in servers'));
-    });
-
-    // Channel config commands
     it('should handle !config show (no args)', async () => {
       const message = createMockMessage({ content: '!config' });
       await handler.handleCommand(message, false);
@@ -399,29 +327,6 @@ describe('CommandHandler', () => {
     });
 
     // Autotranslate commands
-    it('should handle !translateadd command', async () => {
-      const message = createMockMessage({ content: '!translateadd general Spanish' });
-      await handler.handleCommand(message, false);
-      
-      const language = state.getAutotranslateLanguage('guild123', false, 'channel123');
-      expect(language).toBe('Spanish');
-    });
-
-    it('should handle !translateremove command', async () => {
-      state.addAutotranslateChannel('guild123', false, 'channel123', 'Spanish');
-      const message = createMockMessage({ content: '!translateremove general' });
-      await handler.handleCommand(message, false);
-      
-      expect(state.getAutotranslateLanguage('guild123', false, 'channel123')).toBeNull();
-    });
-
-    it('should handle !translatelist command', async () => {
-      state.addAutotranslateChannel('guild123', false, 'channel123', 'Spanish');
-      const message = createMockMessage({ content: '!translatelist' });
-      await handler.handleCommand(message, false);
-      
-      expect(message.reply).toHaveBeenCalled();
-    });
   });
 
   describe('getSystemPrompt', () => {

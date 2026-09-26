@@ -23,8 +23,10 @@ src/
     registry.ts      # Command registry (shared by !prefix and /slash)
     types.ts         # Command / CommandDependencies / CommandContext
     config.ts        # !model, temperature, websearch, think*, etc.
-    modes.ts         # !jeeves !tokipona !lugso !whisper !prompt
-    settings.ts      # /settings panel command + !thinkon/!tokens/… generated from the settings table
+    modes.ts         # !prompt (persona switching lives in /settings)
+    settings.ts      # /settings panel command
+    listPanel.ts     # Managed lists with ❌ remove buttons (reminders, tasks, translate, learning, reactchannels, whitelist)
+    retired.ts       # Old command names → "has moved to …" redirects
     tasks.ts         # Scheduled task NL parser (hardcoded Claude haiku)
     …                # reminders, learning, reactions, translate, muse, …
   llm/generate.ts    # Multi-provider LLM: Claude + Grok + Poolside routing, agent loop
@@ -80,16 +82,22 @@ Default chat model remains Claude Sonnet (`BotState` defaultConfig).
 
 - Prefer TypeScript; match existing style (no drive-by refactors).
 - Commands: register via `registry.registerAll` in `CommandHandler`; set `description`, `category`, `options` for help + slash.
-- New config flags: add to `BotConfig` in `state/types.ts`, default in `BotState`. If it's a simple on/off or number, add **one entry to `SETTINGS` in `settings/schema.ts`** — that gives it `!on`/`!off` (or `!name N`) commands, slash commands, a panel button/form field, and (with `proposable`) lets agents suggest it. Only bespoke settings (persona, model, lists) need hand-written commands.
+- New config flags: add to `BotConfig` in `state/types.ts`, default in `BotState`. If it's a simple on/off or number, add **one entry to `SETTINGS` in `settings/schema.ts`** — that gives it a panel button / Numbers-form field and (with `proposable`) lets agents suggest it. Don't add per-setting commands.
+- New list-shaped config (things you add and remove): `registerListKind` in `commands/listPanel.ts` + one command that lists (no args) or adds (with args). Removal is the ❌ buttons — don't add remove/list/cancel commands.
+- Renaming or removing a command: add the old name to `commands/retired.ts` so it redirects.
 - Tests: Jest; mock selenium / fs / external clients. When changing `CommandHandler` deps, update `commands.test.ts` mocks.
 - LLM unit tests live in `src/llm/generate.test.ts`.
 - Do not commit secrets; `.env` is local only.
 
 ## Settings panel & agent proposals
 
-- `/settings` (or `!settings`) posts a **public** panel: tabs (Chat / Features / Admin), checkbox-style toggle buttons (green ✅ on, grey ⬜ off), persona + model dropdowns, and a "Numbers…" modal. Everything a component needs is in its `custom_id` (`cfg:…`), so panels survive restarts with no bookkeeping (the Joblin pattern). `server.ts` routes `cfg:*` interactions to `handleSettingsInteraction`.
+- `/settings` (or `!settings`) posts a **public** panel: tabs (Chat / Features / Admin), checkbox-style toggle buttons (green ✅ on, grey ⬜ off), persona + model dropdowns, and a "Numbers…" modal. Everything a component needs is in its `custom_id` (`cfg:…`), so panels survive restarts with no bookkeeping (the Joblin pattern). `server.ts` hands every button/menu/modal to `CommandHandler.handleComponent`, which routes `cfg:*` to the settings panel and `lst:*` to managed lists.
 - Permissions: anyone, unless admin mode is on (then admins, or everyone if `settings` is whitelisted); `requiresAdmin` settings (admin mode) always need an administrator.
 - Agents get a one-line settings briefing in the system prompt (`describeSettingsForAgent`). In live chat replies (`generateResponse(..., { allowProposals: true })` from `sendDelayedResponse`) they also get `propose_setting_change`: it only **queues** a proposal (one per reply, `proposable` settings only); the bot posts it after the reply with Apply / Not now buttons, and anyone may apply it. Agents never change settings themselves.
+
+## Command surface
+
+21 slash commands (from 59) after folding settings into `/settings` and list/remove pairs into single list commands. `scripts/validate-slash.ts` checks the payloads against Discord's limits.
 
 ## Personas / product notes
 

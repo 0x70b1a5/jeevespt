@@ -1,6 +1,7 @@
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX } from './constants';
 import { canExecuteCommand } from './utils';
+import { RETIRED_COMMANDS } from './retired';
 
 /**
  * Command registry that maps command names to handlers
@@ -51,7 +52,10 @@ export class CommandRegistry {
         const command = this.get(commandName);
 
         if (!command) {
-            await ctx.message.reply(`${SYS_PREFIX}Unrecognized command "${commandName}".`);
+            const movedTo = RETIRED_COMMANDS[commandName.toLowerCase()];
+            await ctx.message.reply(movedTo
+                ? `${SYS_PREFIX}\`!${commandName}\` has moved: use ${movedTo}.`
+                : `${SYS_PREFIX}Unrecognized command "${commandName}".`);
             return false;
         }
 

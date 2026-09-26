@@ -1,125 +1,75 @@
 import { Message, TextChannel, DMChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils } from './utils';
+import { buildListMessage, registerListKind } from './listPanel';
 import { generateText } from '../llm/generate';
 import { LEARNING_PROMPT_TEMPLATE } from '../prompts/prompts';
 
-/**
- * !learnadd - Add a learning subject
- */
-export const learnAddCommand: Command = {
-    names: ['learnadd'],
-    description: 'Add a subject to the learning rotation.',
-    category: 'Learning',
-    ephemeral: true,
-    options: [{ name: 'subject', description: 'Subject to learn about (e.g. Latin)', type: 'string', required: true, rest: true }],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const subject = ctx.args.join(' ');
-
-        if (!subject.trim()) {
-            await commandUtils.reply(ctx.message, 'Please specify a subject to add. Usage: !learnadd [subject]');
-            return;
-        }
-
-        const config = deps.state.getConfig(ctx.id, ctx.isDM);
-        const subjectTrimmed = subject.trim();
-
-        if (config.learningSubjects.includes(subjectTrimmed)) {
-            await commandUtils.reply(ctx.message, `"${subjectTrimmed}" is already in the learning subjects list.`);
-            return;
-        }
-
-        const newSubjects = [...config.learningSubjects, subjectTrimmed];
-        deps.state.updateConfig(ctx.id, ctx.isDM, { learningSubjects: newSubjects });
-
-        await commandUtils.reply(
-            ctx.message,
-            `Added "${subjectTrimmed}" to learning subjects.\n` +
-            `Current subjects: ${newSubjects.join(', ')}\n` +
-            `Questions will be spaced throughout the day (every ${Math.round(24 / newSubjects.length * 10) / 10} hours per subject).`
-        );
-    }
-};
-
-/**
- * !learnremove - Remove a learning subject
- */
-export const learnRemoveCommand: Command = {
-    names: ['learnremove'],
-    description: 'Remove a subject from the learning rotation.',
-    category: 'Learning',
-    ephemeral: true,
-    options: [{ name: 'subject', description: 'Subject to remove', type: 'string', required: true, rest: true }],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const subject = ctx.args.join(' ');
-
-        if (!subject.trim()) {
-            await commandUtils.reply(ctx.message, 'Please specify a subject to remove. Usage: !learnremove [subject]');
-            return;
-        }
-
-        const config = deps.state.getConfig(ctx.id, ctx.isDM);
-        const subjectTrimmed = subject.trim();
-
-        if (!config.learningSubjects.includes(subjectTrimmed)) {
-            await commandUtils.reply(
-                ctx.message,
-                `"${subjectTrimmed}" is not in the learning subjects list.\n` +
-                `Current subjects: ${config.learningSubjects.join(', ') || 'none'}`
-            );
-            return;
-        }
-
-        const newSubjects = config.learningSubjects.filter(s => s !== subjectTrimmed);
-        deps.state.updateConfig(ctx.id, ctx.isDM, { learningSubjects: newSubjects });
-
-        await commandUtils.reply(
-            ctx.message,
-            `Removed "${subjectTrimmed}" from learning subjects.\n` +
-            `Current subjects: ${newSubjects.join(', ') || 'none'}` +
-            (newSubjects.length > 0 ? `\nQuestions will be spaced throughout the day (every ${Math.round(24 / newSubjects.length * 10) / 10} hours per subject).` : '')
-        );
-    }
-};
-
-/**
- * !learnstatus - Show learning status
- */
-export const learnStatusCommand: Command = {
-    names: ['learnstatus'],
-    description: 'Show learning configuration and progress.',
-    category: 'Learning',
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const config = deps.state.getConfig(ctx.id, ctx.isDM);
-        const tracker = deps.state.getLearningTracker(ctx.id, ctx.isDM);
-
-        let status = `📚 **Learning System Status:**\n`;
-        status += `🔹 Enabled: ${config.learningEnabled ? '✅' : '❌'}\n`;
-        status += `🔹 Subjects: ${config.learningSubjects.join(', ') || 'none'}\n\n`;
-
+/** Learning subjects, with today's progress above and a ❌ per subject. */
+export const learningList = registerListKind({
+    code: 'learn',
+    command: 'learning',
+    title: '📚 Learning',
+    empty: 'No subjects yet. Add one with `/learning subject:Latin`.',
+    header: (deps, scope) => {
+        const config = deps.state.getConfig(scope.id, scope.isDM);
+        const lines = [`Questions are **${config.learningEnabled ? 'on' : 'off'}** (toggle in \`/settings\` → Features).`];
         if (config.learningEnabled && config.learningSubjects.length > 0) {
-            status += `📊 **Today's Questions:**\n`;
-            for (const subject of config.learningSubjects) {
-                const count = tracker.dailyQuestionCount.get(subject) || 0;
-                const lastTime = tracker.lastQuestionTimes.get(subject);
-                const lastTimeStr = lastTime ? new Date(lastTime).toLocaleTimeString() : 'never';
-                status += `🔸 ${subject}: ${count} questions (last: ${lastTimeStr})\n`;
-            }
-
-            const nextSubject = deps.state.getNextQuestionSubject(ctx.id, ctx.isDM, config.learningSubjects);
-            if (nextSubject) {
-                status += `\n⏰ Next question: ${nextSubject} (ready now!)`;
+            lines.push(`Spaced through the day: every ${Math.round(24 / config.learningSubjects.length * 10) / 10}h per subject.`);
+            const next = deps.state.getNextQuestionSubject(scope.id, scope.isDM, config.learningSubjects);
+            if (next) {
+                lines.push(`⏰ Next: **${next}** (ready now)`);
             } else {
-                const timeUntilNext = deps.state.getTimeUntilNextQuestion(ctx.id, ctx.isDM, config.learningSubjects);
-                if (timeUntilNext < Infinity) {
-                    const hours = Math.floor(timeUntilNext / (1000 * 60 * 60));
-                    const minutes = Math.floor((timeUntilNext % (1000 * 60 * 60)) / (1000 * 60));
-                    status += `\n⏰ Next question in: ${hours}h ${minutes}m`;
+                const wait = deps.state.getTimeUntilNextQuestion(scope.id, scope.isDM, config.learningSubjects);
+                if (wait < Infinity) {
+                    lines.push(`⏰ Next question in ${Math.floor(wait / 3_600_000)}h ${Math.floor((wait % 3_600_000) / 60_000)}m`);
                 }
             }
         }
+        return lines.join('\n');
+    },
+    entries: (deps, scope) => {
+        const tracker = deps.state.getLearningTracker(scope.id, scope.isDM);
+        return deps.state.getConfig(scope.id, scope.isDM).learningSubjects.map(subject => {
+            const count = tracker.dailyQuestionCount.get(subject) || 0;
+            const last = tracker.lastQuestionTimes.get(subject);
+            return {
+                value: subject,
+                text: `**${subject}** — ${count} today${last ? `, last <t:${Math.floor(last / 1000)}:R>` : ''}`
+            };
+        });
+    },
+    remove: (deps, scope, entry) => {
+        const config = deps.state.getConfig(scope.id, scope.isDM);
+        deps.state.updateConfig(scope.id, scope.isDM, {
+            learningSubjects: config.learningSubjects.filter(s => s !== entry.value)
+        });
+    }
+});
 
-        await ctx.message.reply(status);
+/**
+ * !learning [subject] — show subjects and progress (❌ to remove), or add one.
+ */
+export const learningCommand: Command = {
+    names: ['learning'],
+    description: 'Learning subjects and progress; give a subject to add it (remove with buttons).',
+    category: 'Learning',
+    options: [{ name: 'subject', description: 'Subject to add (e.g. Latin)', type: 'string', required: false, rest: true }],
+    examples: ['!learning', '!learning Ancient Greek'],
+    async execute(ctx: CommandContext, deps: CommandDependencies) {
+        const scope = { id: ctx.id, isDM: ctx.isDM, ownerId: ctx.message.author.id };
+        const subject = ctx.args.join(' ').trim();
+        let note: string | undefined;
+        if (subject) {
+            const config = deps.state.getConfig(ctx.id, ctx.isDM);
+            if (config.learningSubjects.includes(subject)) {
+                note = `**${subject}** is already on the list.`;
+            } else {
+                deps.state.updateConfig(ctx.id, ctx.isDM, { learningSubjects: [...config.learningSubjects, subject] });
+                note = `✅ Added **${subject}**`;
+            }
+        }
+        await ctx.message.reply(buildListMessage(learningList, deps, scope, note));
     }
 };
 
@@ -197,9 +147,4 @@ export async function performLearningQuestion(
 }
 
 // Export all learning commands
-export const learningCommands: Command[] = [
-    learnAddCommand,
-    learnRemoveCommand,
-    learnStatusCommand
-    // learnCommand is handled specially
-];
+export const learningCommands: Command[] = [learningCommand]; // learnCommand is handled specially

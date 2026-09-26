@@ -2,8 +2,8 @@ import { BotState } from '../state';
 import {
   SETTINGS, getSetting, parseSettingValue, formatSetting, describeSettingsForAgent, NumberSetting
 } from './schema';
-import { buildSettingsPanel, buildProposalMessage, handleSettingsInteraction, permissionError } from './panel';
-import { settingsCommands } from '../commands/settings';
+import { buildSettingsPanel, buildProposalMessage, handleSettingsInteraction } from './panel';
+import { interactionPermissionError } from '../commands/utils';
 import { createProposeSettingTool } from '../llm/tools';
 import { SettingProposal } from './schema';
 
@@ -67,21 +67,6 @@ describe('settings schema', () => {
     expect(describeSettingsForAgent(defaults, false)).not.toContain('propose_setting_change');
     expect(describeSettingsForAgent(defaults, true)).toContain('propose_setting_change');
     expect(describeSettingsForAgent(defaults, false)).toContain(`Model: ${defaults.model}`);
-  });
-});
-
-describe('generated setting commands', () => {
-  it('keep every legacy command name', () => {
-    const names = settingsCommands.flatMap(c => c.names);
-    for (const legacy of [
-      'settings', 'websearchon', 'searchon', 'websearchoff', 'searchoff', 'thinkon', 'thinkoff',
-      'temperature', 'tokens', 'limit', 'delay', 'websearchmax', 'searchmax', 'voiceon', 'voiceoff',
-      'museon', 'museoff', 'museinterval', 'reacton', 'reactoff', 'learnon', 'learnoff',
-      'speedscalar', 'persist', 'dms'
-    ]) {
-      expect(names).toContain(legacy);
-    }
-    expect(new Set(names).size).toBe(names.length);
   });
 });
 
@@ -181,10 +166,10 @@ describe('handleSettingsInteraction', () => {
   });
 
   it('always requires a real admin for admin mode itself', () => {
-    const adminMode = getSetting('adminMode')!;
+    const opts = { requiresAdmin: getSetting('adminMode')!.requiresAdmin, command: 'settings' };
     const config = state.getConfig('g', false);
-    expect(permissionError(fakeInteraction('x'), config, adminMode)).toMatch(/administrators/);
-    expect(permissionError(fakeInteraction('x', { admin: true }), config, adminMode)).toBeNull();
+    expect(interactionPermissionError(fakeInteraction('x'), config, opts)).toMatch(/administrators/);
+    expect(interactionPermissionError(fakeInteraction('x', { admin: true }), config, opts)).toBeNull();
   });
 
   it('switches persona from the dropdown, clearing memory', async () => {

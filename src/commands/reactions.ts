@@ -2,81 +2,59 @@ import { Message } from 'discord.js';
 import { MessageParam } from '@anthropic-ai/sdk/resources';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils, CommandUtilsImpl } from './utils';
+import { buildListMessage, registerListKind } from './listPanel';
 import { generateText } from '../llm/generate';
 import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMessage';
 import { LUGSO_PROMPT } from '../prompts/lugso';
 
-/**
- * !reactadd - Add a channel to reaction mode
- */
-export const reactAddCommand: Command = {
-    names: ['reactadd'],
-    requiresGuild: true,
-    description: 'Add a channel to reaction monitoring.',
-    category: 'Reactions',
-    ephemeral: true,
-    options: [{ name: 'channel', description: 'Channel to monitor', type: 'channel', required: true }],
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const channelName = ctx.args[0];
-
-        if (!channelName) {
-            await commandUtils.reply(ctx.message, 'Please specify a channel name.');
-            return;
-        }
-
-        const config = deps.state.getConfig(ctx.id, ctx.isDM);
-        const channelId = commandUtils.getChannelIdFromName(ctx.message, channelName);
-
-        if (!channelId) {
-            await commandUtils.reply(ctx.message, `Could not find channel "${channelName}".`);
-            return;
-        }
-
-        if (config.reactionChannels.includes(channelId)) {
-            await commandUtils.reply(ctx.message, `Channel "${channelName}" is already in the reaction list.`);
-            return;
-        }
-
-        const newChannels = [...config.reactionChannels, channelId];
-        deps.state.updateConfig(ctx.id, ctx.isDM, { reactionChannels: newChannels });
-        await commandUtils.reply(ctx.message, `Added channel "${channelName}" to reaction mode.`);
+/** Channels where the bot adds emoji reactions, with a ❌ per channel. */
+export const reactionChannelList = registerListKind({
+    code: 'react',
+    command: 'reactchannels',
+    title: '😀 Reaction channels',
+    empty: 'No channels yet. Add one with `/reactchannels channel:#channel`.',
+    header: (deps, scope) =>
+        `Reactions are **${deps.state.getConfig(scope.id, scope.isDM).reactionModeEnabled ? 'on' : 'off'}** (toggle in \`/settings\` → Features).`,
+    entries: (deps, scope) => deps.state.getConfig(scope.id, scope.isDM).reactionChannels.map(channelId => ({
+        value: channelId,
+        text: `<#${channelId}>`
+    })),
+    remove: (deps, scope, entry) => {
+        const config = deps.state.getConfig(scope.id, scope.isDM);
+        deps.state.updateConfig(scope.id, scope.isDM, {
+            reactionChannels: config.reactionChannels.filter(c => c !== entry.value)
+        });
     }
-};
+});
 
 /**
- * !reactremove - Remove a channel from reaction mode
+ * !reactchannels [#channel] — list reaction channels (❌ to remove), or add one.
  */
-export const reactRemoveCommand: Command = {
-    names: ['reactremove'],
+export const reactChannelsCommand: Command = {
+    names: ['reactchannels'],
     requiresGuild: true,
-    description: 'Remove a channel from reaction monitoring.',
+    description: 'Channels where the bot reacts with emoji; give a channel to add it (remove with buttons).',
     category: 'Reactions',
-    ephemeral: true,
-    options: [{ name: 'channel', description: 'Channel to stop monitoring', type: 'channel', required: true }],
+    options: [{ name: 'channel', description: 'Channel to add', type: 'channel', required: false }],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
+        const scope = { id: ctx.id, isDM: ctx.isDM, ownerId: ctx.message.author.id };
+        let note: string | undefined;
         const channelName = ctx.args[0];
-
-        if (!channelName) {
-            await commandUtils.reply(ctx.message, 'Please specify a channel name.');
-            return;
+        if (channelName) {
+            const channelId = commandUtils.getChannelIdFromName(ctx.message, channelName);
+            if (!channelId) {
+                await commandUtils.reply(ctx.message, `Could not find channel "${channelName}".`);
+                return;
+            }
+            const config = deps.state.getConfig(ctx.id, ctx.isDM);
+            if (config.reactionChannels.includes(channelId)) {
+                note = `<#${channelId}> is already on the list.`;
+            } else {
+                deps.state.updateConfig(ctx.id, ctx.isDM, { reactionChannels: [...config.reactionChannels, channelId] });
+                note = `✅ Added <#${channelId}>`;
+            }
         }
-
-        const config = deps.state.getConfig(ctx.id, ctx.isDM);
-        const channelId = commandUtils.getChannelIdFromName(ctx.message, channelName);
-
-        if (!channelId) {
-            await commandUtils.reply(ctx.message, `Could not find channel "${channelName}".`);
-            return;
-        }
-
-        if (!config.reactionChannels.includes(channelId)) {
-            await commandUtils.reply(ctx.message, `Channel "${channelName}" is not in the reaction list.`);
-            return;
-        }
-
-        const newChannels = config.reactionChannels.filter(c => c !== channelId);
-        deps.state.updateConfig(ctx.id, ctx.isDM, { reactionChannels: newChannels });
-        await commandUtils.reply(ctx.message, `Removed channel "${channelName}" from reaction mode.`);
+        await ctx.message.reply(buildListMessage(reactionChannelList, deps, scope, note));
     }
 };
 
@@ -220,7 +198,4 @@ function getSystemPromptForMode(id: string, isDM: boolean, deps: CommandDependen
 }
 
 // Export all reaction commands
-export const reactionCommands: Command[] = [
-    reactAddCommand,
-    reactRemoveCommand
-];
+export const reactionCommands: Command[] = [reactChannelsCommand];

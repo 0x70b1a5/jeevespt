@@ -5,44 +5,6 @@ import { BotMode } from '../state';
 import { applyMode } from '../settings/schema';
 
 /**
- * Create a mode switch command
- */
-function createModeCommand(mode: BotMode, description: string, category = 'Modes'): Command {
-    return {
-        names: [mode],
-        description,
-        category,
-        ephemeral: true,
-        async execute(ctx: CommandContext, deps: CommandDependencies) {
-            applyMode(deps.state, ctx.id, ctx.isDM, mode);
-
-            const response = MODE_RESPONSES[mode] || 'Mode changed.';
-            await commandUtils.reply(ctx.message, response);
-        }
-    };
-}
-
-/**
- * !jeeves - Switch to Jeeves mode
- */
-export const jeevesCommand = createModeCommand('jeeves', 'Act like Jeeves, the cultured butler. Clears memory.');
-
-/**
- * !tokipona - Switch to toki pona mode
- */
-export const tokiponaCommand = createModeCommand('tokipona', 'Speak only toki pona, for language immersion. Clears memory.');
-
-/**
- * !whisper - Switch to transcription mode
- */
-export const whisperCommand = createModeCommand('whisper', 'Transcription-only mode: reply to audio with text, no AI chat.', 'Transcription');
-
-/**
- * !lugso - Switch to Lugso mode
- */
-export const lugsoCommand = createModeCommand('lugso', 'Switch to the Lugso persona. Clears memory.');
-
-/**
  * !prompt - Set custom prompt
  */
 export const promptCommand: Command = {
@@ -99,10 +61,4 @@ export const promptCommand: Command = {
 };
 
 // Export all mode commands
-export const modeCommands: Command[] = [
-    jeevesCommand,
-    tokiponaCommand,
-    whisperCommand,
-    promptCommand,
-    lugsoCommand
-];
+export const modeCommands: Command[] = [promptCommand]; // persona switching lives in /settings

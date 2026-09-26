@@ -5,7 +5,7 @@
  * command registry pattern internally.
  */
 
-import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel, ChatInputCommandInteraction } from 'discord.js';
+import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel, ChatInputCommandInteraction, Interaction } from 'discord.js';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 
@@ -19,7 +19,8 @@ import whisper from '../whisper';
 import { generateText, withSourcesFooter } from '../llm/generate';
 import { AGENT_TOOLS, createProposeSettingTool } from '../llm/tools';
 import { describeSettingsForAgent, SettingProposal } from '../settings/schema';
-import { buildProposalMessage } from '../settings/panel';
+import { buildProposalMessage, handleSettingsInteraction, isSettingsInteraction } from '../settings/panel';
+import { handleListInteraction, isListInteraction } from './listPanel';
 
 import { CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { CommandRegistry, registry } from './registry';
@@ -216,6 +217,19 @@ export class CommandHandler {
                     }
                 } catch { /* best effort */ }
             }
+        }
+    }
+
+    /**
+     * Handle a button / select menu / modal. Settings panels and proposals use
+     * `cfg:` custom_ids; managed lists (reminders, tasks, …) use `lst:`.
+     * Anything else (e.g. slash-command pagination) is ignored.
+     */
+    async handleComponent(interaction: Interaction): Promise<void> {
+        if (isSettingsInteraction(interaction)) {
+            await handleSettingsInteraction(interaction, this.state);
+        } else if (isListInteraction(interaction)) {
+            await handleListInteraction(interaction, this.deps);
         }
     }
 
@@ -615,12 +629,12 @@ export class CommandHandler {
         const config = this.state.getConfig(id, isDM);
 
         if (!config.learningEnabled) {
-            await message.reply(`${SYS_PREFIX}Learning questions are disabled. Use \`!learnon\` to enable them.`);
+            await message.reply(`${SYS_PREFIX}Learning questions are disabled. Turn on **Learning** in \`/settings\` (Features tab).`);
             return;
         }
 
         if (config.learningSubjects.length === 0) {
-            await message.reply(`${SYS_PREFIX}No learning subjects configured. Use \`!learnadd <subject>\` to add subjects.`);
+            await message.reply(`${SYS_PREFIX}No learning subjects configured. Add some with \`/learning subject:<subject>\`.`);
             return;
         }
 

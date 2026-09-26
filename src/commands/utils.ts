@@ -75,6 +75,26 @@ export function canExecuteCommand(
 }
 
 /**
+ * Permission check for button/menu/modal clicks — the component counterpart
+ * of canExecuteCommand. Anyone may act unless admin mode is on (then admins,
+ * or everyone if `command` is whitelisted); `requiresAdmin` always needs a
+ * server administrator. DMs are unrestricted. Returns a refusal or null.
+ */
+export function interactionPermissionError(
+    interaction: { inGuild(): boolean; memberPermissions: { has(p: bigint): boolean } | null },
+    config: BotConfig,
+    opts: { requiresAdmin?: boolean; command: string }
+): string | null {
+    if (!interaction.inGuild()) return null;
+    const admin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
+    if (admin) return null;
+    if (opts.requiresAdmin) return 'Only server administrators can change this.';
+    if (!config.adminMode) return null;
+    if (config.commandWhitelist.some(c => c.toLowerCase() === opts.command)) return null;
+    return `Admin mode is on — only administrators can use \`${opts.command}\` controls.`;
+}
+
+/**
  * Strip HTML to readable text. Windows `powercfg /batteryreport` exports are
  * mostly CSS plus tables; this keeps the tables and drops the chrome.
  */

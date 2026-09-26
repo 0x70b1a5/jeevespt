@@ -22,7 +22,6 @@ import {
     Interaction,
     ModalBuilder,
     ModalSubmitInteraction,
-    PermissionFlagsBits,
     StringSelectMenuBuilder,
     StringSelectMenuInteraction,
     TextInputBuilder,
@@ -33,8 +32,9 @@ import {
     VALID_ANTHROPIC_MODELS, VALID_POOLSIDE_MODELS, VALID_XAI_MODELS
 } from '../state';
 import { JEEVES_PROMPT } from '../prompts/prompts';
-import { PERSONAS } from '../commands/constants';
+import { MODE_RESPONSES, PERSONAS } from '../commands/constants';
 import { getValidModels } from '../commands/config';
+import { interactionPermissionError } from '../commands/utils';
 import {
     applyMode, applySetting, describeChange, displayNumber, formatSetting, getSetting, NumberSetting,
     parseSettingValue, Setting, SettingProposal, SettingTab, settingsForTab
@@ -266,7 +266,7 @@ export async function handleSettingsInteraction(
         case 't': {
             const setting = getSetting(arg);
             if (!setting || setting.kind !== 'toggle') return;
-            const denied = permissionError(interaction, config, setting);
+            const denied = interactionPermissionError(interaction, config, { requiresAdmin: setting.requiresAdmin, command: 'settings' });
             if (denied) return deny(denied);
             const next = !config[setting.key];
             applySetting(state, id, isDM, setting, next);
@@ -278,7 +278,7 @@ export async function handleSettingsInteraction(
         case 'mode':
         case 'model': {
             if (!interaction.isStringSelectMenu()) return;
-            const denied = permissionError(interaction, config);
+            const denied = interactionPermissionError(interaction, config, { command: 'settings' });
             if (denied) return deny(denied);
             const choice = interaction.values[0];
             if (action === 'mode') {
@@ -287,14 +287,16 @@ export async function handleSettingsInteraction(
                 state.updateConfig(id, isDM, { model: choice });
             }
             console.log(`⚙️ ${who} set ${action} → ${choice} (${isDM ? 'DM' : 'guild'} ${id})`);
-            const label = action === 'mode' ? `persona to ${PERSONA_OPTIONS.find(p => p.mode === choice)?.label ?? choice}` : `model to ${choice}`;
+            const label = action === 'mode'
+                ? `persona to ${PERSONA_OPTIONS.find(p => p.mode === choice)?.label ?? choice}${MODE_RESPONSES[choice] ? ` — “${MODE_RESPONSES[choice]}”` : ''}`
+                : `model to ${choice}`;
             await rerender('chat', `Last change: ${who} set ${label}`);
             return;
         }
 
         case 'num': {
             if (!interaction.isButton()) return;
-            const denied = permissionError(interaction, config);
+            const denied = interactionPermissionError(interaction, config, { command: 'settings' });
             if (denied) return deny(denied);
             await interaction.showModal(numbersModal(arg as SettingTab, config, isDM));
             return;
@@ -302,7 +304,7 @@ export async function handleSettingsInteraction(
 
         case 'modal': {
             if (!interaction.isModalSubmit()) return;
-            const denied = permissionError(interaction, config);
+            const denied = interactionPermissionError(interaction, config, { command: 'settings' });
             if (denied) return deny(denied);
             const changed: string[] = [];
             const errors: string[] = [];
@@ -328,7 +330,7 @@ export async function handleSettingsInteraction(
             if (!interaction.isButton()) return;
             const setting = getSetting(arg);
             if (!setting?.proposable) return;
-            const denied = permissionError(interaction, config, setting);
+            const denied = interactionPermissionError(interaction, config, { requiresAdmin: setting.requiresAdmin, command: 'settings' });
             if (denied) return deny(denied);
             const parsed = parseSettingValue(setting, value);
             if (!parsed.ok) return deny(parsed.error);
@@ -350,25 +352,6 @@ async function resolveProposal(interaction: ButtonInteraction, color: number, ou
     const embed = original ? EmbedBuilder.from(original) : new EmbedBuilder();
     embed.setColor(color).setFooter({ text: outcome });
     await interaction.update({ embeds: [embed], components: [] });
-}
-
-/**
- * Who may change settings: anyone, unless admin mode is on (then admins, or
- * everyone if `settings` is whitelisted). Settings marked requiresAdmin always
- * need a server administrator. DMs are unrestricted, like commands.
- */
-export function permissionError(
-    interaction: { inGuild(): boolean; memberPermissions: { has(p: bigint): boolean } | null },
-    config: BotConfig,
-    setting?: Setting
-): string | null {
-    if (!interaction.inGuild()) return null;
-    const admin = interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ?? false;
-    if (admin) return null;
-    if (setting?.requiresAdmin) return 'Only server administrators can change this.';
-    if (!config.adminMode) return null;
-    if (config.commandWhitelist.some(c => c.toLowerCase() === 'settings')) return null;
-    return 'Admin mode is on — only administrators can change settings.';
 }
 
 function capitalize(text: string): string {
