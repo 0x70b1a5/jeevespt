@@ -245,7 +245,8 @@ describe('CommandHandler', () => {
       const message = createMockMessage({ content: '!speedscalar 10.0' });
       await handler.handleCommand(message, false);
       
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Failed'));
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining("Couldn't parse"));
+      expect(state.getConfig('guild123', false).transcriptionSpeedScalar).not.toBe(10);
     });
 
     it('should handle !persist command', async () => {
@@ -287,7 +288,7 @@ describe('CommandHandler', () => {
       const message = createMockMessage({ content: '!learnon' });
       await handler.handleCommand(message, false);
       
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('enabled'));
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Learning: **ON**'));
       expect(state.getConfig('guild123', false).learningEnabled).toBe(true);
     });
 
@@ -297,7 +298,7 @@ describe('CommandHandler', () => {
       
       await handler.handleCommand(message, false);
       
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('disabled'));
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Learning: **OFF**'));
       expect(state.getConfig('guild123', false).learningEnabled).toBe(false);
     });
 
@@ -321,7 +322,7 @@ describe('CommandHandler', () => {
       const message = createMockMessage({ content: '!voiceon' });
       await handler.handleCommand(message, false);
       
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('ENABLED'));
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Voice replies: **ON**'));
       expect(state.getConfig('guild123', false).useVoiceResponse).toBe(true);
     });
 
@@ -331,7 +332,7 @@ describe('CommandHandler', () => {
       
       await handler.handleCommand(message, false);
       
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('DISABLED'));
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Voice replies: **OFF**'));
       expect(state.getConfig('guild123', false).useVoiceResponse).toBe(false);
     });
 
@@ -340,7 +341,7 @@ describe('CommandHandler', () => {
       const message = createMockMessage({ content: '!museon' });
       await handler.handleCommand(message, false);
       
-      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('now'));
+      expect(message.reply).toHaveBeenCalledWith(expect.stringContaining('Auto-muse: **ON**'));
       expect(state.getConfig('guild123', false).shouldMuseRegularly).toBe(true);
     });
 
@@ -535,6 +536,35 @@ describe('CommandHandler', () => {
 
       const response = await handler.generateResponse('guild123', false);
       expect(response).toBeNull();
+    });
+
+    it('lets the agent queue a setting proposal when proposals are allowed', async () => {
+      mockAnthropic.messages.create
+        .mockResolvedValueOnce({
+          stop_reason: 'tool_use',
+          content: [{ type: 'tool_use', id: 'tu1', name: 'propose_setting_change',
+            input: { setting: 'webSearchEnabled', value: 'on', reason: 'The news changes daily, sir.' } }]
+        })
+        .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'I have suggested web search, sir.' }] });
+
+      state.updateConfig('guild123', false, { webSearchEnabled: false });
+      state.getBuffer('guild123', false).messages.push({ role: 'user', content: 'Latest news?' });
+
+      const response = await handler.generateResponse('guild123', false, [], false, { allowProposals: true });
+
+      const call = mockAnthropic.messages.create.mock.calls[0][0];
+      expect(call.tools.map((t: any) => t.name)).toContain('propose_setting_change');
+      expect(call.system).toContain('[Your current bot settings]');
+      expect(response?.proposals).toEqual([{ key: 'webSearchEnabled', value: true, reason: 'The news changes daily, sir.' }]);
+      expect(state.getConfig('guild123', false).webSearchEnabled).toBe(false); // nothing applied yet
+    });
+
+    it('does not offer the proposal tool by default', async () => {
+      mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'Hello.' }] });
+      state.getBuffer('guild123', false).messages.push({ role: 'user', content: 'Hi' });
+      await handler.generateResponse('guild123', false);
+      const call = mockAnthropic.messages.create.mock.calls[0][0];
+      expect(call.tools.map((t: any) => t.name)).not.toContain('propose_setting_change');
     });
 
     it('propagates API errors without retrying (the SDK client owns retries)', async () => {

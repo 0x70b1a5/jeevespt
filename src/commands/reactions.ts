@@ -7,36 +7,6 @@ import { prependTimestampAndUsername, extractEmbedDataToText } from '../formatMe
 import { LUGSO_PROMPT } from '../prompts/lugso';
 
 /**
- * !reacton - Enable reaction mode
- */
-export const reactOnCommand: Command = {
-    names: ['reacton'],
-    requiresGuild: true,
-    description: 'Enable AI emoji reactions in monitored channels.',
-    category: 'Reactions',
-    ephemeral: true,
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        deps.state.updateConfig(ctx.id, ctx.isDM, { reactionModeEnabled: true });
-        await commandUtils.reply(ctx.message, 'Reaction mode enabled.');
-    }
-};
-
-/**
- * !reactoff - Disable reaction mode
- */
-export const reactOffCommand: Command = {
-    names: ['reactoff'],
-    requiresGuild: true,
-    description: 'Disable reaction mode.',
-    category: 'Reactions',
-    ephemeral: true,
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        deps.state.updateConfig(ctx.id, ctx.isDM, { reactionModeEnabled: false });
-        await commandUtils.reply(ctx.message, 'Reaction mode disabled.');
-    }
-};
-
-/**
  * !reactadd - Add a channel to reaction mode
  */
 export const reactAddCommand: Command = {
@@ -251,8 +221,6 @@ function getSystemPromptForMode(id: string, isDM: boolean, deps: CommandDependen
 
 // Export all reaction commands
 export const reactionCommands: Command[] = [
-    reactOnCommand,
-    reactOffCommand,
     reactAddCommand,
     reactRemoveCommand
 ];

@@ -14,6 +14,7 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import { ElevenLabs } from './elevenlabs';
 import { shutdownBrowser } from './getWebpage';
+import { handleSettingsInteraction, isSettingsInteraction } from './settings/panel';
 dotenv.config();
 
 export class BotServer {
@@ -233,9 +234,12 @@ export class BotServer {
         });
 
         this.client.on('interactionCreate', async (interaction) => {
-            if (!interaction.isChatInputCommand()) return;
             try {
-                await this.commands.handleInteraction(interaction);
+                if (interaction.isChatInputCommand()) {
+                    await this.commands.handleInteraction(interaction);
+                } else if (isSettingsInteraction(interaction)) {
+                    await handleSettingsInteraction(interaction, this.state);
+                }
             } catch (error) {
                 console.error('Error handling interaction:', error);
             }

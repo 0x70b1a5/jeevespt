@@ -5,40 +5,6 @@ import { generateText } from '../llm/generate';
 import { LEARNING_PROMPT_TEMPLATE } from '../prompts/prompts';
 
 /**
- * !learnon - Enable learning questions
- */
-export const learnOnCommand: Command = {
-    names: ['learnon'],
-    description: 'Enable spaced-repetition learning questions.',
-    category: 'Learning',
-    ephemeral: true,
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        deps.state.updateConfig(ctx.id, ctx.isDM, { learningEnabled: true });
-        await commandUtils.reply(
-            ctx.message,
-            `Learning questions enabled for ${ctx.isDM ? 'DMs' : 'this server'}.`
-        );
-    }
-};
-
-/**
- * !learnoff - Disable learning questions
- */
-export const learnOffCommand: Command = {
-    names: ['learnoff'],
-    description: 'Disable learning questions.',
-    category: 'Learning',
-    ephemeral: true,
-    async execute(ctx: CommandContext, deps: CommandDependencies) {
-        deps.state.updateConfig(ctx.id, ctx.isDM, { learningEnabled: false });
-        await commandUtils.reply(
-            ctx.message,
-            `Learning questions disabled for ${ctx.isDM ? 'DMs' : 'this server'}.`
-        );
-    }
-};
-
-/**
  * !learnadd - Add a learning subject
  */
 export const learnAddCommand: Command = {
@@ -232,8 +198,6 @@ export async function performLearningQuestion(
 
 // Export all learning commands
 export const learningCommands: Command[] = [
-    learnOnCommand,
-    learnOffCommand,
     learnAddCommand,
     learnRemoveCommand,
     learnStatusCommand

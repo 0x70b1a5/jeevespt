@@ -5,7 +5,9 @@
  */
 import { configCommands } from '../src/commands/config';
 import { modeCommands } from '../src/commands/modes';
-import { museCommands, museCommand } from '../src/commands/muse';
+import { museCommand } from '../src/commands/muse';
+import { settingsCommands } from '../src/commands/settings';
+import { shortenCommands } from '../src/commands/shorten';
 import { reminderCommands } from '../src/commands/reminders';
 import { taskCommands } from '../src/commands/tasks';
 import { learningCommands, learnCommand } from '../src/commands/learning';
@@ -19,10 +21,10 @@ import { sitelenCommands } from '../src/commands/sitelen';
 import { buildSlashCommandData } from '../src/commands/slash';
 
 const all = [
-    ...configCommands, ...modeCommands, ...museCommands, museCommand, learnCommand,
+    ...configCommands, ...settingsCommands, ...modeCommands, museCommand, learnCommand,
     ...reminderCommands, ...taskCommands, ...learningCommands, ...reactionCommands,
     ...translateCommands, ...channelConfigCommands, ...adminCommands, ...patreonCommands,
-    ...transcribeCommands, ...sitelenCommands
+    ...transcribeCommands, ...sitelenCommands, ...shortenCommands
 ];
 
 const NAME_RE = /^[a-z0-9_-]{1,32}$/;

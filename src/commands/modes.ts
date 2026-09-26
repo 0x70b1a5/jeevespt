@@ -2,6 +2,7 @@ import { Command, CommandContext, CommandDependencies } from './types';
 import { MODE_RESPONSES, SYS_PREFIX } from './constants';
 import { commandUtils } from './utils';
 import { BotMode } from '../state';
+import { applyMode } from '../settings/schema';
 
 /**
  * Create a mode switch command
@@ -13,8 +14,7 @@ function createModeCommand(mode: BotMode, description: string, category = 'Modes
         category,
         ephemeral: true,
         async execute(ctx: CommandContext, deps: CommandDependencies) {
-            deps.state.getLog(ctx.id, ctx.isDM).messages = [];
-            deps.state.updateConfig(ctx.id, ctx.isDM, { mode });
+            applyMode(deps.state, ctx.id, ctx.isDM, mode);
 
             const response = MODE_RESPONSES[mode] || 'Mode changed.';
             await commandUtils.reply(ctx.message, response);

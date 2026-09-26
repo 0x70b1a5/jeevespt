@@ -17,7 +17,9 @@ import { JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA_PROMPT, WEB_SEARCH_ADDEND
 import { prependTimestampAndUsername, extractEmbedDataToText, extractForwardedContent, allMessageAttachments } from '../formatMessage';
 import whisper from '../whisper';
 import { generateText, withSourcesFooter } from '../llm/generate';
-import { AGENT_TOOLS } from '../llm/tools';
+import { AGENT_TOOLS, createProposeSettingTool } from '../llm/tools';
+import { describeSettingsForAgent, SettingProposal } from '../settings/schema';
+import { buildProposalMessage } from '../settings/panel';
 
 import { CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { CommandRegistry, registry } from './registry';
@@ -30,7 +32,8 @@ import {
 // Import command modules
 import { configCommands } from './config';
 import { modeCommands } from './modes';
-import { museCommands, MuseHandler, museCommand } from './muse';
+import { MuseHandler, museCommand } from './muse';
+import { settingsCommands } from './settings';
 import { reminderCommands } from './reminders';
 import { taskCommands } from './tasks';
 import { learningCommands, performLearningQuestion, learnCommand } from './learning';
@@ -84,8 +87,8 @@ export class CommandHandler {
     private registerCommands(): void {
         registry.registerAll([
             ...configCommands,
+            ...settingsCommands,
             ...modeCommands,
-            ...museCommands,
             // muse and learn are dispatched specially (they need handler
             // internals), but they're registered so they appear in !help, get
             // registered as slash commands, and can be whitelisted.
@@ -322,8 +325,9 @@ export class CommandHandler {
         id: string,
         isDM: boolean,
         additionalMessages: { role: string; content: string }[] = [],
-        isReminder = false
-    ): Promise<GeneratedResponse | null> {
+        isReminder = false,
+        opts: { allowProposals?: boolean } = {}
+    ): Promise<(GeneratedResponse & { proposals: SettingProposal[] }) | null> {
         console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}`);
 
         const buffer = this.state.getBuffer(id, isDM);
@@ -360,6 +364,14 @@ export class CommandHandler {
                 enhancedSystemPrompt += `\n\nIMPORTANT: You are about to send a reminder to a user. You are part of a system that can set reminders; however, do not break character for this message.`;
             }
 
+            // Only a live chat reply can post the proposal buttons afterwards
+            // (see sendDelayedResponse); muse/reminders just see the settings.
+            const proposals: SettingProposal[] = [];
+            const tools = opts.allowProposals
+                ? [...AGENT_TOOLS, createProposeSettingTool(config, proposals)]
+                : AGENT_TOOLS;
+            enhancedSystemPrompt += describeSettingsForAgent(config, !!opts.allowProposals);
+
             const result = await generateText(
                 { anthropic: this.anthropic, xai: this.xai, poolside: this.poolside },
                 {
@@ -376,13 +388,13 @@ export class CommandHandler {
                     extendedThinking: config.extendedThinking,
                     webSearchEnabled: config.webSearchEnabled,
                     webSearchMaxUses: config.webSearchMaxUses,
-                    tools: AGENT_TOOLS
+                    tools
                 }
             );
 
             if (result.content) {
                 const finalContent = withSourcesFooter(result.content, result.sources);
-                const response = { role: 'assistant', content: finalContent };
+                const response = { role: 'assistant', content: finalContent, proposals };
                 const meta: string[] = [];
                 if (config.extendedThinking) meta.push('thinking');
                 if (result.searchesPerformed > 0) {
@@ -528,7 +540,7 @@ export class CommandHandler {
         const typing = setInterval(() => channel.sendTyping().catch(() => {}), 8000);
         try {
             await channel.sendTyping();
-            const response = await this.generateResponse(id, isDM);
+            const response = await this.generateResponse(id, isDM, [], false, { allowProposals: true });
 
             if (response) {
                 const chunks = this.utils.splitMessageIntoChunks(
@@ -582,7 +594,11 @@ export class CommandHandler {
                     }
                 }
 
-                log.messages.push(response);
+                log.messages.push({ role: response.role, content: response.content });
+
+                for (const proposal of response.proposals) {
+                    await channel.send(buildProposalMessage(proposal, config.mode));
+                }
             }
         } catch (error) {
             console.error('Error sending delayed response:', error);
