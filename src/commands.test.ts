@@ -518,7 +518,8 @@ describe('CommandHandler', () => {
       const response = await handler.generateResponse('guild123', false);
 
       const call = mockXai.responses.create.mock.calls[0][0];
-      expect(call.tools).toEqual([{ type: 'web_search' }]);
+      expect(call.tools).toContainEqual({ type: 'web_search' });
+      expect(call.tools).toContainEqual(expect.objectContaining({ type: 'function', name: 'fetch_webpage' }));
       expect(response?.content).toContain('According to the papers');
       expect(response?.content).toContain('**Sources:**');
       expect(response?.content).toContain('https://example.com');

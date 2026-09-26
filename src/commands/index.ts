@@ -17,6 +17,7 @@ import { JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA_PROMPT, WEB_SEARCH_ADDEND
 import { prependTimestampAndUsername, extractEmbedDataToText, extractForwardedContent, allMessageAttachments } from '../formatMessage';
 import whisper from '../whisper';
 import { generateText, withSourcesFooter } from '../llm/generate';
+import { AGENT_TOOLS } from '../llm/tools';
 
 import { CommandContext, CommandDependencies, GeneratedResponse } from './types';
 import { CommandRegistry, registry } from './registry';
@@ -375,7 +376,8 @@ export class CommandHandler {
                     temperature: config.temperature,
                     extendedThinking: config.extendedThinking,
                     webSearchEnabled: config.webSearchEnabled,
-                    webSearchMaxUses: config.webSearchMaxUses
+                    webSearchMaxUses: config.webSearchMaxUses,
+                    tools: AGENT_TOOLS
                 }
             );
 
@@ -386,6 +388,9 @@ export class CommandHandler {
                 if (config.extendedThinking) meta.push('thinking');
                 if (result.searchesPerformed > 0) {
                     meta.push(`${result.searchesPerformed} web search${result.searchesPerformed === 1 ? '' : 'es'}`);
+                }
+                if (result.toolCalls > 0) {
+                    meta.push(`${result.toolCalls} tool call${result.toolCalls === 1 ? '' : 's'}`);
                 }
                 const metaStr = meta.length ? ` [${meta.join(', ')}]` : '';
                 console.log(`✅ Generated response (${response.content.length} chars) via ${config.model}${metaStr}`);
@@ -401,7 +406,7 @@ export class CommandHandler {
                 console.log(`⏳ Request failed, retrying in ${delay}ms... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
 
                 await new Promise(resolve => setTimeout(resolve, delay));
-                return this.generateResponse(id, isDM, additionalMessages, retryCount + 1);
+                return this.generateResponse(id, isDM, additionalMessages, retryCount + 1, isReminder);
             }
 
             console.error('❌ Error generating response:', error);
@@ -437,7 +442,8 @@ export class CommandHandler {
                 maxTokens: config.maxResponseLength,
                 temperature: config.temperature,
                 webSearchEnabled: true,
-                webSearchMaxUses: TASK_AGENT_WEB_SEARCH_MAX_USES
+                webSearchMaxUses: TASK_AGENT_WEB_SEARCH_MAX_USES,
+                tools: AGENT_TOOLS
             }
         );
 
@@ -527,6 +533,9 @@ export class CommandHandler {
             return;
         }
 
+        // Discord's typing indicator lapses after ~10s; an agent loop can run
+        // for minutes, so keep it alive until the reply is ready.
+        const typing = setInterval(() => channel.sendTyping().catch(() => {}), 8000);
         try {
             await channel.sendTyping();
             const response = await this.generateResponse(id, isDM);
@@ -588,6 +597,8 @@ export class CommandHandler {
         } catch (error) {
             console.error('Error sending delayed response:', error);
             await message.reply(`${SYS_PREFIX}[ERROR] Failed to generate response.`);
+        } finally {
+            clearInterval(typing);
         }
 
         buffer.messages = [];

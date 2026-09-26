@@ -1,4 +1,4 @@
-import { generateText, withSourcesFooter } from './generate';
+import { generateText, withSourcesFooter, LlmTool } from './generate';
 
 describe('generateText', () => {
   const mockAnthropic = {
@@ -317,6 +317,119 @@ describe('generateText', () => {
       expect(result.content).toBe('No search, sir.');
       expect(result.searchesPerformed).toBe(0);
     });
+  });
+});
+
+describe('agent loop', () => {
+  const mockAnthropic = { messages: { create: jest.fn() } } as any;
+  const mockXai = { responses: { create: jest.fn() } } as any;
+  const mockHermes = { chat: { completions: { create: jest.fn() } } } as any;
+  const clients = { anthropic: mockAnthropic, xai: mockXai, hermes: mockHermes };
+
+  const lockerTool: LlmTool = {
+    name: 'lookup_locker',
+    description: 'Look in a locker',
+    parameters: { type: 'object', properties: { n: { type: 'integer' } } },
+    run: jest.fn(async ({ n }) => `locker ${n}: brass owl`)
+  };
+  const base = { messages: [{ role: 'user', content: 'Locker 7?' }], maxTokens: 100, tools: [lockerTool] };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('Anthropic: runs tools until the model stops, keeping only the final answer', async () => {
+    const toolTurn = [
+      { type: 'text', text: 'Let me look.' },
+      { type: 'tool_use', id: 'tu_1', name: 'lookup_locker', input: { n: 7 } }
+    ];
+    mockAnthropic.messages.create
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: toolTurn })
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'A brass owl, sir.' }] });
+
+    const result = await generateText(clients, { model: 'claude-sonnet-4-5', ...base });
+
+    expect(lockerTool.run).toHaveBeenCalledWith({ n: 7 });
+    expect(result.content).toBe('A brass owl, sir.');
+    expect(result.toolCalls).toBe(1);
+
+    const first = mockAnthropic.messages.create.mock.calls[0][0];
+    expect(first.tools).toEqual([{ name: 'lookup_locker', description: 'Look in a locker', input_schema: lockerTool.parameters }]);
+    const second = mockAnthropic.messages.create.mock.calls[1][0];
+    expect(second.messages.slice(1)).toEqual([
+      { role: 'assistant', content: toolTurn },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: 'locker 7: brass owl', is_error: false }] }
+    ]);
+  });
+
+  it('Anthropic: resumes a paused turn without adding a user message', async () => {
+    const paused = [{ type: 'text', text: 'The first half' }];
+    mockAnthropic.messages.create
+      .mockResolvedValueOnce({ stop_reason: 'pause_turn', content: paused })
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: ' and the second.' }] });
+
+    const result = await generateText(clients, { model: 'claude-sonnet-4-5', ...base, tools: undefined, webSearchEnabled: true });
+
+    expect(result.content).toBe('The first half and the second.');
+    const second = mockAnthropic.messages.create.mock.calls[1][0];
+    expect(second.messages[second.messages.length - 1]).toEqual({ role: 'assistant', content: paused });
+  });
+
+  it('Anthropic: reports tool failures to the model instead of throwing', async () => {
+    const failing: LlmTool = { ...lockerTool, run: async () => { throw new Error('boom'); } };
+    mockAnthropic.messages.create
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'tu_1', name: 'lookup_locker', input: {} }] })
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'It jammed.' }] });
+
+    const result = await generateText(clients, { model: 'claude-sonnet-4-5', ...base, tools: [failing] });
+
+    const toolResult = mockAnthropic.messages.create.mock.calls[1][0].messages.at(-1).content[0];
+    expect(toolResult).toMatchObject({ is_error: true, content: 'Tool error: boom' });
+    expect(result.content).toBe('It jammed.');
+  });
+
+  it('disables tools on the final allowed step', async () => {
+    const toolTurn = { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'x', name: 'lookup_locker', input: { n: 1 } }] };
+    mockAnthropic.messages.create
+      .mockResolvedValueOnce(toolTurn)
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Done.' }] });
+
+    await generateText(clients, { model: 'claude-sonnet-4-5', ...base, maxSteps: 2 });
+
+    expect(mockAnthropic.messages.create.mock.calls[0][0].tool_choice).toBeUndefined();
+    expect(mockAnthropic.messages.create.mock.calls[1][0].tool_choice).toEqual({ type: 'none' });
+  });
+
+  it('xAI: feeds function_call_output back and continues', async () => {
+    const call = { type: 'function_call', call_id: 'c1', name: 'lookup_locker', arguments: '{"n":7}' };
+    mockXai.responses.create
+      .mockResolvedValueOnce({ output: [{ type: 'reasoning', id: 'r1' }, call] })
+      .mockResolvedValueOnce({ output_text: 'A brass owl.', output: [] });
+
+    const result = await generateText(clients, { model: 'grok-4.5', ...base });
+
+    expect(lockerTool.run).toHaveBeenCalledWith({ n: 7 });
+    expect(result.content).toBe('A brass owl.');
+    expect(mockXai.responses.create.mock.calls[0][0].tools).toEqual([
+      { type: 'function', name: 'lookup_locker', description: 'Look in a locker', parameters: lockerTool.parameters }
+    ]);
+    expect(mockXai.responses.create.mock.calls[1][0].input.slice(1)).toEqual([
+      call,
+      { type: 'function_call_output', call_id: 'c1', output: 'locker 7: brass owl' }
+    ]);
+  });
+
+  it('Poolside: feeds tool messages back and continues', async () => {
+    const toolCall = { id: 'c1', type: 'function', function: { name: 'lookup_locker', arguments: '{"n":7}' } };
+    mockHermes.chat.completions.create
+      .mockResolvedValueOnce({ choices: [{ message: { content: null, tool_calls: [toolCall] } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { content: 'A brass owl.' } }] });
+
+    const result = await generateText(clients, { model: 'poolside/laguna-xs-2.1', ...base });
+
+    expect(result.content).toBe('A brass owl.');
+    expect(mockHermes.chat.completions.create.mock.calls[1][0].messages.slice(1)).toEqual([
+      { role: 'assistant', content: null, tool_calls: [toolCall] },
+      { role: 'tool', tool_call_id: 'c1', content: 'locker 7: brass owl' }
+    ]);
   });
 });
 

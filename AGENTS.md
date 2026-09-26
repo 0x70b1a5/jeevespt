@@ -26,7 +26,8 @@ src/
     modes.ts         # !jeeves !tokipona !lugso !whisper !prompt
     tasks.ts         # Scheduled task NL parser (hardcoded Claude haiku)
     …                # reminders, learning, reactions, translate, muse, …
-  llm/generate.ts    # Multi-provider LLM: Claude + Grok routing
+  llm/generate.ts    # Multi-provider LLM: Claude + Grok + Poolside routing, agent loop
+  llm/tools.ts       # Client-side agent tools (AGENT_TOOLS), e.g. fetch_webpage
   state/             # BotState + stores; types + model lists in types.ts
   prompts/           # JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA, WEB_SEARCH_ADDENDUM, lugso
   bot.ts             # Re-exports state (compat)
@@ -65,6 +66,8 @@ new CommandHandler(state, openai, xai, anthropic, elevenLabs)
 - Extended thinking: Anthropic `thinking` budget; xAI only bumps `max_output_tokens` (Grok reasons natively)
 - Temperature: Anthropic gated by `modelSupportsTemperature` in `commands/constants.ts`; xAI always may send temperature
 - Citations: `withSourcesFooter()` formats Sources block
+
+**Agent loop:** pass `tools: LlmTool[]` to `generateText` and each provider keeps calling the model — running requested tools sequentially, feeding results back in its native format (Anthropic `tool_use`/`tool_result`, xAI `function_call`/`function_call_output`, Poolside chat `tool_calls`/`role: 'tool'`) — until the model stops on its own. `maxSteps` (default `DEFAULT_MAX_STEPS` = 20) is a runaway guard; on the last step tools are disabled (`tool_choice: none`) to force an answer. Anthropic `pause_turn` (server web-search limit) is resumed automatically. Only the final turn's text is returned (tool-call narration is dropped); sources/search counts accumulate. Tool errors are returned to the model, not thrown. Chat (`generateResponse`) and tasks (`runTask`) pass `AGENT_TOOLS`; utility call sites (translate, reactions, learning) don't. To add a tool: define an `LlmTool` in `llm/tools.ts` and add it to `AGENT_TOOLS`.
 
 **`!model`:** lists both providers (live fetch + static fallback). Example: `!model grok-4.5`.
 
