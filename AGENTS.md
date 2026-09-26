@@ -30,7 +30,6 @@ src/
   llm/tools.ts       # Client-side agent tools (AGENT_TOOLS), e.g. fetch_webpage
   state/             # BotState + stores; types + model lists in types.ts
   prompts/           # JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA, WEB_SEARCH_ADDENDUM, lugso
-  bot.ts             # Re-exports state (compat)
 ```
 
 - **Entry:** `src/server.ts` constructs OpenAI (Whisper), **xAI** (`baseURL: https://api.x.ai/v1`), Anthropic, ElevenLabs → `CommandHandler`.
@@ -45,20 +44,21 @@ All chat-like generation goes through **`generateText` in `src/llm/generate.ts`*
 | Model id | Provider | API |
 |----------|----------|-----|
 | `grok-*` | xAI | OpenAI SDK `responses.create` (`store: false`) |
-| else (Claude) | Anthropic | `messages.create` |
+| `poolside/*` | Poolside | OpenAI SDK `chat.completions.create` (no web search) |
+| else (Claude) | Anthropic | `messages.create` (SDK retries transient errors, `maxRetries: 3`) |
 
-Helpers in `src/state/types.ts` (re-exported via `bot.ts`):
+Helpers in `src/state/types.ts` (import from `src/state`):
 
-- `isXaiModel(model)` — `model.startsWith('grok-')`
-- `VALID_XAI_MODELS` / `VALID_ANTHROPIC_MODELS` / `isValidModel`
+- `isXaiModel(model)` — `model.startsWith('grok-')`; `isPoolsideModel(model)` — `model.startsWith('poolside/')`
+- `VALID_XAI_MODELS` / `VALID_POOLSIDE_MODELS` / `VALID_ANTHROPIC_MODELS` / `isValidModel`
 
-**Wiring:** `CommandDependencies` has `openai`, **`xai`**, `anthropic`, `elevenLabs`, `state`. Constructor order on `CommandHandler`:
+**Wiring:** `CommandDependencies` has `openai`, **`xai`**, `anthropic`, `elevenLabs`, `state`, optional `poolside`. Constructor order on `CommandHandler`:
 
 ```ts
-new CommandHandler(state, openai, xai, anthropic, elevenLabs)
+new CommandHandler(state, openai, xai, anthropic, elevenLabs, poolside)
 ```
 
-**When adding LLM call sites:** use `generateText({ anthropic, xai }, opts)` — do not call Anthropic/xAI SDKs directly (exceptions: hardcoded utility paths like task NL parser / sitelen / patreon edit that intentionally pin Claude).
+**When adding LLM call sites:** use `generateText({ anthropic, xai, poolside }, opts)` — do not call Anthropic/xAI SDKs directly (exceptions: hardcoded utility paths like task NL parser / sitelen / patreon edit that intentionally pin Claude).
 
 **Feature mapping:**
 

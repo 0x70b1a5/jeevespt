@@ -33,7 +33,7 @@ export {
     isXaiModel,
     VALID_POOLSIDE_MODELS,
     isValidPoolsideModel,
-    isHermesModel,
+    isPoolsideModel,
     VALID_MODELS,
     isValidModel
 } from './types';

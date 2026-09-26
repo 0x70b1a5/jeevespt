@@ -5,9 +5,7 @@ export const MAX_TEXT_ATTACHMENT_SIZE = 1 * 1024 * 1024; // 1MB
 export const ALLOWED_DOMAINS = ['cdn.discordapp.com', 'media.discordapp.net'];
 export const TEMP_DIR = './temp';
 
-// Response/retry configuration
-export const MAX_RETRIES = 3;
-export const RETRY_DELAY_MS = 1000;
+// Response configuration
 export const MAX_CHUNK_SIZE = 1800;
 
 // Reminder limits

@@ -9,7 +9,7 @@ import { Attachment, Message, TextChannel, DMChannel, TextBasedChannel, ChatInpu
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 
-import { BotState, isXaiModel } from '../bot';
+import { BotState, isXaiModel } from '../state';
 import { ElevenLabs } from '../elevenlabs';
 import { synthesizeIPA } from '../ipaSpeech';
 import dayjs from 'dayjs';
@@ -23,7 +23,7 @@ import { CommandContext, CommandDependencies, GeneratedResponse } from './types'
 import { CommandRegistry, registry } from './registry';
 import { commandUtils, CommandUtilsImpl, canExecuteCommand, isSendableChannel } from './utils';
 import {
-    SYS_PREFIX, MAX_RETRIES, RETRY_DELAY_MS,
+    SYS_PREFIX,
     ALLOWED_DOMAINS, TEMP_DIR, TASK_AGENT_WEB_SEARCH_MAX_USES
 } from './constants';
 
@@ -66,9 +66,9 @@ export class CommandHandler {
         private xai: OpenAI,
         private anthropic: Anthropic,
         private elevenLabs: ElevenLabs,
-        private hermes?: OpenAI
+        private poolside?: OpenAI
     ) {
-        this.deps = { state, openai, xai, anthropic, elevenLabs, hermes };
+        this.deps = { state, openai, xai, anthropic, elevenLabs, poolside };
         this.utils = new CommandUtilsImpl();
 
         // Initialize muse handler with generateResponse bound to this instance
@@ -322,10 +322,9 @@ export class CommandHandler {
         id: string,
         isDM: boolean,
         additionalMessages: { role: string; content: string }[] = [],
-        retryCount = 0,
         isReminder = false
     ): Promise<GeneratedResponse | null> {
-        console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}${retryCount > 0 ? ` (Attempt ${retryCount + 1}/${MAX_RETRIES + 1})` : ''}`);
+        console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}`);
 
         const buffer = this.state.getBuffer(id, isDM);
         const log = this.state.getLog(id, isDM);
@@ -362,7 +361,7 @@ export class CommandHandler {
             }
 
             const result = await generateText(
-                { anthropic: this.anthropic, xai: this.xai, hermes: this.hermes },
+                { anthropic: this.anthropic, xai: this.xai, poolside: this.poolside },
                 {
                     model: config.model,
                     system: enhancedSystemPrompt,
@@ -398,17 +397,8 @@ export class CommandHandler {
             }
             return null;
         } catch (error: any) {
-            if (
-                error.headers?.['x-should-retry'] === 'true' &&
-                retryCount < MAX_RETRIES
-            ) {
-                const delay = RETRY_DELAY_MS * Math.pow(2, retryCount);
-                console.log(`⏳ Request failed, retrying in ${delay}ms... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
-
-                await new Promise(resolve => setTimeout(resolve, delay));
-                return this.generateResponse(id, isDM, additionalMessages, retryCount + 1, isReminder);
-            }
-
+            // Transient API failures are already retried inside the SDK clients
+            // (see maxRetries in server.ts); anything reaching here is final.
             console.error('❌ Error generating response:', error);
             throw error;
         }
@@ -434,7 +424,7 @@ export class CommandHandler {
         const taskFraming = `[SYSTEM] You are being invoked as a scheduled task. The user set this task in advance; they are not present to clarify. Carry out the following task and respond with your findings, in character. Do not break character to discuss the task framing.\n\n<task>\n${instructions}\n</task>`;
 
         const result = await generateText(
-            { anthropic: this.anthropic, xai: this.xai, hermes: this.hermes },
+            { anthropic: this.anthropic, xai: this.xai, poolside: this.poolside },
             {
                 model: config.model,
                 system: systemPrompt?.content || '',
@@ -677,15 +667,6 @@ export class CommandHandler {
             console.error(`❌ Error downloading file ${filename}:`, error);
             throw error;
         }
-    }
-
-    private async downloadAndReadFile(url: string, filename: string): Promise<string> {
-        const safePath = this.createTempFilename(filename);
-        await this.downloadFile(url, filename, safePath);
-        const content = fs.readFileSync(safePath, 'utf8');
-        console.log(`🔍 Read file from ${safePath}: ${content.slice(0, 100)}...`);
-        fs.unlinkSync(safePath);
-        return content;
     }
 
     private async transcribeAudio(attachment: Attachment, message: Message, id: string, isDM: boolean): Promise<string> {

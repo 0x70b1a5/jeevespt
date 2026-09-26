@@ -2,7 +2,7 @@ import { installTimestampedLogging } from './logger';
 installTimestampedLogging();
 
 import { ChannelType, Client, GatewayIntentBits, Message, Partials, TextChannel } from 'discord.js';
-import { BotState, ScheduledReminder, ScheduledTask } from './bot';
+import { BotState, ScheduledReminder, ScheduledTask } from './state';
 import { CommandHandler } from './commands';
 import { registry } from './commands/registry';
 import { registerSlashCommands } from './commands/slash';
@@ -20,7 +20,7 @@ export class BotServer {
     private state: BotState;
     private openai: OpenAI;
     private xai: OpenAI;
-    private hermes: OpenAI;
+    private poolside: OpenAI;
     private anthropic: Anthropic;
     private elevenLabs: ElevenLabs;
     private commands: CommandHandler;
@@ -55,20 +55,21 @@ export class BotServer {
             timeout: 360000
         });
 
-        // Poolside/Hermes — OpenAI-compatible endpoint
-        this.hermes = new OpenAI({
+        // Poolside — OpenAI-compatible endpoint
+        this.poolside = new OpenAI({
             apiKey: process.env.POOLSIDE_API_KEY || '',
             baseURL: 'https://inference.poolside.ai/v1',
             timeout: 360000
         });
 
         this.anthropic = new Anthropic({
-            apiKey: process.env.ANTHROPIC_API_KEY
+            apiKey: process.env.ANTHROPIC_API_KEY,
+            maxRetries: 3
         });
 
         this.elevenLabs = new ElevenLabs(process.env.ELEVENLABS_API_KEY);
 
-        this.commands = new CommandHandler(this.state, this.openai, this.xai, this.anthropic, this.elevenLabs, this.hermes);
+        this.commands = new CommandHandler(this.state, this.openai, this.xai, this.anthropic, this.elevenLabs, this.poolside);
 
         this.initializeEventListeners();
         this.initializeMuseTimers();
@@ -350,7 +351,6 @@ export class BotServer {
                     role: 'user',
                     content: msg,
                 }],
-                2,
                 true
             );
 

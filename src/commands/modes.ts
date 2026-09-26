@@ -1,7 +1,7 @@
 import { Command, CommandContext, CommandDependencies } from './types';
 import { MODE_RESPONSES, SYS_PREFIX } from './constants';
 import { commandUtils } from './utils';
-import { BotMode } from '../bot';
+import { BotMode } from '../state';
 
 /**
  * Create a mode switch command

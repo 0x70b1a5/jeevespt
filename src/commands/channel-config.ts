@@ -1,6 +1,6 @@
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils } from './utils';
-import { ResponseFrequency } from '../bot';
+import { ResponseFrequency } from '../state';
 
 const VALID_FREQUENCIES = ['all', 'mentions', 'none'] as const;
 

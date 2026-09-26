@@ -198,7 +198,7 @@ async function generateEmojiReaction(message: Message, deps: CommandDependencies
         ] as MessageParam[];
 
         const result = await generateText(
-            { anthropic: deps.anthropic, xai: deps.xai, hermes: deps.hermes },
+            { anthropic: deps.anthropic, xai: deps.xai, poolside: deps.poolside },
             {
                 model: config.model,
                 maxTokens: 30,

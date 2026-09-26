@@ -152,8 +152,8 @@ export function isXaiModel(model: string): boolean {
     return model.startsWith('grok-');
 }
 
-/** Whether this model id should be served by the Poolside (Hermes) API. */
-export function isHermesModel(model: string): boolean {
+/** Whether this model id should be served by the Poolside API. */
+export function isPoolsideModel(model: string): boolean {
     return model.startsWith('poolside/');
 }
 
@@ -184,7 +184,7 @@ export const VALID_POOLSIDE_MODELS = [
 ] as const;
 
 export function isValidPoolsideModel(model: string): boolean {
-    return VALID_POOLSIDE_MODELS.includes(model as any) || isHermesModel(model);
+    return VALID_POOLSIDE_MODELS.includes(model as any) || isPoolsideModel(model);
 }
 
 /** Combined static model list used when live API fetch is unavailable. */

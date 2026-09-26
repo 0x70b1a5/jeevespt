@@ -8,7 +8,7 @@ import {
   VALID_XAI_MODELS,
   isValidModel,
   ResponseFrequency
-} from './bot';
+} from './state';
 
 // Mock fs to avoid actual file operations
 jest.mock('fs', () => ({

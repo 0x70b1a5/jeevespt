@@ -1,5 +1,5 @@
 /**
- * Multi-provider LLM generation (Anthropic Claude + xAI Grok + Poolside Hermes).
+ * Multi-provider LLM generation (Anthropic Claude + xAI Grok + Poolside).
  *
  * Routes by model id: `grok-*` → xAI Responses API; `poolside/*` → Poolside chat completions;
  * everything else → Anthropic.
@@ -12,8 +12,16 @@
 
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
-import { MessageParam } from '@anthropic-ai/sdk/resources';
-import { isXaiModel, isHermesModel } from '../state/types';
+import type {
+    ContentBlock,
+    MessageCreateParamsNonStreaming,
+    MessageParam,
+    Tool,
+    ToolResultBlockParam,
+    ToolUnion,
+    ToolUseBlock
+} from '@anthropic-ai/sdk/resources/messages';
+import { isXaiModel, isPoolsideModel } from '../state/types';
 import { modelSupportsTemperature } from '../commands/constants';
 
 export interface ChatMessage {
@@ -64,7 +72,7 @@ export const DEFAULT_MAX_STEPS = 20;
 export interface LlmClients {
     anthropic: Anthropic;
     xai: OpenAI;
-    hermes?: OpenAI; // Poolside API (OpenAI-compatible)
+    poolside?: OpenAI; // Poolside API (OpenAI-compatible)
 }
 
 /**
@@ -77,11 +85,11 @@ export async function generateText(
     if (isXaiModel(options.model)) {
         return generateWithXai(clients.xai, options);
     }
-    if (isHermesModel(options.model)) {
-        if (!clients.hermes) {
-            throw new Error(`Hermes client not initialized for model: ${options.model}`);
+    if (isPoolsideModel(options.model)) {
+        if (!clients.poolside) {
+            throw new Error(`Poolside client not initialized for model: ${options.model}`);
         }
-        return generateWithHermes(clients.hermes, options);
+        return generateWithPoolside(clients.poolside, options);
     }
     return generateWithAnthropic(clients.anthropic, options);
 }
@@ -149,14 +157,16 @@ async function generateWithAnthropic(
     anthropic: Anthropic,
     options: GenerateOptions
 ): Promise<GenerateResult> {
-    const apiOptions: any = {
+    const messages: MessageParam[] = options.messages
+        .map(msg => ({
+            role: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+            content: msg.content
+        }))
+        .filter(m => Boolean(m.content));
+
+    const apiOptions: MessageCreateParamsNonStreaming = {
         model: options.model,
-        messages: options.messages
-            .map(msg => ({
-                role: msg.role === 'assistant' ? 'assistant' : 'user',
-                content: msg.content
-            }))
-            .filter(m => Boolean(m.content)) as MessageParam[],
+        messages,
         max_tokens: options.maxTokens,
         system: options.system || ''
     };
@@ -174,7 +184,7 @@ async function generateWithAnthropic(
         apiOptions.temperature = options.temperature;
     }
 
-    const tools: any[] = [];
+    const tools: ToolUnion[] = [];
     if (options.webSearchEnabled) {
         tools.push({
             type: 'web_search_20250305',
@@ -184,22 +194,25 @@ async function generateWithAnthropic(
     }
     const clientTools = options.tools ?? [];
     for (const tool of clientTools) {
-        tools.push({ name: tool.name, description: tool.description, input_schema: tool.parameters });
+        tools.push({
+            name: tool.name,
+            description: tool.description,
+            input_schema: tool.parameters as Tool['input_schema']
+        });
     }
     if (tools.length) apiOptions.tools = tools;
 
-    const messages: any[] = apiOptions.messages;
     const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
     const acc = new ResultAccumulator();
     let paused = false;
 
     for (let step = 1; step <= maxSteps; step++) {
-        const request = { ...apiOptions, messages: [...messages] };
+        const request: MessageCreateParamsNonStreaming = { ...apiOptions, messages: [...messages] };
         if (step === maxSteps && clientTools.length) {
             request.tool_choice = { type: 'none' };
         }
 
-        const completion: any = await anthropic.messages.create(request);
+        const completion = await anthropic.messages.create(request);
         acc.add(parseAnthropicResponse(completion.content), paused);
         paused = false;
 
@@ -212,11 +225,11 @@ async function generateWithAnthropic(
         }
         if (completion.stop_reason !== 'tool_use') break;
 
-        const toolUses = completion.content.filter((b: any) => b.type === 'tool_use');
+        const toolUses = completion.content.filter((b): b is ToolUseBlock => b.type === 'tool_use');
         if (!toolUses.length) break;
 
         messages.push({ role: 'assistant', content: completion.content });
-        const results: any[] = [];
+        const results: ToolResultBlockParam[] = [];
         // Sequential on purpose: tools like fetch_webpage drive a shared headless browser.
         for (const use of toolUses) {
             const { output, isError } = await runTool(clientTools, use.name, use.input);
@@ -229,7 +242,7 @@ async function generateWithAnthropic(
     return acc.result();
 }
 
-function parseAnthropicResponse(blocks: any[]): GenerateResult {
+function parseAnthropicResponse(blocks: ContentBlock[]): GenerateResult {
     const textParts: string[] = [];
     const sources = new Map<string, string>();
     let searchesPerformed = 0;
@@ -390,14 +403,14 @@ function parseXaiResponse(response: any): GenerateResult {
 }
 
 /**
- * Generate with the Poolside (Hermes) API — OpenAI-compatible chat completions.
+ * Generate with the Poolside API — OpenAI-compatible chat completions.
  *
  * Web search is a no-op here: Poolside has no server-side web search tool, and
  * its chat API rejects any tool type other than `function`. Client tools
  * (which are `function` tools) work normally.
  */
-async function generateWithHermes(
-    hermes: OpenAI,
+async function generateWithPoolside(
+    poolside: OpenAI,
     options: GenerateOptions
 ): Promise<GenerateResult> {
     const messages: any[] =
@@ -439,8 +452,8 @@ async function generateWithHermes(
             request.tool_choice = 'none';
         }
 
-        const response: any = await hermes.chat.completions.create(request);
-        acc.add(parseHermesResponse(response));
+        const response: any = await poolside.chat.completions.create(request);
+        acc.add(parsePoolsideResponse(response));
 
         const message = response.choices?.[0]?.message;
         const calls: any[] = message?.tool_calls ?? [];
@@ -457,7 +470,7 @@ async function generateWithHermes(
     return acc.result();
 }
 
-function parseHermesResponse(response: any): GenerateResult {
+function parsePoolsideResponse(response: any): GenerateResult {
     const text = (response.choices?.[0]?.message?.content || '').trim();
     return {
         content: text || null,

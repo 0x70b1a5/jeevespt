@@ -9,11 +9,11 @@ describe('generateText', () => {
     responses: { create: jest.fn() }
   } as any;
 
-  const mockHermes = {
+  const mockPoolside = {
     chat: { completions: { create: jest.fn() } }
   } as any;
 
-  const clients = { anthropic: mockAnthropic, xai: mockXai, hermes: mockHermes };
+  const clients = { anthropic: mockAnthropic, xai: mockXai, poolside: mockPoolside };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -67,8 +67,8 @@ describe('generateText', () => {
       ]);
     });
 
-    it('routes poolside models to the Hermes client', async () => {
-      mockHermes.chat.completions.create.mockResolvedValueOnce({
+    it('routes poolside models to the Poolside client', async () => {
+      mockPoolside.chat.completions.create.mockResolvedValueOnce({
         choices: [{ message: { content: 'Laguna says hello' } }]
       });
 
@@ -84,12 +84,12 @@ describe('generateText', () => {
         temperature: 0.9
       });
 
-      expect(mockHermes.chat.completions.create).toHaveBeenCalledTimes(1);
+      expect(mockPoolside.chat.completions.create).toHaveBeenCalledTimes(1);
       expect(mockAnthropic.messages.create).not.toHaveBeenCalled();
       expect(mockXai.responses.create).not.toHaveBeenCalled();
       expect(result.content).toBe('Laguna says hello');
 
-      const call = mockHermes.chat.completions.create.mock.calls[0][0];
+      const call = mockPoolside.chat.completions.create.mock.calls[0][0];
       expect(call.model).toBe('poolside/laguna-xs-2.1');
       expect(call.max_tokens).toBe(100);
       expect(call.temperature).toBe(0.9);
@@ -101,7 +101,7 @@ describe('generateText', () => {
       ]);
     });
 
-    it('throws when a poolside model is selected but no Hermes client is configured', async () => {
+    it('throws when a poolside model is selected but no Poolside client is configured', async () => {
       await expect(generateText(
         { anthropic: mockAnthropic, xai: mockXai },
         {
@@ -109,7 +109,7 @@ describe('generateText', () => {
           messages: [{ role: 'user', content: 'Hi' }],
           maxTokens: 100
         }
-      )).rejects.toThrow('Hermes client not initialized');
+      )).rejects.toThrow('Poolside client not initialized');
     });
   });
 
@@ -282,9 +282,9 @@ describe('generateText', () => {
     });
   });
 
-  describe('Poolside (Hermes) path', () => {
+  describe('Poolside path', () => {
     it('omits the system message when empty', async () => {
-      mockHermes.chat.completions.create.mockResolvedValueOnce({
+      mockPoolside.chat.completions.create.mockResolvedValueOnce({
         choices: [{ message: { content: 'ok' } }]
       });
 
@@ -294,13 +294,13 @@ describe('generateText', () => {
         maxTokens: 50
       });
 
-      expect(mockHermes.chat.completions.create.mock.calls[0][0].messages).toEqual([
+      expect(mockPoolside.chat.completions.create.mock.calls[0][0].messages).toEqual([
         { role: 'user', content: 'Hi' }
       ]);
     });
 
     it('does not send tools even when web search is enabled (Poolside rejects non-function tools)', async () => {
-      mockHermes.chat.completions.create.mockResolvedValueOnce({
+      mockPoolside.chat.completions.create.mockResolvedValueOnce({
         choices: [{ message: { content: 'No search, sir.' } }]
       });
 
@@ -312,7 +312,7 @@ describe('generateText', () => {
         webSearchMaxUses: 3
       });
 
-      const call = mockHermes.chat.completions.create.mock.calls[0][0];
+      const call = mockPoolside.chat.completions.create.mock.calls[0][0];
       expect(call.tools).toBeUndefined();
       expect(result.content).toBe('No search, sir.');
       expect(result.searchesPerformed).toBe(0);
@@ -323,8 +323,8 @@ describe('generateText', () => {
 describe('agent loop', () => {
   const mockAnthropic = { messages: { create: jest.fn() } } as any;
   const mockXai = { responses: { create: jest.fn() } } as any;
-  const mockHermes = { chat: { completions: { create: jest.fn() } } } as any;
-  const clients = { anthropic: mockAnthropic, xai: mockXai, hermes: mockHermes };
+  const mockPoolside = { chat: { completions: { create: jest.fn() } } } as any;
+  const clients = { anthropic: mockAnthropic, xai: mockXai, poolside: mockPoolside };
 
   const lockerTool: LlmTool = {
     name: 'lookup_locker',
@@ -419,14 +419,14 @@ describe('agent loop', () => {
 
   it('Poolside: feeds tool messages back and continues', async () => {
     const toolCall = { id: 'c1', type: 'function', function: { name: 'lookup_locker', arguments: '{"n":7}' } };
-    mockHermes.chat.completions.create
+    mockPoolside.chat.completions.create
       .mockResolvedValueOnce({ choices: [{ message: { content: null, tool_calls: [toolCall] } }] })
       .mockResolvedValueOnce({ choices: [{ message: { content: 'A brass owl.' } }] });
 
     const result = await generateText(clients, { model: 'poolside/laguna-xs-2.1', ...base });
 
     expect(result.content).toBe('A brass owl.');
-    expect(mockHermes.chat.completions.create.mock.calls[1][0].messages.slice(1)).toEqual([
+    expect(mockPoolside.chat.completions.create.mock.calls[1][0].messages.slice(1)).toEqual([
       { role: 'assistant', content: null, tool_calls: [toolCall] },
       { role: 'tool', tool_call_id: 'c1', content: 'locker 7: brass owl' }
     ]);

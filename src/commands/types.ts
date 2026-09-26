@@ -1,5 +1,5 @@
 import { Message, TextChannel, DMChannel, Webhook, Collection } from 'discord.js';
-import { BotState } from '../bot';
+import { BotState } from '../state';
 import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ElevenLabs } from '../elevenlabs';
@@ -24,8 +24,8 @@ export interface CommandDependencies {
     xai: OpenAI;
     anthropic: Anthropic;
     elevenLabs: ElevenLabs;
-    /** Hermes/Nous client (OpenAI-compatible) - optional, used when Hermes models are selected */
-    hermes?: OpenAI;
+    /** Poolside client (OpenAI-compatible) - optional, used when Poolside models are selected */
+    poolside?: OpenAI;
 }
 
 /**

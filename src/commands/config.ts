@@ -2,7 +2,7 @@ import { TextBasedChannel } from 'discord.js';
 import { Command, CommandContext, CommandDependencies } from './types';
 import { SYS_PREFIX, MODEL_CACHE_DURATION } from './constants';
 import { commandUtils } from './utils';
-import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, VALID_POOLSIDE_MODELS, isXaiModel, isHermesModel } from '../bot';
+import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, VALID_POOLSIDE_MODELS, isXaiModel, isPoolsideModel } from '../state';
 import { registry } from './registry';
 import { buildHelpEmbed, buildCommandDetailEmbed } from './helpText';
 
@@ -213,7 +213,7 @@ function formatModelList(models: string[], current?: string): string {
  */
 export const modelCommand: Command = {
     names: ['model'],
-    description: 'Set the AI model (Claude, Grok, or Poolside/Hermes), or list available models.',
+    description: 'Set the AI model (Claude, Grok, or Poolside), or list available models.',
     category: 'Configuration',
     ephemeral: true,
     options: [{ name: 'model', description: 'Model id; omit to list models', type: 'string', required: false }],
@@ -224,29 +224,29 @@ export const modelCommand: Command = {
         if (!modelName) {
             const validModels = await getValidModels();
             const currentConfig = deps.state.getConfig(ctx.id, ctx.isDM);
-            const anthropic = validModels.filter(m => !isXaiModel(m) && !isHermesModel(m));
+            const anthropic = validModels.filter(m => !isXaiModel(m) && !isPoolsideModel(m));
             const xai = validModels.filter(m => isXaiModel(m));
-            const hermesModels = validModels.filter(m => isHermesModel(m));
+            const poolsideModels = validModels.filter(m => isPoolsideModel(m));
 
             await commandUtils.reply(
                 ctx.message,
                 `**Anthropic (Claude):**\n${formatModelList(anthropic, currentConfig.model)}\n\n` +
                 `**xAI (Grok):**\n${formatModelList(xai, currentConfig.model)}\n\n` +
-                `**Poolside (Hermes):**\n${formatModelList(hermesModels, currentConfig.model)}\n\n` +
+                `**Poolside:**\n${formatModelList(poolsideModels, currentConfig.model)}\n\n` +
                 `Use \`!model <model_name>\` to switch. Example: \`!model poolside/laguna-xs-2.1\``
             );
             return;
         }
 
         const validModels = await getValidModels();
-        const recognized = validModels.includes(modelName) || isXaiModel(modelName) || isHermesModel(modelName);
+        const recognized = validModels.includes(modelName) || isXaiModel(modelName) || isPoolsideModel(modelName);
 
         deps.state.updateConfig(ctx.id, ctx.isDM, { model: modelName });
 
         if (!recognized) {
-            const anthropic = validModels.filter(m => !isXaiModel(m) && !isHermesModel(m));
+            const anthropic = validModels.filter(m => !isXaiModel(m) && !isPoolsideModel(m));
             const xai = validModels.filter(m => isXaiModel(m));
-            const poolside = validModels.filter(m => isHermesModel(m));
+            const poolside = validModels.filter(m => isPoolsideModel(m));
             await commandUtils.reply(
                 ctx.message,
                 `Model set to \`${modelName}\`.\n\n` +
@@ -257,7 +257,7 @@ export const modelCommand: Command = {
                 `**Poolside:**\n${formatModelList(poolside)}`
             );
         } else {
-            const provider = isXaiModel(modelName) ? 'xAI Grok' : (isHermesModel(modelName) ? 'Poolside Hermes' : 'Anthropic Claude');
+            const provider = isXaiModel(modelName) ? 'xAI Grok' : (isPoolsideModel(modelName) ? 'Poolside' : 'Anthropic Claude');
             await commandUtils.reply(
                 ctx.message,
                 `Model set to \`${modelName}\` (${provider}).`

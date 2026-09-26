@@ -1,5 +1,5 @@
 import { CommandHandler } from './commands';
-import { BotState, ResponseFrequency } from './bot';
+import { BotState, ResponseFrequency } from './state';
 import { Message, TextChannel, Guild, Collection, GuildMember, User, DMChannel } from 'discord.js';
 
 // Mock selenium-webdriver before it gets imported
@@ -537,37 +537,15 @@ describe('CommandHandler', () => {
       expect(response).toBeNull();
     });
 
-    it('should retry on retryable errors', async () => {
-      const retryError = new Error('Rate limited');
-      (retryError as any).headers = { 'x-should-retry': 'true' };
-      
-      mockAnthropic.messages.create
-        .mockRejectedValueOnce(retryError)
-        .mockResolvedValueOnce({
-          content: [{ type: 'text', text: 'Success after retry' }]
-        });
+    it('propagates API errors without retrying (the SDK client owns retries)', async () => {
+      mockAnthropic.messages.create.mockRejectedValue(new Error('Rate limited'));
 
       const buffer = state.getBuffer('guild123', false);
       buffer.messages.push({ role: 'user', content: 'Hello' });
 
-      const response = await handler.generateResponse('guild123', false);
-      
-      expect(mockAnthropic.messages.create).toHaveBeenCalledTimes(2);
-      expect(response?.content).toBe('Success after retry');
+      await expect(handler.generateResponse('guild123', false)).rejects.toThrow('Rate limited');
+      expect(mockAnthropic.messages.create).toHaveBeenCalledTimes(1);
     });
-
-    it('should throw after max retries', async () => {
-      const retryError = new Error('Rate limited');
-      (retryError as any).headers = { 'x-should-retry': 'true' };
-      
-      mockAnthropic.messages.create.mockRejectedValue(retryError);
-
-      const buffer = state.getBuffer('guild123', false);
-      buffer.messages.push({ role: 'user', content: 'Hello' });
-
-      await expect(handler.generateResponse('guild123', false)).rejects.toThrow();
-      expect(mockAnthropic.messages.create).toHaveBeenCalledTimes(4); // Initial + 3 retries
-    }, 20000); // Extended timeout for exponential backoff
   });
 
   describe('splitMessageIntoChunks (via public interface)', () => {
