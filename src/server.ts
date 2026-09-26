@@ -13,6 +13,7 @@ import OpenAI from 'openai';
 import { Anthropic } from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import { ElevenLabs } from './elevenlabs';
+import { shutdownBrowser } from './getWebpage';
 dotenv.config();
 
 export class BotServer {
@@ -193,6 +194,8 @@ export class BotServer {
         //         }
         //     }
         // }
+
+        await shutdownBrowser();
 
         this.client.destroy();
         process.exit(0);

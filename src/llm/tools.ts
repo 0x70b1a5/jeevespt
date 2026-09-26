@@ -10,9 +10,11 @@ import { getWebpage } from '../getWebpage';
 export const fetchWebpageTool: LlmTool = {
     name: 'fetch_webpage',
     description:
-        'Load a web page in a headless browser and return its title and visible text ' +
-        '(truncated to ~4000 characters). Use it to read a specific URL — one the user ' +
-        'shared or one found via search — when a snippet is not enough.',
+        'Load a web page in a real headless browser (JavaScript runs) and return its ' +
+        'title, final URL and the visible text of its main content (navigation and ' +
+        'site chrome removed; long pages are truncated and say so). Use it to read a ' +
+        'specific URL — one the user shared or one found via search — when a snippet ' +
+        'is not enough.',
     parameters: {
         type: 'object',
         properties: {
