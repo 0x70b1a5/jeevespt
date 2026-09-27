@@ -56,6 +56,27 @@ export function modelSupportsTemperature(model: string): boolean {
     return true;
 }
 
+/**
+ * Whether a Claude model takes adaptive thinking (`thinking: {type: 'adaptive'}`
+ * + `output_config.effort`) instead of a fixed `budget_tokens` budget.
+ *
+ *   • Fable / Mythos (any version)
+ *   • Opus 4.6 and later (budget_tokens is a 400 from 4.7 / Opus 5 on)
+ *   • Sonnet 4.6 and later (budget_tokens is a 400 on Sonnet 5)
+ *
+ * Haiku 4.5 and older Opus/Sonnet still need `{type: 'enabled', budget_tokens}`.
+ * Same id parsing as modelSupportsTemperature (a long date segment is not a minor).
+ */
+export function modelUsesAdaptiveThinking(model: string): boolean {
+    if (/^claude-(fable|mythos)-/.test(model)) return true;
+
+    const m = /^claude-(opus|sonnet)-(\d{1,2})(?:-(\d{1,2}))?(?:$|-)/.exec(model);
+    if (!m) return false;
+    const major = Number(m[2]);
+    const minor = m[3] === undefined ? 0 : Number(m[3]);
+    return major > 4 || (major === 4 && minor >= 6);
+}
+
 // System message prefix
 export const SYS_PREFIX = '[SYSTEM] ';
 

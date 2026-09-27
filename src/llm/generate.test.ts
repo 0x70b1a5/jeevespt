@@ -131,6 +131,27 @@ describe('generateText', () => {
       expect(call.max_tokens).toBe(3500);
     });
 
+    it.each(['claude-opus-5-5', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-fable-5-1', 'claude-sonnet-4-6'])(
+      'uses adaptive thinking + effort on %s',
+      async (model) => {
+        mockAnthropic.messages.create.mockResolvedValueOnce({
+          content: [{ type: 'text', text: 'Thoughtful answer' }]
+        });
+
+        await generateText(clients, {
+          model,
+          messages: [{ role: 'user', content: 'Think hard' }],
+          maxTokens: 500,
+          extendedThinking: true
+        });
+
+        const call = mockAnthropic.messages.create.mock.calls[0][0];
+        expect(call.thinking).toEqual({ type: 'adaptive' });
+        expect(call.output_config).toEqual({ effort: 'high' });
+        expect(call.max_tokens).toBe(3500);
+      }
+    );
+
     it('attaches Anthropic web_search tool when enabled', async () => {
       mockAnthropic.messages.create.mockResolvedValueOnce({
         content: [

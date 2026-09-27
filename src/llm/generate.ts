@@ -22,7 +22,7 @@ import type {
     ToolUseBlock
 } from '@anthropic-ai/sdk/resources/messages';
 import { isXaiModel, isPoolsideModel } from '../state/types';
-import { modelSupportsTemperature } from '../commands/constants';
+import { modelSupportsTemperature, modelUsesAdaptiveThinking } from '../commands/constants';
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
@@ -172,10 +172,16 @@ async function generateWithAnthropic(
     };
 
     if (options.extendedThinking) {
-        apiOptions.thinking = {
-            type: 'enabled',
-            budget_tokens: 3000
-        };
+        if (modelUsesAdaptiveThinking(options.model)) {
+            // budget_tokens is rejected on Opus 4.7+/5.x, Sonnet 5 and Fable; depth is effort.
+            apiOptions.thinking = { type: 'adaptive' };
+            apiOptions.output_config = { effort: 'high' };
+        } else {
+            apiOptions.thinking = {
+                type: 'enabled',
+                budget_tokens: 3000
+            };
+        }
         apiOptions.max_tokens = options.maxTokens + 3000;
     } else if (
         options.temperature !== undefined &&
