@@ -9,6 +9,7 @@
  *   cfg:tab:<tab>          switch panel tab
  *   cfg:t:<key>            flip a toggle
  *   cfg:mode / cfg:model   persona / model dropdowns
+ *   cfg:c:<key>            choice-setting dropdown
  *   cfg:num:<tab>          open the numbers form → submits as cfg:modal:<tab>
  *   cfg:prop:<key>:<value> apply an agent's proposal  (cfg:nope dismisses it)
  */
@@ -36,7 +37,7 @@ import { MODE_RESPONSES, PERSONAS } from '../commands/constants';
 import { getValidModels } from '../commands/config';
 import { interactionPermissionError } from '../commands/utils';
 import {
-    applyMode, applySetting, describeChange, displayNumber, formatSetting, getSetting, NumberSetting,
+    applyMode, applySetting, ChoiceSetting, describeChange, displayNumber, formatSetting, getSetting, NumberSetting,
     parseSettingValue, Setting, SettingProposal, SettingTab, settingsForTab
 } from './schema';
 
@@ -96,6 +97,9 @@ export async function buildSettingsPanel(
     if (tab === 'chat') {
         components.push(personaMenu(state, id, isDM, config), await modelMenu(config));
     }
+    for (const s of settings) {
+        if (s.kind === 'choice') components.push(choiceMenu(s, config));
+    }
     const buttons = settings.filter(s => s.kind === 'toggle').map(s => toggleButton(s, config));
     if (settings.some(s => s.kind === 'number')) {
         buttons.push(new ButtonBuilder().setCustomId(`cfg:num:${tab}`).setLabel('Numbers…').setEmoji('✏️').setStyle(ButtonStyle.Primary));
@@ -116,6 +120,20 @@ function toggleButton(setting: Setting, config: BotConfig): ButtonBuilder {
         .setLabel(setting.label)
         .setEmoji(on ? '✅' : '⬜')
         .setStyle(on ? ButtonStyle.Success : ButtonStyle.Secondary);
+}
+
+function choiceMenu(setting: ChoiceSetting, config: BotConfig): ActionRowBuilder<StringSelectMenuBuilder> {
+    const menu = new StringSelectMenuBuilder()
+        .setCustomId(`cfg:c:${setting.key}`)
+        .setPlaceholder(setting.label)
+        .addOptions(setting.options.map(o => ({
+            label: `${setting.label}: ${o.label}`,
+            value: o.value,
+            description: o.description,
+            emoji: setting.emoji,
+            default: o.value === config[setting.key]
+        })));
+    return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
 }
 
 function tabRow(current: SettingTab): ActionRowBuilder<ButtonBuilder> {
@@ -274,6 +292,20 @@ export async function handleSettingsInteraction(
             applySetting(state, id, isDM, setting, next);
             console.log(`⚙️ ${who} set ${setting.key} → ${next} (${isDM ? 'DM' : 'guild'} ${id})`);
             await rerender(setting.tab, `Last change: ${who} turned ${setting.label} ${next ? 'on' : 'off'}`);
+            return;
+        }
+
+        case 'c': {
+            if (!interaction.isStringSelectMenu()) return;
+            const setting = getSetting(arg);
+            if (!setting || setting.kind !== 'choice') return;
+            const denied = interactionPermissionError(interaction, config, { requiresAdmin: setting.requiresAdmin, command: 'settings' });
+            if (denied) return deny(denied);
+            const parsed = parseSettingValue(setting, interaction.values[0]);
+            if (!parsed.ok) return deny(parsed.error);
+            applySetting(state, id, isDM, setting, parsed.value);
+            console.log(`⚙️ ${who} set ${setting.key} → ${parsed.value} (${isDM ? 'DM' : 'guild'} ${id})`);
+            await rerender(setting.tab, `Last change: ${who} set ${setting.label} to ${formatSetting(setting, state.getConfig(id, isDM))}`);
             return;
         }
 

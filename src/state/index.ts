@@ -25,6 +25,8 @@ export {
     ReactionHistory,
     ReactionTracker,
     ResponseFrequency,
+    THINKING_EFFORTS,
+    ThinkingEffort,
     VALID_ANTHROPIC_MODELS,
     isValidAnthropicModel,
     VALID_XAI_MODELS,

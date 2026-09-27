@@ -54,6 +54,7 @@ export class BotState {
         adminMode: false,
         commandWhitelist: ['help'],
         extendedThinking: false,
+        thinkingEffort: 'auto',
         webSearchEnabled: true,
         webSearchMaxUses: 5,
         sociability: 0.3,

@@ -91,6 +91,9 @@ export interface ScheduledTask {
 
 export type BotMode = 'jeeves' | 'tokipona' | 'whisper' | 'customprompt' | 'lugso';
 
+export const THINKING_EFFORTS = ['auto', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type ThinkingEffort = typeof THINKING_EFFORTS[number];
+
 export interface BotConfig {
     mode: BotMode;
     messageLimit: number;
@@ -117,6 +120,8 @@ export interface BotConfig {
     commandWhitelist: string[];
     /** When enabled, adds 3000 thinking tokens to LLM API calls */
     extendedThinking: boolean;
+    /** Claude effort (output_config.effort) on models that take it; 'auto' = high with extended thinking, else the model default */
+    thinkingEffort: ThinkingEffort;
     /** When enabled, grants the model the server-side web_search tool */
     webSearchEnabled: boolean;
     /** Maximum web searches the model may perform per response */

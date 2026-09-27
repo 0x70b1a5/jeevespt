@@ -32,8 +32,17 @@ describe('settings schema', () => {
 
   it('every setting points at a BotConfig field of the right type', () => {
     for (const s of SETTINGS) {
-      expect(typeof defaults[s.key]).toBe(s.kind === 'toggle' ? 'boolean' : 'number');
+      expect(typeof defaults[s.key]).toBe({ toggle: 'boolean', number: 'number', choice: 'string' }[s.kind]);
+      if (s.kind === 'choice') expect(s.options.map(o => o.value)).toContain(defaults[s.key]);
     }
+  });
+
+  it('parses choices by value or label, case-insensitively', () => {
+    const effort = getSetting('thinkingEffort')!;
+    expect(parseSettingValue(effort, 'XHIGH')).toEqual({ ok: true, value: 'xhigh' });
+    expect(parseSettingValue(effort, 'Extra high')).toEqual({ ok: true, value: 'xhigh' });
+    expect(parseSettingValue(effort, 'ludicrous')).toMatchObject({ ok: false, error: expect.stringContaining('Effort') });
+    expect(formatSetting(effort, { ...defaults, thinkingEffort: 'max' })).toBe('Max');
   });
 
   it('parses numbers in display units and stores scaled values', () => {
@@ -89,6 +98,9 @@ describe('settings panel', () => {
     const think = allButtons(chat).find((b: any) => b.custom_id === 'cfg:t:extendedThinking');
     expect(search).toMatchObject({ style: 3, emoji: { name: '✅' } });  // Success
     expect(think).toMatchObject({ style: 2, emoji: { name: '⬜' } });   // Secondary
+    const menus = chat.components.flatMap((row: any) => row.toJSON().components).filter((c: any) => c.type === 3);
+    const effort = menus.find((m: any) => m.custom_id === 'cfg:c:thinkingEffort');
+    expect(effort.options.find((o: any) => o.default).value).toBe('auto');
   });
 
   it('falls back to static models when the live list is slow', async () => {
@@ -179,6 +191,13 @@ describe('handleSettingsInteraction', () => {
     expect(state.getConfig('g', false).contextResetAt).toBeGreaterThanOrEqual(before);
   });
 
+  it('sets a choice from its dropdown', async () => {
+    const i = fakeInteraction('cfg:c:thinkingEffort', { kind: 'select', values: ['xhigh'] });
+    await handleSettingsInteraction(i, state);
+    expect(state.getConfig('g', false).thinkingEffort).toBe('xhigh');
+    expect(i.update.mock.calls[0][0].embeds[0].toJSON().footer.text).toContain('set Effort to Extra high');
+  });
+
   it('applies valid numbers from the form and reports invalid ones', async () => {
     const i = fakeInteraction('cfg:modal:chat', {
       kind: 'modal',
@@ -227,6 +246,17 @@ describe('propose_setting_change tool', () => {
     const tool = createProposeSettingTool(config, []);
     await expect(tool.run({ setting: 'adminMode', value: 'on', reason: 'x' })).rejects.toThrow(/Not a setting/);
     await expect(tool.run({ setting: 'webSearchMaxUses', value: '99', reason: 'x' })).rejects.toThrow(/Searches per reply/);
+  });
+
+  it('queues a choice proposal that the Apply button can carry', async () => {
+    const proposals: SettingProposal[] = [];
+    const tool = createProposeSettingTool(config, proposals);
+    await tool.run({ setting: 'thinkingEffort', value: 'max', reason: 'A knotty question, sir.' });
+    expect(proposals[0]).toMatchObject({ key: 'thinkingEffort', value: 'max' });
+    const i = fakeInteraction('cfg:prop:thinkingEffort:max');
+    const state = new BotState();
+    await handleSettingsInteraction(i, state);
+    expect(state.getConfig('g', false).thinkingEffort).toBe('max');
   });
 
   it('does not queue a no-op', async () => {

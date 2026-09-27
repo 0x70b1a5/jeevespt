@@ -21,8 +21,8 @@ import type {
     ToolUnion,
     ToolUseBlock
 } from '@anthropic-ai/sdk/resources/messages';
-import { isXaiModel, isPoolsideModel } from '../state/types';
-import { modelSupportsTemperature, modelUsesAdaptiveThinking } from '../commands/constants';
+import { isXaiModel, isPoolsideModel, ThinkingEffort } from '../state/types';
+import { effortForModel, modelSupportsTemperature, modelUsesAdaptiveThinking } from '../commands/constants';
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
@@ -37,6 +37,8 @@ export interface GenerateOptions {
     temperature?: number;
     /** Anthropic extended thinking; no-op on xAI (Grok reasons natively). */
     extendedThinking?: boolean;
+    /** Claude output_config.effort on models that take it; 'auto' follows extendedThinking. */
+    effort?: ThinkingEffort;
     webSearchEnabled?: boolean;
     webSearchMaxUses?: number;
     /** Client-side tools the model may call; enables the agent loop. */
@@ -171,17 +173,14 @@ async function generateWithAnthropic(
         system: options.system || ''
     };
 
+    const effort = effortForModel(options.model, options.effort, Boolean(options.extendedThinking));
+    if (effort) apiOptions.output_config = { effort };
+
     if (options.extendedThinking) {
-        if (modelUsesAdaptiveThinking(options.model)) {
-            // budget_tokens is rejected on Opus 4.7+/5.x, Sonnet 5 and Fable; depth is effort.
-            apiOptions.thinking = { type: 'adaptive' };
-            apiOptions.output_config = { effort: 'high' };
-        } else {
-            apiOptions.thinking = {
-                type: 'enabled',
-                budget_tokens: 3000
-            };
-        }
+        // budget_tokens is rejected on Opus 4.7+/5.x, Sonnet 5 and Fable; depth is effort.
+        apiOptions.thinking = modelUsesAdaptiveThinking(options.model)
+            ? { type: 'adaptive' }
+            : { type: 'enabled', budget_tokens: 3000 };
         apiOptions.max_tokens = options.maxTokens + 3000;
     } else if (
         options.temperature !== undefined &&

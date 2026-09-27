@@ -152,6 +152,27 @@ describe('generateText', () => {
       }
     );
 
+    it.each([
+      ['claude-opus-5-5', 'max', false, 'max'],
+      ['claude-opus-5-5', 'auto', false, undefined],
+      ['claude-sonnet-4-6', 'xhigh', true, 'high'],
+      ['claude-sonnet-4-5', 'max', true, undefined],
+      ['claude-haiku-4-5', 'low', false, undefined]
+    ] as const)('sends effort for %s at %s (thinking %s) → %s', async (model, effort, extendedThinking, expected) => {
+      mockAnthropic.messages.create.mockResolvedValueOnce({ content: [{ type: 'text', text: 'ok' }] });
+
+      await generateText(clients, {
+        model,
+        messages: [{ role: 'user', content: 'Hi' }],
+        maxTokens: 500,
+        extendedThinking,
+        effort
+      });
+
+      const call = mockAnthropic.messages.create.mock.calls[0][0];
+      expect(call.output_config?.effort).toBe(expected);
+    });
+
     it('attaches Anthropic web_search tool when enabled', async () => {
       mockAnthropic.messages.create.mockResolvedValueOnce({
         content: [

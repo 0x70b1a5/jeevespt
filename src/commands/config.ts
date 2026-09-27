@@ -42,7 +42,7 @@ export const helpCommand: Command = {
         const statusLines = [
             `**Mode:** \`${config.mode}\`  •  **Model:** \`${config.model}\``,
             `**Memory:** ${config.messageLimit} msgs  •  **Temp:** ${config.temperature}  •  **Max tokens:** ${config.maxResponseLength}`,
-            `**Web search:** ${config.webSearchEnabled ? `on (≤${config.webSearchMaxUses})` : 'off'}  •  **Thinking:** ${config.extendedThinking ? 'on' : 'off'}  •  **Voice:** ${config.useVoiceResponse ? 'on' : 'off'}  •  **Persist:** ${config.shouldSaveData ? 'on' : 'off'}`,
+            `**Web search:** ${config.webSearchEnabled ? `on (≤${config.webSearchMaxUses})` : 'off'}  •  **Thinking:** ${config.extendedThinking ? 'on' : 'off'} (effort ${config.thinkingEffort})  •  **Voice:** ${config.useVoiceResponse ? 'on' : 'off'}  •  **Persist:** ${config.shouldSaveData ? 'on' : 'off'}`,
             `⚙️ Change any of these, and the persona, with \`/settings\`.`
         ];
         await ctx.message.reply({ embeds: [buildHelpEmbed(registry.getCommands(), statusLines)] });

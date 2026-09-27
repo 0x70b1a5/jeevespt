@@ -1,6 +1,6 @@
 /**
- * The settings table — single source of truth for every simple on/off and
- * numeric BotConfig setting. It drives:
+ * The settings table — single source of truth for every simple on/off,
+ * numeric, and pick-one (choice) BotConfig setting. It drives:
  *   • the `/settings` panel (settings/panel.ts)
  *   • what agents are told about their settings, and which ones they may
  *     propose changing (llm/tools.ts)
@@ -51,7 +51,22 @@ export interface NumberSetting extends SettingBase {
     unit?: string;
 }
 
-export type Setting = ToggleSetting | NumberSetting;
+export interface ChoiceOption {
+    value: string;
+    label: string;
+    /** Shown under the option in the panel dropdown (≤100 chars). */
+    description?: string;
+}
+
+/** Pick one of a fixed list; the panel shows it as a dropdown. */
+export interface ChoiceSetting extends SettingBase {
+    kind: 'choice';
+    key: KeysOfType<BotConfig, string>;
+    options: ChoiceOption[];
+}
+
+export type Setting = ToggleSetting | NumberSetting | ChoiceSetting;
+export type SettingValue = boolean | number | string;
 
 export const SETTINGS: Setting[] = [
     // ── Chat ────────────────────────────────────────────────────────────
@@ -64,6 +79,19 @@ export const SETTINGS: Setting[] = [
         kind: 'toggle', key: 'extendedThinking', label: 'Extended thinking', emoji: '🧠', tab: 'chat',
         proposable: true,
         description: 'Think before answering (+3000 thinking tokens; slower, more careful).'
+    },
+    {
+        kind: 'choice', key: 'thinkingEffort', label: 'Effort', emoji: '🎚️', tab: 'chat',
+        proposable: true,
+        description: 'How hard newer Claude models work on a reply; higher is slower and more thorough.',
+        options: [
+            { value: 'auto', label: 'Auto', description: 'High with extended thinking, otherwise the model default' },
+            { value: 'low', label: 'Low', description: 'Quickest, fewest tokens' },
+            { value: 'medium', label: 'Medium', description: 'Balanced' },
+            { value: 'high', label: 'High', description: 'Thorough' },
+            { value: 'xhigh', label: 'Extra high', description: 'Very thorough (High on 4.6 models)' },
+            { value: 'max', label: 'Max', description: 'Slowest, most careful' }
+        ]
     },
     {
         kind: 'number', key: 'temperature', label: 'Temperature', emoji: '🌡️', tab: 'chat',
@@ -166,8 +194,13 @@ export function settingsForTab(tab: SettingTab, isDM: boolean): Setting[] {
 /** The value as a person reads it ("on", "5 seconds"). */
 export function formatSetting(setting: Setting, config: BotConfig): string {
     if (setting.kind === 'toggle') return config[setting.key] ? 'on' : 'off';
+    if (setting.kind === 'choice') return choiceLabel(setting, config[setting.key]);
     const shown = displayNumber(setting, config[setting.key]);
     return setting.unit ? `${shown} ${setting.unit}` : String(shown);
+}
+
+export function choiceLabel(setting: ChoiceSetting, value: unknown): string {
+    return setting.options.find(o => o.value === value)?.label ?? String(value);
 }
 
 /** Stored → displayed number (e.g. 5000 ms → 5). */
@@ -191,12 +224,19 @@ export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string
  * Parse user/agent input into the value to store. Numbers are given in
  * display units ("5" seconds) and come back scaled (5000 ms).
  */
-export function parseSettingValue(setting: Setting, raw: unknown): ParseResult<boolean | number> {
+export function parseSettingValue(setting: Setting, raw: unknown): ParseResult<SettingValue> {
     if (setting.kind === 'toggle') {
         const text = String(raw).trim().toLowerCase();
         if (raw === true || ['on', 'true', 'yes', 'enable', 'enabled', '1'].includes(text)) return { ok: true, value: true };
         if (raw === false || ['off', 'false', 'no', 'disable', 'disabled', '0'].includes(text)) return { ok: true, value: false };
         return { ok: false, error: `${setting.label} must be on or off.` };
+    }
+
+    if (setting.kind === 'choice') {
+        const text = String(raw ?? '').trim().toLowerCase();
+        const match = setting.options.find(o => o.value.toLowerCase() === text || o.label.toLowerCase() === text);
+        if (match) return { ok: true, value: match.value };
+        return { ok: false, error: `${setting.label} must be one of: ${setting.options.map(o => o.value).join(', ')}.` };
     }
 
     let n = typeof raw === 'number' ? raw : Number(String(raw).trim());
@@ -212,7 +252,7 @@ export function parseSettingValue(setting: Setting, raw: unknown): ParseResult<b
     return { ok: true, value: n * (setting.scale ?? 1) };
 }
 
-export function applySetting(state: BotState, id: string, isDM: boolean, setting: Setting, value: boolean | number): void {
+export function applySetting(state: BotState, id: string, isDM: boolean, setting: Setting, value: SettingValue): void {
     state.updateConfig(id, isDM, { [setting.key]: value } as Partial<BotConfig>);
 }
 
@@ -227,13 +267,14 @@ export const PROPOSABLE_SETTINGS = SETTINGS.filter(s => s.proposable);
 export interface SettingProposal {
     key: string;
     /** In display units (seconds, not ms), already validated. */
-    value: boolean | number;
+    value: SettingValue;
     reason: string;
 }
 
 /** "turn 🔍 **Web search** on" / "set 📏 **Max response** to 4000 tokens" */
-export function describeChange(setting: Setting, value: boolean | number): string {
+export function describeChange(setting: Setting, value: SettingValue): string {
     if (setting.kind === 'toggle') return `turn ${setting.emoji} **${setting.label}** ${value ? 'on' : 'off'}`;
+    if (setting.kind === 'choice') return `set ${setting.emoji} **${setting.label}** to ${choiceLabel(setting, value)}`;
     return `set ${setting.emoji} **${setting.label}** to ${value}${setting.unit ? ` ${setting.unit}` : ''}`;
 }
 

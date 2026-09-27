@@ -41,7 +41,9 @@ export const AGENT_TOOLS: LlmTool[] = [fetchWebpageTool];
 export function createProposeSettingTool(config: BotConfig, proposals: SettingProposal[]): LlmTool {
     const options = PROPOSABLE_SETTINGS.map(s => s.kind === 'toggle'
         ? `${s.key} (${s.label}: on/off; now ${formatSetting(s, config)})`
-        : `${s.key} (${s.label}: ${describeRange(s)}${s.unit ? ` ${s.unit}` : ''}; now ${formatSetting(s, config)})`);
+        : s.kind === 'choice'
+            ? `${s.key} (${s.label}: one of ${s.options.map(o => o.value).join('/')}; now ${s.options.find(o => o.value === config[s.key])?.value ?? config[s.key]})`
+            : `${s.key} (${s.label}: ${describeRange(s)}${s.unit ? ` ${s.unit}` : ''}; now ${formatSetting(s, config)})`);
     return {
         name: 'propose_setting_change',
         description:
@@ -52,7 +54,7 @@ export function createProposeSettingTool(config: BotConfig, proposals: SettingPr
             type: 'object',
             properties: {
                 setting: { type: 'string', enum: PROPOSABLE_SETTINGS.map(s => s.key), description: 'Which setting.' },
-                value: { type: 'string', description: '"on"/"off" for switches, or a number in the listed units.' },
+                value: { type: 'string', description: '"on"/"off" for switches, one of the listed values for choices, or a number in the listed units.' },
                 reason: { type: 'string', description: 'One short sentence, in character, telling the user why.' }
             },
             required: ['setting', 'value', 'reason']
@@ -66,7 +68,7 @@ export function createProposeSettingTool(config: BotConfig, proposals: SettingPr
             if (parsed.value === config[setting.key]) {
                 return `${setting.label} is already ${formatSetting(setting, config)}; nothing to suggest.`;
             }
-            const display = setting.kind === 'toggle' ? parsed.value : displayNumber(setting, parsed.value as number);
+            const display = setting.kind === 'number' ? displayNumber(setting, parsed.value as number) : parsed.value;
             proposals.push({ key: setting.key, value: display, reason: String(reason ?? '').trim() || 'It may serve you better.' });
             return `Queued: the user will be offered to ${describeChange(setting, display).replace(/\*\*/g, '')}, ` +
                 'with Apply / Not now buttons, right after your reply. Do not claim it is already changed.';

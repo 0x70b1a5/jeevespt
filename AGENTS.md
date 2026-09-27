@@ -36,7 +36,7 @@ src/
   chat/history.ts    # Live per-channel chat history (replaces the old buffer/log)
   chat/ambient.ts    # Ambient policy: credit budget, engagement feedback, decide()
   chat/gate.ts       # Jev questions for the ambient gate + reaction emoji picker
-  settings/schema.ts # Settings table (toggles + numbers): parse/validate/apply, agent briefing
+  settings/schema.ts # Settings table (toggles + numbers + choices): parse/validate/apply, agent briefing
   settings/panel.ts  # /settings panel + agent proposal messages; cfg:* button/menu/modal handler
   state/             # BotState + stores; types + model lists in types.ts
   prompts/           # JEEVES_PROMPT, JEEVES_GROK_ADDENDUM, TOKIPONA, WEB_SEARCH_ADDENDUM, lugso
@@ -73,7 +73,8 @@ new CommandHandler(state, openai, xai, anthropic, elevenLabs, poolside)
 **Feature mapping:**
 
 - Web search: Anthropic `web_search_20250305`; xAI `{ type: 'web_search' }`
-- Extended thinking: Anthropic `thinking` budget; xAI only bumps `max_output_tokens` (Grok reasons natively)
+- Extended thinking: Anthropic `thinking` — `{type: 'adaptive'}` on Opus/Sonnet 4.6+ and Fable (`modelUsesAdaptiveThinking`; `budget_tokens` is a 400 there), `budget_tokens: 3000` on older/Haiku; xAI only bumps `max_output_tokens` (Grok reasons natively)
+- Effort: `thinkingEffort` setting → Anthropic `output_config.effort` via `effortForModel` (adaptive models only; `auto` = high with extended thinking, else model default; `xhigh`→`high` on 4.6)
 - Temperature: Anthropic gated by `modelSupportsTemperature` in `commands/constants.ts`; xAI always may send temperature
 - Citations: `withSourcesFooter()` formats Sources block
 
@@ -87,7 +88,7 @@ Default chat model remains Claude Sonnet (`BotState` defaultConfig).
 
 - Prefer TypeScript; match existing style (no drive-by refactors).
 - Commands: register via `registry.registerAll` in `CommandHandler`; set `description`, `category`, `options` for help + slash.
-- New config flags: add to `BotConfig` in `state/types.ts`, default in `BotState`. If it's a simple on/off or number, add **one entry to `SETTINGS` in `settings/schema.ts`** — that gives it a panel button / Numbers-form field and (with `proposable`) lets agents suggest it. Don't add per-setting commands.
+- New config flags: add to `BotConfig` in `state/types.ts`, default in `BotState`. If it's a simple on/off, number, or pick-one choice, add **one entry to `SETTINGS` in `settings/schema.ts`** — that gives it a panel button / Numbers-form field / dropdown and (with `proposable`) lets agents suggest it. Don't add per-setting commands.
 - New list-shaped config (things you add and remove): `registerListKind` in `commands/listPanel.ts` + one command that lists (no args) or adds (with args). Removal is the ❌ buttons — don't add remove/list/cancel commands.
 - Renaming or removing a command: add the old name to `commands/retired.ts` so it redirects.
 - Tests: Jest; mock selenium / fs / external clients. When changing `CommandHandler` deps, update `commands.test.ts` mocks.

@@ -1,3 +1,4 @@
+import type { ThinkingEffort } from '../state/types';
 // Security constants for file downloads
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit
 /** Readable text attachments (HTML battery reports are typically 150–400KB). */
@@ -75,6 +76,23 @@ export function modelUsesAdaptiveThinking(model: string): boolean {
     const major = Number(m[2]);
     const minor = m[3] === undefined ? 0 : Number(m[3]);
     return major > 4 || (major === 4 && minor >= 6);
+}
+
+/**
+ * The `output_config.effort` to send, or undefined to send none. Only models
+ * with adaptive thinking take effort here (Sonnet 4.5 / Haiku 4.5 reject it);
+ * `xhigh` arrived with Opus 4.7, so the 4.6 models get `high` instead.
+ * 'auto' means high when extended thinking is on, otherwise the model default.
+ */
+export function effortForModel(
+    model: string,
+    effort: ThinkingEffort | undefined,
+    extendedThinking: boolean
+): Exclude<ThinkingEffort, 'auto'> | undefined {
+    if (!modelUsesAdaptiveThinking(model)) return undefined;
+    const wanted = effort && effort !== 'auto' ? effort : extendedThinking ? 'high' : undefined;
+    if (wanted === 'xhigh' && /^claude-(opus|sonnet)-4-6(?:$|-)/.test(model)) return 'high';
+    return wanted;
 }
 
 // System message prefix

@@ -541,6 +541,7 @@ export class CommandHandler {
                     maxTokens: ambient ? Math.min(config.maxResponseLength, AMBIENT_MAX_TOKENS) : config.maxResponseLength,
                     temperature: config.temperature,
                     extendedThinking: config.extendedThinking,
+                    effort: config.thinkingEffort,
                     webSearchEnabled: config.webSearchEnabled,
                     webSearchMaxUses: config.webSearchMaxUses,
                     tools
@@ -552,6 +553,7 @@ export class CommandHandler {
                 const response = { role: 'assistant', content: finalContent, proposals };
                 const meta: string[] = [];
                 if (config.extendedThinking) meta.push('thinking');
+                if (config.thinkingEffort !== 'auto') meta.push(`${config.thinkingEffort} effort`);
                 if (result.searchesPerformed > 0) {
                     meta.push(`${result.searchesPerformed} web search${result.searchesPerformed === 1 ? '' : 'es'}`);
                 }
