@@ -15,8 +15,9 @@ export const extractEmbedDataToText = (message: Message) => {
     let formatted = '';
     if (message.embeds) {
         for (const embed of message.embeds) {
-            if (embed.url) {
-                formatted += `\n[${embed.url}](${embed.url})`;
+            // A link preview's URL is usually already in the message; don't spend the gate's budget twice.
+            if (embed.url && !message.content?.includes(embed.url)) {
+                formatted += `\n${embed.url}`;
             }
             if (embed.provider) {
                 formatted += `\n${embed.provider.name}`;
@@ -29,6 +30,12 @@ export const extractEmbedDataToText = (message: Message) => {
             }
             if (embed.description) {
                 formatted += `\n${embed.description}`;
+            }
+            for (const field of embed.fields ?? []) {
+                // Blank names (often a zero-width space) are layout spacers.
+                const name = field.name?.replace(/\u200b/g, '').trim();
+                const value = field.value?.replace(/\u200b/g, '').trim();
+                if (name || value) formatted += `\n${name && value ? `${name}: ${value}` : name || value}`;
             }
             if (embed.footer) {
                 formatted += `\n${embed.footer.text}`;

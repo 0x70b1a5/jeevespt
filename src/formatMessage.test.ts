@@ -16,6 +16,7 @@ interface MockEmbedParts {
   author?: { name: string };
   footer?: { text: string };
   provider?: { name: string };
+  fields?: { name: string; value: string }[];
 }
 
 // Helper to create mock messages
@@ -23,6 +24,7 @@ function createMockMessage(options: {
   username?: string;
   displayName?: string;
   cleanContent?: string;
+  content?: string;
   createdTimestamp?: number;
   embeds?: MockEmbedParts[];
   messageSnapshots?: Collection<string, any>;
@@ -40,6 +42,7 @@ function createMockMessage(options: {
     author: mockUser,
     member: mockMember,
     cleanContent: options.cleanContent !== undefined ? options.cleanContent : 'Hello world',
+    content: options.content ?? '',
     createdTimestamp: options.createdTimestamp || Date.now(),
     embeds: (options.embeds || []) as unknown as Embed[],
     attachments: options.attachments ?? new Collection(),
@@ -162,6 +165,28 @@ describe('extractEmbedDataToText', () => {
     expect(result).toContain('Description');
     expect(result).toContain('Author');
     expect(result).toContain('Footer');
+  });
+
+  it('should extract embed fields as name: value, skipping blank spacers', () => {
+    const message = createMockMessage({
+      embeds: [{
+        title: 'Match result',
+        fields: [
+          { name: 'Winner', value: 'Gleam' },
+          { name: '\u200b', value: '\u200b' },
+          { name: '\u200b', value: 'Score 3–1' }
+        ]
+      }]
+    });
+    expect(extractEmbedDataToText(message)).toBe('\nMatch result\nWinner: Gleam\nScore 3–1');
+  });
+
+  it('should not repeat a URL the message text already contains', () => {
+    const message = createMockMessage({
+      content: 'look https://example.com/x',
+      embeds: [{ url: 'https://example.com/x', title: 'X' }]
+    });
+    expect(extractEmbedDataToText(message)).toBe('\nX');
   });
 
   it('should handle multiple embeds', () => {
