@@ -74,6 +74,7 @@ new CommandHandler(state, openai, xai, anthropic, elevenLabs, poolside)
 
 - Web search: Anthropic `web_search_20250305`; xAI `{ type: 'web_search' }`
 - Extended thinking: Anthropic `thinking` — `{type: 'adaptive'}` on Opus/Sonnet 4.6+ and Fable (`modelUsesAdaptiveThinking`; `budget_tokens` is a 400 there), `budget_tokens: 3000` on older/Haiku; xAI only bumps `max_output_tokens` (Grok reasons natively)
+- Built-in thinking: Opus/Sonnet 5+, Fable and Mythos think even with no `thinking` param (`modelThinksByDefault`), so they always get the +3000 `max_tokens` headroom — otherwise small caps (ambient 400) are eaten by reasoning and replies stop mid-sentence. Any provider hitting its output cap logs `⚠️ … hit the N-token output cap`.
 - Effort: `thinkingEffort` setting → Anthropic `output_config.effort` via `effortForModel` (adaptive models only; `auto` = high with extended thinking, else model default; `xhigh`→`high` on 4.6)
 - Temperature: Anthropic gated by `modelSupportsTemperature` in `commands/constants.ts`; xAI always may send temperature
 - Citations: `withSourcesFooter()` formats Sources block

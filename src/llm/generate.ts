@@ -22,7 +22,7 @@ import type {
     ToolUseBlock
 } from '@anthropic-ai/sdk/resources/messages';
 import { isXaiModel, isPoolsideModel, ThinkingEffort } from '../state/types';
-import { effortForModel, modelSupportsTemperature, modelUsesAdaptiveThinking } from '../commands/constants';
+import { effortForModel, modelSupportsTemperature, modelThinksByDefault, modelUsesAdaptiveThinking } from '../commands/constants';
 
 export interface ChatMessage {
     role: 'user' | 'assistant' | 'system';
@@ -113,6 +113,11 @@ async function runTool(
     }
 }
 
+/** The reply hit the output cap, so whatever text came back is cut off. */
+function warnTruncated(model: string, limit: number): void {
+    console.warn(`⚠️ ${model} hit the ${limit}-token output cap — reply is truncated`);
+}
+
 function parseToolArguments(raw: string | undefined): unknown {
     try {
         return raw ? JSON.parse(raw) : {};
@@ -181,12 +186,16 @@ async function generateWithAnthropic(
         apiOptions.thinking = modelUsesAdaptiveThinking(options.model)
             ? { type: 'adaptive' }
             : { type: 'enabled', budget_tokens: 3000 };
-        apiOptions.max_tokens = options.maxTokens + 3000;
     } else if (
         options.temperature !== undefined &&
         modelSupportsTemperature(options.model)
     ) {
         apiOptions.temperature = options.temperature;
+    }
+    // Thinking shares max_tokens with the reply; without headroom a small cap
+    // (e.g. ambient replies) is eaten by reasoning and the text stops mid-sentence.
+    if (options.extendedThinking || modelThinksByDefault(options.model)) {
+        apiOptions.max_tokens = options.maxTokens + 3000;
     }
 
     const tools: ToolUnion[] = [];
@@ -220,6 +229,7 @@ async function generateWithAnthropic(
         const completion = await anthropic.messages.create(request);
         acc.add(parseAnthropicResponse(completion.content), paused);
         paused = false;
+        if (completion.stop_reason === 'max_tokens') warnTruncated(options.model, request.max_tokens);
 
         if (completion.stop_reason === 'pause_turn') {
             // Server-side tool loop (web search) hit its iteration limit;
@@ -332,6 +342,9 @@ async function generateWithXai(
 
         const response: any = await xai.responses.create(request);
         acc.add(parseXaiResponse(response));
+        if (response.incomplete_details?.reason === 'max_output_tokens') {
+            warnTruncated(options.model, request.max_output_tokens);
+        }
 
         const output: any[] = Array.isArray(response.output) ? response.output : [];
         const calls = output.filter(item => item?.type === 'function_call');
@@ -459,6 +472,7 @@ async function generateWithPoolside(
 
         const response: any = await poolside.chat.completions.create(request);
         acc.add(parsePoolsideResponse(response));
+        if (response.choices?.[0]?.finish_reason === 'length') warnTruncated(options.model, request.max_tokens);
 
         const message = response.choices?.[0]?.message;
         const calls: any[] = message?.tool_calls ?? [];

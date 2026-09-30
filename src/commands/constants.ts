@@ -79,6 +79,17 @@ export function modelUsesAdaptiveThinking(model: string): boolean {
 }
 
 /**
+ * Models that think even when the request sends no `thinking` param (Opus /
+ * Sonnet 5+, Fable, Mythos). Their reasoning comes out of `max_tokens`, so
+ * callers need headroom whether or not extended thinking is switched on.
+ */
+export function modelThinksByDefault(model: string): boolean {
+    if (/^claude-(fable|mythos)-/.test(model)) return true;
+    const m = /^claude-(opus|sonnet)-(\d{1,2})(?:$|-)/.exec(model);
+    return Boolean(m && Number(m[2]) >= 5);
+}
+
+/**
  * The `output_config.effort` to send, or undefined to send none. Only models
  * with adaptive thinking take effort here (Sonnet 4.5 / Haiku 4.5 reject it);
  * `xhigh` arrived with Opus 4.7, so the 4.6 models get `high` instead.
