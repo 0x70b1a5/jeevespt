@@ -11,6 +11,8 @@ describe('modelSupportsTemperature', () => {
             'claude-opus-4-10',          // hypothetical future minor
             'claude-opus-5',             // future major, no minor
             'claude-opus-5-0',
+            'claude-sonnet-5',
+            'claude-sonnet-5-5',
         ];
         it.each(dropped)('%s → false', model => {
             expect(modelSupportsTemperature(model)).toBe(false);
