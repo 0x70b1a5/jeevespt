@@ -5,6 +5,40 @@ import { SYS_PREFIX } from './constants';
 const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
 const FETCH_TIMEOUT_MS = 60_000;
 
+// The free youtube-transcript.ai key allows only 10 requests a day, so keep
+// successful results in memory (per bot process) to avoid refetching.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_MAX_ENTRIES = 100;
+const transcriptCache = new Map<string, { title: string | null; text: string; at: number }>();
+
+function getCached(videoId: string) {
+    const hit = transcriptCache.get(videoId);
+    if (!hit) return null;
+    if (Date.now() - hit.at > CACHE_TTL_MS) { transcriptCache.delete(videoId); return null; }
+    return hit;
+}
+
+function setCached(videoId: string, title: string | null, text: string) {
+    transcriptCache.delete(videoId);
+    transcriptCache.set(videoId, { title, text, at: Date.now() });
+    while (transcriptCache.size > CACHE_MAX_ENTRIES) {
+        const oldest = transcriptCache.keys().next().value;
+        if (oldest === undefined) break;
+        transcriptCache.delete(oldest);
+    }
+}
+
+function describeRetryAfter(header: string | null): string {
+    if (!header) return 'later (the daily quota resets every 24 hours)';
+    const secs = Number(header);
+    if (Number.isFinite(secs)) {
+        const h = Math.floor(secs / 3600), m = Math.ceil((secs % 3600) / 60);
+        return `in about ${h ? `${h}h ` : ''}${m}m`;
+    }
+    const when = Date.parse(header);
+    return Number.isNaN(when) ? 'later' : `after ${new Date(when).toUTCString()}`;
+}
+
 export function extractVideoId(input: string): string | null {
     if (VIDEO_ID_RE.test(input)) return input;
 
@@ -109,15 +143,44 @@ export const transcribeCommand: Command = {
             return;
         }
 
+        const sendTranscript = async (title: string | null, text: string) => {
+            await channel.send(`${SYS_PREFIX}Transcription${title ? ` of **${title}**` : ''}:`);
+            const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: text }]);
+            for (const chunk of chunks) {
+                if (chunk) await channel.send(chunk);
+            }
+        };
+
+        const cached = getCached(videoId);
+        if (cached) {
+            await sendTranscript(cached.title, cached.text);
+            return;
+        }
+
+        const apiKey = process.env.YOUTUBE_TRANSCRIPT_API_KEY?.trim();
+        if (!apiKey) {
+            await commandUtils.replyError(ctx.message, 'Transcripts are not configured: YOUTUBE_TRANSCRIPT_API_KEY is not set. Get a free key at https://youtube-transcript.ai/get-api-key, add it to .env, and redeploy.');
+            return;
+        }
+
         await commandUtils.reply(ctx.message, 'Fetching transcript...');
         await channel.sendTyping();
 
         try {
             const res = await fetch(`https://youtube-transcript.ai/transcript/${videoId}.txt`, {
+                headers: { Authorization: `Bearer ${apiKey}` },
                 signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
             });
             const body = await res.text();
 
+            if (res.status === 401 || res.status === 403) {
+                await commandUtils.replyError(ctx.message, 'youtube-transcript.ai rejected the API key (YOUTUBE_TRANSCRIPT_API_KEY). Check the key in .env and redeploy.');
+                return;
+            }
+            if (res.status === 429) {
+                await commandUtils.replyError(ctx.message, `The youtube-transcript.ai daily quota is used up. Try again ${describeRetryAfter(res.headers.get('retry-after'))}.`);
+                return;
+            }
             if (!res.ok) {
                 // 404 body is markdown with a "Reason: {...}" line.
                 const reason = body.match(/^Reason: (.+)$/m)?.[1] || `service returned HTTP ${res.status}`;
@@ -131,11 +194,8 @@ export const transcribeCommand: Command = {
                 return;
             }
 
-            await channel.send(`${SYS_PREFIX}Transcription${title ? ` of **${title}**` : ''}:`);
-            const chunks = commandUtils.splitMessageIntoChunks([{ role: 'user', content: text }]);
-            for (const chunk of chunks) {
-                if (chunk) await channel.send(chunk);
-            }
+            setCached(videoId, title, text);
+            await sendTranscript(title, text);
         } catch (error: any) {
             console.error('Transcribe command error:', error);
             await commandUtils.replyError(ctx.message, `Transcription failed: ${error.message}`);
