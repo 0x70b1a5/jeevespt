@@ -134,6 +134,13 @@ export interface BotConfig {
     ambientShadow: boolean;
     /** Chat context starts after this time (ms); set when the persona changes */
     contextResetAt: number;
+    /**
+     * Channels' own values for per-channel settings (`perChannel` in
+     * settings/schema.ts), by channel id then setting key. A channel without
+     * one follows the server-wide field. Replace it, never mutate it: configs
+     * may share the default object.
+     */
+    channelSettings: Record<string, Record<string, boolean>>;
 }
 
 // Valid Anthropic Claude models

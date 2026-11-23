@@ -33,6 +33,20 @@ interface SettingBase {
 export interface ToggleSetting extends SettingBase {
     kind: 'toggle';
     key: KeysOfType<BotConfig, boolean>;
+    /**
+     * Each server channel may have its own value (stored in
+     * `config.channelSettings`); the BotConfig field is the default for
+     * channels never set on their own. In a server the panel shows two
+     * buttons, `here` (the panel's channel) and `default`, and an agent's
+     * proposal applies to the channel it was made in. DMs have one value.
+     */
+    perChannel?: {
+        hereLabel: string;
+        hereDescription: string;
+        defaultLabel: string;
+        defaultEmoji: string;
+        defaultDescription: string;
+    };
 }
 
 export interface NumberSetting extends SettingBase {
@@ -125,7 +139,14 @@ export const SETTINGS: Setting[] = [
     {
         kind: 'toggle', key: 'useVoiceResponse', label: 'Voice replies', emoji: '🔊', tab: 'features',
         proposable: true,
-        description: 'Attach spoken audio to replies.'
+        description: 'Attach spoken audio to replies.',
+        perChannel: {
+            hereLabel: 'Voice here',
+            hereDescription: 'Attach spoken audio to replies in this channel.',
+            defaultLabel: 'Voice by default',
+            defaultEmoji: '🔉',
+            defaultDescription: 'Channels where voice was never set on their own.'
+        }
     },
     {
         kind: 'toggle', key: 'shouldMuseRegularly', label: 'Auto-muse', emoji: '🎭', tab: 'features',
@@ -191,6 +212,32 @@ export function settingsForTab(tab: SettingTab, isDM: boolean): Setting[] {
     return SETTINGS.filter(s => s.tab === tab && !(isDM && s.guildOnly));
 }
 
+/** A toggle's value in one channel: the channel's own, else the server-wide default. */
+export function channelValue(setting: ToggleSetting, config: BotConfig, channelId?: string | null): boolean {
+    const own = setting.perChannel && channelId ? config.channelSettings?.[channelId]?.[setting.key] : undefined;
+    return own ?? config[setting.key];
+}
+
+/**
+ * The config as one channel sees it, with per-channel settings resolved. Read
+ * a per-channel setting through this, never the raw field. DMs have no
+ * channel settings, so they come back unchanged.
+ */
+export function configForChannel(config: BotConfig, channelId?: string | null): BotConfig {
+    const own = channelId ? config.channelSettings?.[channelId] : undefined;
+    if (!own) return config;
+    const resolved: BotConfig = { ...config };
+    for (const s of SETTINGS) {
+        if (s.kind === 'toggle' && s.perChannel && typeof own[s.key] === 'boolean') resolved[s.key] = own[s.key];
+    }
+    return resolved;
+}
+
+/** The default button's label in a server ("Voice by default"); the plain label in DMs. */
+export function toggleLabel(setting: Setting, isDM: boolean): string {
+    return setting.kind === 'toggle' && setting.perChannel && !isDM ? setting.perChannel.defaultLabel : setting.label;
+}
+
 /** The value as a person reads it ("on", "5 seconds"). */
 export function formatSetting(setting: Setting, config: BotConfig): string {
     if (setting.kind === 'toggle') return config[setting.key] ? 'on' : 'off';
@@ -252,7 +299,17 @@ export function parseSettingValue(setting: Setting, raw: unknown): ParseResult<S
     return { ok: true, value: n * (setting.scale ?? 1) };
 }
 
-export function applySetting(state: BotState, id: string, isDM: boolean, setting: Setting, value: SettingValue): void {
+/**
+ * Store a setting. Given a server channel, a per-channel toggle is set for
+ * that channel only; otherwise the server-wide (or DM) value changes.
+ */
+export function applySetting(
+    state: BotState, id: string, isDM: boolean, setting: Setting, value: SettingValue, channelId?: string | null
+): void {
+    if (setting.kind === 'toggle' && setting.perChannel && !isDM && channelId) {
+        state.setChannelSetting(id, isDM, channelId, setting.key, Boolean(value));
+        return;
+    }
     state.updateConfig(id, isDM, { [setting.key]: value } as Partial<BotConfig>);
 }
 
@@ -273,7 +330,9 @@ export interface SettingProposal {
 
 /** "turn 🔍 **Web search** on" / "set 📏 **Max response** to 4000 tokens" */
 export function describeChange(setting: Setting, value: SettingValue): string {
-    if (setting.kind === 'toggle') return `turn ${setting.emoji} **${setting.label}** ${value ? 'on' : 'off'}`;
+    if (setting.kind === 'toggle') {
+        return `turn ${setting.emoji} **${setting.label}** ${value ? 'on' : 'off'}${setting.perChannel ? ' here' : ''}`;
+    }
     if (setting.kind === 'choice') return `set ${setting.emoji} **${setting.label}** to ${choiceLabel(setting, value)}`;
     return `set ${setting.emoji} **${setting.label}** to ${value}${setting.unit ? ` ${setting.unit}` : ''}`;
 }

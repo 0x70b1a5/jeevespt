@@ -7,7 +7,8 @@
  * scope (guild or DM) comes from where the interaction happened.
  *
  *   cfg:tab:<tab>          switch panel tab
- *   cfg:t:<key>            flip a toggle
+ *   cfg:t:<key>            flip a toggle (a per-channel one's server default)
+ *   cfg:ch:<key>           flip a per-channel toggle for this channel
  *   cfg:mode / cfg:model   persona / model dropdowns
  *   cfg:c:<key>            choice-setting dropdown
  *   cfg:num:<tab>          open the numbers form → submits as cfg:modal:<tab>
@@ -37,8 +38,8 @@ import { MODE_RESPONSES, PERSONAS } from '../commands/constants';
 import { getValidModels } from '../commands/config';
 import { interactionPermissionError } from '../commands/utils';
 import {
-    applyMode, applySetting, ChoiceSetting, describeChange, displayNumber, formatSetting, getSetting, NumberSetting,
-    parseSettingValue, Setting, SettingProposal, SettingTab, settingsForTab
+    applyMode, applySetting, channelValue, ChoiceSetting, describeChange, displayNumber, formatSetting, getSetting,
+    NumberSetting, parseSettingValue, Setting, SettingProposal, SettingTab, settingsForTab, toggleLabel
 } from './schema';
 
 const TABS: { id: SettingTab; label: string; emoji: string }[] = [
@@ -68,8 +69,11 @@ export async function buildSettingsPanel(
     id: string,
     isDM: boolean,
     tab: SettingTab = 'chat',
-    footer = DEFAULT_FOOTER
+    footer = DEFAULT_FOOTER,
+    /** The channel the panel is in; per-channel settings get a "here" button for it. */
+    channelId?: string | null
 ): Promise<Payload> {
+    const here = isDM ? null : channelId ?? null;
     const config = state.getConfig(id, isDM);
     const settings = settingsForTab(tab, isDM);
     const tabInfo = TABS.find(t => t.id === tab)!;
@@ -80,7 +84,13 @@ export async function buildSettingsPanel(
         lines.push(`${persona?.emoji ?? '🎭'} **Persona:** ${persona?.label ?? config.mode}  ·  🤖 **Model:** \`${config.model}\``, '');
     }
     for (const s of settings) {
-        lines.push(`${s.emoji} **${s.label}:** ${formatSetting(s, config)} — *${s.description}*`);
+        if (s.kind === 'toggle' && s.perChannel && here) {
+            const p = s.perChannel;
+            lines.push(`${s.emoji} **${p.hereLabel}** (<#${here}>): ${channelValue(s, config, here) ? 'on' : 'off'} — *${p.hereDescription}*`);
+            lines.push(`${p.defaultEmoji} **${p.defaultLabel}:** ${formatSetting(s, config)} — *${p.defaultDescription}*`);
+            continue;
+        }
+        lines.push(`${s.emoji} **${toggleLabel(s, isDM)}:** ${formatSetting(s, config)} — *${s.description}*`);
     }
     if (tab === 'admin' && !isDM) {
         const list = config.commandWhitelist.length ? config.commandWhitelist.map(c => `\`${c}\``).join(', ') : 'none';
@@ -100,7 +110,12 @@ export async function buildSettingsPanel(
     for (const s of settings) {
         if (s.kind === 'choice') components.push(choiceMenu(s, config));
     }
-    const buttons = settings.filter(s => s.kind === 'toggle').map(s => toggleButton(s, config));
+    const buttons = settings.flatMap(s => {
+        if (s.kind !== 'toggle') return [];
+        const plain = toggleButton(`cfg:t:${s.key}`, toggleLabel(s, isDM), Boolean(config[s.key]));
+        if (!s.perChannel || !here) return [plain];
+        return [toggleButton(`cfg:ch:${s.key}`, s.perChannel.hereLabel, channelValue(s, config, here)), plain];
+    });
     if (settings.some(s => s.kind === 'number')) {
         buttons.push(new ButtonBuilder().setCustomId(`cfg:num:${tab}`).setLabel('Numbers…').setEmoji('✏️').setStyle(ButtonStyle.Primary));
     }
@@ -113,11 +128,10 @@ export async function buildSettingsPanel(
 }
 
 /** Checkbox-style: green with ✅ when on, grey with ⬜ when off. */
-function toggleButton(setting: Setting, config: BotConfig): ButtonBuilder {
-    const on = Boolean(config[setting.key]);
+function toggleButton(customId: string, label: string, on: boolean): ButtonBuilder {
     return new ButtonBuilder()
-        .setCustomId(`cfg:t:${setting.key}`)
-        .setLabel(setting.label)
+        .setCustomId(customId)
+        .setLabel(label)
         .setEmoji(on ? '✅' : '⬜')
         .setStyle(on ? ButtonStyle.Success : ButtonStyle.Secondary);
 }
@@ -261,6 +275,7 @@ export async function handleSettingsInteraction(
 ): Promise<void> {
     const isDM = !interaction.guildId;
     const id = interaction.guildId ?? interaction.user.id;
+    const channelId = isDM ? null : interaction.channelId ?? null;
     const config = state.getConfig(id, isDM);
     const [, action, arg, value] = interaction.customId.split(':');
     const who = interaction.user.displayName ?? interaction.user.username;
@@ -269,7 +284,7 @@ export async function handleSettingsInteraction(
         await interaction.reply({ content: `🔒 ${reason}`, ephemeral: true });
     };
     const rerender = async (tab: SettingTab, footer?: string) => {
-        const payload = await buildSettingsPanel(state, id, isDM, tab, footer);
+        const payload = await buildSettingsPanel(state, id, isDM, tab, footer, channelId);
         if (interaction.isModalSubmit() && !interaction.isFromMessage()) {
             await interaction.reply(payload);
         } else {
@@ -291,7 +306,19 @@ export async function handleSettingsInteraction(
             const next = !config[setting.key];
             applySetting(state, id, isDM, setting, next);
             console.log(`⚙️ ${who} set ${setting.key} → ${next} (${isDM ? 'DM' : 'guild'} ${id})`);
-            await rerender(setting.tab, `Last change: ${who} turned ${setting.label} ${next ? 'on' : 'off'}`);
+            await rerender(setting.tab, `Last change: ${who} turned ${toggleLabel(setting, isDM)} ${next ? 'on' : 'off'}`);
+            return;
+        }
+
+        case 'ch': {
+            const setting = getSetting(arg);
+            if (!setting || setting.kind !== 'toggle' || !setting.perChannel || !channelId) return;
+            const denied = interactionPermissionError(interaction, config, { requiresAdmin: setting.requiresAdmin, command: 'settings' });
+            if (denied) return deny(denied);
+            const next = !channelValue(setting, config, channelId);
+            applySetting(state, id, isDM, setting, next, channelId);
+            console.log(`⚙️ ${who} set ${setting.key} → ${next} in channel ${channelId} (guild ${id})`);
+            await rerender(setting.tab, `Last change: ${who} turned ${setting.perChannel.hereLabel} ${next ? 'on' : 'off'}`);
             return;
         }
 
@@ -368,8 +395,9 @@ export async function handleSettingsInteraction(
             if (denied) return deny(denied);
             const parsed = parseSettingValue(setting, value);
             if (!parsed.ok) return deny(parsed.error);
-            applySetting(state, id, isDM, setting, parsed.value);
-            console.log(`⚙️ ${who} applied proposal ${setting.key} → ${value} (${isDM ? 'DM' : 'guild'} ${id})`);
+            // A per-channel setting changes only in the channel the suggestion was made in.
+            applySetting(state, id, isDM, setting, parsed.value, channelId);
+            console.log(`⚙️ ${who} applied proposal ${setting.key} → ${value} (${isDM ? 'DM' : 'guild'} ${id}${channelId ? `, channel ${channelId}` : ''})`);
             await resolveProposal(interaction, 0x38a169, `✅ Applied by ${who}`);
             return;
         }

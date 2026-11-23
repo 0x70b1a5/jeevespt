@@ -6,6 +6,7 @@ import { commandUtils } from './utils';
 import { VALID_ANTHROPIC_MODELS, VALID_XAI_MODELS, VALID_POOLSIDE_MODELS, isXaiModel, isPoolsideModel } from '../state';
 import { registry } from './registry';
 import { buildHelpEmbed, buildCommandDetailEmbed } from './helpText';
+import { configForChannel } from '../settings/schema';
 
 /**
  * Type guard to check if a channel supports sending messages
@@ -24,7 +25,8 @@ export const helpCommand: Command = {
     options: [{ name: 'command', description: 'Command to get detailed help for', type: 'string', required: false }],
     examples: ['!help', '!help task'],
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        const config = deps.state.getConfig(ctx.id, ctx.isDM);
+        // As this channel sees it: per-channel settings (voice) resolved.
+        const config = configForChannel(deps.state.getConfig(ctx.id, ctx.isDM), ctx.message.channel?.id);
 
         // !help <command> → detailed help for that single command.
         const query = ctx.args[0]?.replace(/^!/, '').toLowerCase();

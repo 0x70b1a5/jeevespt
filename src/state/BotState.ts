@@ -60,7 +60,8 @@ export class BotState {
         sociability: 0.3,
         ambientEverywhere: false,
         ambientShadow: false,
-        contextResetAt: 0
+        contextResetAt: 0,
+        channelSettings: {}
     };
 
     constructor() {
@@ -100,6 +101,14 @@ export class BotState {
         if (newConfig.shouldSaveData) {
             this.persistData(id, isDM);
         }
+    }
+
+    /** Give one channel its own value for a per-channel setting. */
+    setChannelSetting(id: string, isDM: boolean, channelId: string, key: string, value: boolean): void {
+        const { channelSettings } = this.getConfig(id, isDM);
+        this.updateConfig(id, isDM, {
+            channelSettings: { ...channelSettings, [channelId]: { ...channelSettings[channelId], [key]: value } }
+        });
     }
 
     getAllDMConfigs(): [string, BotConfig][] {

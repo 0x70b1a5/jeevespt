@@ -1,6 +1,7 @@
 import { BotState } from '../state';
 import {
-  SETTINGS, getSetting, parseSettingValue, formatSetting, describeSettingsForAgent, NumberSetting
+  SETTINGS, getSetting, parseSettingValue, formatSetting, describeSettingsForAgent, NumberSetting,
+  applySetting, configForChannel, ToggleSetting
 } from './schema';
 import { buildSettingsPanel, buildProposalMessage, handleSettingsInteraction } from './panel';
 import { interactionPermissionError } from '../commands/utils';
@@ -125,13 +126,14 @@ describe('settings panel', () => {
 
 function fakeInteraction(customId: string, opts: {
   dm?: boolean; admin?: boolean; kind?: 'button' | 'select' | 'modal';
-  values?: string[]; fields?: Record<string, string>;
+  values?: string[]; fields?: Record<string, string>; channelId?: string;
 } = {}) {
   const kind = opts.kind ?? 'button';
   const guildId = opts.dm ? null : 'g';
   return {
     customId,
     guildId,
+    channelId: opts.channelId ?? (guildId ? 'c1' : 'dm-channel'),
     user: { id: 'u', username: 'tester', displayName: 'Tester' },
     inGuild: () => guildId !== null,
     memberPermissions: guildId ? { has: () => !!opts.admin } : null,
@@ -271,5 +273,88 @@ describe('propose_setting_change tool', () => {
     const buttons = payload.components[0].toJSON().components as any[];
     expect(buttons.map(b => b.custom_id)).toEqual(['cfg:prop:maxResponseLength:4000', 'cfg:nope']);
     expect(payload.embeds[0].toJSON().title).toContain('Jeeves suggests');
+  });
+});
+
+describe('voice per channel', () => {
+  const voice = getSetting('useVoiceResponse') as ToggleSetting;
+  const buttons = (payload: any) =>
+    payload.components.flatMap((row: any) => row.toJSON().components).filter((c: any) => c.type === 2);
+  let state: BotState;
+  beforeEach(() => { state = new BotState(); });
+
+  it("resolves a channel's own value over the server default", () => {
+    applySetting(state, 'g', false, voice, true, 'c1');
+    let config = state.getConfig('g', false);
+    expect(config.useVoiceResponse).toBe(false);
+    expect(configForChannel(config, 'c1').useVoiceResponse).toBe(true);
+    expect(configForChannel(config, 'c2').useVoiceResponse).toBe(false);
+
+    // The default moves channels never set on their own, not those that were.
+    applySetting(state, 'g', false, voice, true);
+    applySetting(state, 'g', false, voice, false, 'c1');
+    config = state.getConfig('g', false);
+    expect(configForChannel(config, 'c1').useVoiceResponse).toBe(false);
+    expect(configForChannel(config, 'c2').useVoiceResponse).toBe(true);
+    expect(state.getConfig('other', false).channelSettings).toEqual({}); // configs share the default object
+  });
+
+  it('shows Voice here and Voice by default in a server panel, one Voice replies toggle in DMs', async () => {
+    applySetting(state, 'g', false, voice, true, 'c1');
+    const panel = await buildSettingsPanel(state, 'g', false, 'features', undefined, 'c1');
+    const here = buttons(panel).find((b: any) => b.custom_id === 'cfg:ch:useVoiceResponse');
+    const fallback = buttons(panel).find((b: any) => b.custom_id === 'cfg:t:useVoiceResponse');
+    expect(here).toMatchObject({ label: 'Voice here', emoji: { name: '✅' } });
+    expect(fallback).toMatchObject({ label: 'Voice by default', emoji: { name: '⬜' } });
+    const text = panel.embeds[0].toJSON().description;
+    expect(text).toContain('**Voice here** (<#c1>): on');
+    expect(text).toContain('**Voice by default:** off');
+    for (const row of panel.components) expect(row.toJSON().components.length).toBeLessThanOrEqual(5);
+
+    const dm = await buildSettingsPanel(state, 'u', true, 'features', undefined, 'dm-channel');
+    const dmVoice = buttons(dm).filter((b: any) => b.custom_id.endsWith(':useVoiceResponse'));
+    expect(dmVoice).toEqual([expect.objectContaining({ custom_id: 'cfg:t:useVoiceResponse', label: 'Voice replies' })]);
+  });
+
+  it("flips Voice here for the panel's channel only", async () => {
+    const i = fakeInteraction('cfg:ch:useVoiceResponse', { channelId: 'c1' });
+    await handleSettingsInteraction(i, state);
+    const config = state.getConfig('g', false);
+    expect(config.useVoiceResponse).toBe(false);
+    expect(config.channelSettings).toEqual({ c1: { useVoiceResponse: true } });
+    const embed = i.update.mock.calls[0][0].embeds[0].toJSON();
+    expect(embed.footer.text).toContain('Tester turned Voice here on');
+    expect(embed.description).toContain('(<#c1>): on');
+  });
+
+  it('flips the default from the Voice by default button', async () => {
+    const i = fakeInteraction('cfg:t:useVoiceResponse', { channelId: 'c1' });
+    await handleSettingsInteraction(i, state);
+    expect(state.getConfig('g', false).useVoiceResponse).toBe(true);
+    expect(state.getConfig('g', false).channelSettings).toEqual({});
+    expect(i.update.mock.calls[0][0].embeds[0].toJSON().footer.text).toContain('turned Voice by default on');
+  });
+
+  it('applies a voice suggestion to the channel it was made in (and to the DM in DMs)', async () => {
+    await handleSettingsInteraction(fakeInteraction('cfg:prop:useVoiceResponse:on', { channelId: 'c2' }), state);
+    const config = state.getConfig('g', false);
+    expect(config.useVoiceResponse).toBe(false);
+    expect(configForChannel(config, 'c2').useVoiceResponse).toBe(true);
+
+    await handleSettingsInteraction(fakeInteraction('cfg:prop:useVoiceResponse:on', { dm: true }), state);
+    expect(state.getConfig('u', true).useVoiceResponse).toBe(true);
+    expect(state.getConfig('u', true).channelSettings).toEqual({});
+  });
+
+  it("tells the agent this channel's voice setting, and does not suggest what is already on here", async () => {
+    applySetting(state, 'g', false, voice, true, 'c1');
+    const here = configForChannel(state.getConfig('g', false), 'c1');
+    expect(describeSettingsForAgent(here, false)).toContain('Voice replies: on');
+    const proposals: SettingProposal[] = [];
+    const tool = createProposeSettingTool(here, proposals);
+    expect(await tool.run({ setting: 'useVoiceResponse', value: 'on', reason: 'x' })).toMatch(/already on/);
+    expect(proposals).toEqual([]);
+    const elsewhere = createProposeSettingTool(configForChannel(state.getConfig('g', false), 'c2'), proposals);
+    expect(await elsewhere.run({ setting: 'useVoiceResponse', value: 'on', reason: 'Hear me.' })).toMatch(/Voice replies on here/);
   });
 });

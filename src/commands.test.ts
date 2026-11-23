@@ -518,6 +518,26 @@ describe('CommandHandler', () => {
       expect(JSON.stringify(call.messages)).toContain('Hello Jeeves!');
     });
 
+    it("speaks only in channels where voice is on, falling back to the server default", async () => {
+      state.updateConfig('guild123', false, { responseDelayMs: 0 });
+      state.setChannelSetting('guild123', false, 'channel123', 'useVoiceResponse', true);
+      mockElevenLabs.synthesizeSpeech.mockResolvedValue(null);
+      mockAnthropic.messages.create.mockResolvedValue({ content: [{ type: 'text', text: 'Very good, sir.' }] });
+
+      const here = createMockMessage({ content: 'Speak, Jeeves.' });
+      (here.channel as any).messages = chatChannel('Speak, Jeeves.').messages;
+      await handler.handleMessage(here, false, 'reply');
+      await flush();
+      expect(mockElevenLabs.synthesizeSpeech).toHaveBeenCalledTimes(1);
+
+      const elsewhere = createMockMessage({ content: 'Quietly, please.', channelId: 'channel456' });
+      (elsewhere.channel as any).messages = chatChannel('Quietly, please.').messages;
+      await handler.handleMessage(elsewhere, false, 'reply');
+      await flush();
+      expect(mockElevenLabs.synthesizeSpeech).toHaveBeenCalledTimes(1);
+      expect(mockAnthropic.messages.create).toHaveBeenCalledTimes(2);
+    });
+
     it('records but does not reply when the trigger is none', async () => {
       state.updateConfig('guild123', false, { responseDelayMs: 0 });
       await handler.handleMessage(createMockMessage({ content: 'just chatting' }), false, 'none');

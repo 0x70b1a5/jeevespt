@@ -22,7 +22,7 @@ import { isTypesafeConfigured } from '../llm/typesafe';
 import { ChatLine, channelHistory, snippet, toLlmMessages } from '../chat/history';
 import { AmbientTracker, decide, medianWords, REACT_COST, REPLY_COST, RESPONDS_THRESHOLD } from '../chat/ambient';
 import { guildCustomEmoji, judgeConversation } from '../chat/gate';
-import { describeSettingsForAgent, SettingProposal } from '../settings/schema';
+import { configForChannel, describeSettingsForAgent, SettingProposal } from '../settings/schema';
 import { buildProposalMessage, handleSettingsInteraction, isSettingsInteraction } from '../settings/panel';
 import { handleListInteraction, isListInteraction } from './listPanel';
 
@@ -474,7 +474,7 @@ export class CommandHandler {
     ): Promise<(GeneratedResponse & { proposals: SettingProposal[] }) | null> {
         console.log(`🤖 Generating AI response for ${isDM ? 'user' : 'guild'}: ${id}`);
 
-        const config = this.state.getConfig(id, isDM);
+        const config = configForChannel(this.state.getConfig(id, isDM), opts.channel?.id); // per-channel settings resolved
         const systemPrompt = this.getSystemPrompt(id, isDM);
 
         const lines = opts.channel
@@ -697,7 +697,7 @@ export class CommandHandler {
         opts: { ambient?: AmbientReply; shadow?: boolean } = {}
     ): Promise<void> {
         const id = isDM ? message.author.id : message.guild!.id;
-        const config = this.state.getConfig(id, isDM);
+        const config = configForChannel(this.state.getConfig(id, isDM), message.channel.id); // voice is per channel
         const channel = message.channel;
         const ambient = opts.ambient;
 

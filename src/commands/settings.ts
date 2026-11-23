@@ -13,7 +13,7 @@ export const settingsCommand: Command = {
     category: 'Configuration',
     deferred: true, // the model menu may fetch live model lists
     async execute(ctx: CommandContext, deps: CommandDependencies) {
-        await ctx.message.reply(await buildSettingsPanel(deps.state, ctx.id, ctx.isDM));
+        await ctx.message.reply(await buildSettingsPanel(deps.state, ctx.id, ctx.isDM, 'chat', undefined, ctx.message.channel?.id));
     }
 };
 

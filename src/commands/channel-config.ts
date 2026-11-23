@@ -1,6 +1,6 @@
 import { Command, CommandContext, CommandDependencies } from './types';
 import { commandUtils } from './utils';
-import { ResponseFrequency } from '../state';
+import { BotConfig, ResponseFrequency } from '../state';
 
 const VALID_FREQUENCIES = ['all', 'ambient', 'mentions', 'none'] as const;
 
@@ -101,8 +101,9 @@ export const configCommand: Command = {
  */
 async function showChannelConfiguration(ctx: CommandContext, deps: CommandDependencies): Promise<void> {
     const memberships = deps.state.getAllChannelMemberships(ctx.id, ctx.isDM);
+    const voice = describeChannelVoice(deps.state.getConfig(ctx.id, ctx.isDM));
 
-    if (memberships.size === 0) {
+    if (memberships.size === 0 && !voice) {
         await commandUtils.reply(
             ctx.message,
             `No channels are currently configured.\n` +
@@ -118,8 +119,20 @@ async function showChannelConfiguration(ctx: CommandContext, deps: CommandDepend
         const channelName = channel ? `<#${channelId}>` : `Unknown (${channelId})`;
         configList += `• ${channelName}: **${membership.responseFrequency}**\n`;
     }
+    if (voice) configList += `\n${voice}\n`;
 
     await ctx.message.reply(configList);
+}
+
+/** "🔊 Voice here: on in #a, off in #b · 🔉 by default: off", or '' when no channel has its own. */
+export function describeChannelVoice(config: BotConfig): string {
+    const on: string[] = [], off: string[] = [];
+    for (const [channelId, own] of Object.entries(config.channelSettings ?? {})) {
+        if (typeof own.useVoiceResponse === 'boolean') (own.useVoiceResponse ? on : off).push(`<#${channelId}>`);
+    }
+    if (!on.length && !off.length) return '';
+    const parts = [on.length && `on in ${on.join(', ')}`, off.length && `off in ${off.join(', ')}`].filter(Boolean);
+    return `🔊 **Voice here:** ${parts.join('; ')} · 🔉 **by default:** ${config.useVoiceResponse ? 'on' : 'off'} (change either in \`/settings\`, Features, from that channel)`;
 }
 
 // Export channel config commands
